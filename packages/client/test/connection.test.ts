@@ -73,14 +73,44 @@ function latest(): MockSocket {
 }
 
 describe('sending', () => {
-  it('queues messages sent before the socket is open', () => {
+  it('queues an in-room action taken while the socket is down', () => {
     const connection = new Connection('ws://test/ws');
     connection.connect();
-    connection.send({ t: 'createRoom', name: 'Ada' });
+    connection.send({ t: 'pass', roundId: 'r1' });
     expect(latest().sent).toHaveLength(0);
 
     latest().accept();
-    expect(latest().parsed()[0]).toMatchObject({ t: 'createRoom', name: 'Ada' });
+    expect(latest().parsed()).toContainEqual({ t: 'pass', roundId: 'r1' });
+  });
+
+  it('does not queue what the store re-sends on ready', () => {
+    // Otherwise a socket coming back sends the handshake twice, and asking to
+    // create a room twice is two rooms.
+    const connection = new Connection('ws://test/ws');
+    connection.on('ready', () => connection.send({ t: 'createRoom', name: 'Ada' }));
+    connection.connect();
+    connection.send({ t: 'createRoom', name: 'Ada' });
+
+    latest().accept();
+    expect(latest().parsed().filter((m) => m.t === 'createRoom')).toHaveLength(1);
+  });
+
+  it('re-enters the room before it sends anything that was waiting', () => {
+    // A queued action needs a session to land in. Flushed ahead of the rejoin,
+    // every one of them came back as "Join a room first." and was lost.
+    const connection = new Connection('ws://test/ws');
+    connection.on('ready', () => connection.send({ t: 'rejoin', code: 'ABCDE', token: 'tok' }));
+    connection.connect();
+    latest().accept();
+
+    latest().drop();
+    connection.send({ t: 'vote', roundId: 'r4', targetId: 'p2', approve: true });
+    vi.advanceTimersByTime(5_000);
+    latest().accept();
+
+    const order = latest().parsed().map((m) => m.t);
+    expect(order.indexOf('rejoin')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('rejoin')).toBeLessThan(order.indexOf('vote'));
   });
 
   it('drops live frames rather than queueing stale video', () => {

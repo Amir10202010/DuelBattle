@@ -22,6 +22,25 @@ export interface ConnectionEvents {
   ready(): void;
 }
 
+/**
+ * Messages that would be wrong to replay, so a dropped socket discards them
+ * instead of queueing them.
+ *
+ * The store re-sends the handshake itself on every `ready`; queueing it too
+ * would send it twice, and asking to create a room twice is two rooms. A ping
+ * held in a queue times the queue rather than the network. And a camera frame
+ * from five seconds ago is worse than no frame — a round of them would flood
+ * the socket the instant it reopened.
+ */
+const NEVER_QUEUED: ReadonlySet<ClientMessage['t']> = new Set([
+  'hello',
+  'createRoom',
+  'joinRoom',
+  'rejoin',
+  'ping',
+  'frame',
+]);
+
 const BACKOFF_MIN_MS = 400;
 const BACKOFF_MAX_MS = 8_000;
 const PING_INTERVAL_MS = 12_000;
@@ -87,9 +106,14 @@ export class Connection implements GameConnection {
     socket.onopen = () => {
       this.attempts = 0;
       this.setStatus('open');
+      // The handshake goes first. Everything in the queue needs a session to
+      // land in, and a reconnected socket does not have one until the store
+      // has re-entered the room — flushing ahead of that got every queued
+      // action answered with "Join a room first." and dropped. Messages are
+      // handled in order on the socket, so the rejoin is applied before them.
+      this.handlers.ready?.();
       this.flush();
       this.startPings();
-      this.handlers.ready?.();
     };
 
     socket.onmessage = (event) => {
@@ -123,16 +147,15 @@ export class Connection implements GameConnection {
   }
 
   /**
-   * Queues a message when the socket is down. Live camera frames are the one
-   * exception: a frame from five seconds ago is worse than no frame, and
-   * queueing them would flood the socket the instant it reopens.
+   * Queues a message when the socket is down, so a blip does not cost you the
+   * round you were locking in. See NEVER_QUEUED for what is dropped instead.
    */
   send(message: ClientMessage): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));
       return;
     }
-    if (message.t === 'frame') return;
+    if (NEVER_QUEUED.has(message.t)) return;
     if (this.queue.length < 32) this.queue.push(message);
   }
 
