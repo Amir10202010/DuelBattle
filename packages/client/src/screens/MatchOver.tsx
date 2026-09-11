@@ -36,6 +36,9 @@ function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kin
     const theirs = outcome.winnerId ? outcome.perPlayer[outcome.winnerId] : undefined;
     if (mine.elapsedMs != null && theirs?.elapsedMs != null) {
       const behind = (mine.elapsedMs - theirs.elapsedMs) / 1000;
+      // Under a twentieth of a second this rounds to "0.0s slower", which reads
+      // as a bug to the person who lost by it.
+      if (behind < 0.05) return { label: 'photo finish', kind: 'slower' };
       return { label: `${behind.toFixed(1)}s slower`, kind: 'slower' };
     }
     return { label: 'slower', kind: 'slower' };

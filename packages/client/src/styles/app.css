@@ -917,6 +917,14 @@
   padding: var(--space-6) var(--space-4);
 }
 
+/* A column flex container shrinks its children before it scrolls, and the
+   recap clips what does not fit — which quietly ate the last rounds of any
+   match too long for one screen. Let the sections keep their height and let
+   .over scroll instead. */
+.over > * {
+  flex-shrink: 0;
+}
+
 .over__title {
   font-size: clamp(34px, 7vw, 64px);
   text-transform: uppercase;
@@ -1249,12 +1257,17 @@
     flex: 1;
   }
 
+  /* Not enough width for four columns, so the reason wraps under the prompt
+     rather than being dropped: "voted down" is the one thing in this table a
+     player cannot find out anywhere else. */
   .recap__row {
     grid-template-columns: 28px minmax(0, 1fr) auto;
+    row-gap: 1px;
   }
 
   .recap__why {
-    display: none;
+    grid-column: 2 / -1;
+    text-align: left;
   }
 }
 
