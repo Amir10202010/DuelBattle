@@ -100,6 +100,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           state={selfState}
           overlay={
             <>
+              {camera.status !== 'ready' && <CameraTrouble camera={camera} />}
               {match.phase === 'countdown' && <Countdown match={match} now={now} />}
               {match.phase === 'roundResult' && round && (
                 <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
@@ -270,6 +271,26 @@ function Countdown({ match, now }: { match: PublicMatchState; now: number }) {
       <span key={count} className="countdown__num display">
         {count > 0 ? count : 'GO'}
       </span>
+    </div>
+  );
+}
+
+/**
+ * A camera that failed mid-match, shown where the camera was. The round carries
+ * on without you, which is exactly why this has to be fixable without leaving.
+ */
+function CameraTrouble({ camera }: { camera: CameraState }) {
+  return (
+    <div className="trouble" role="alert">
+      <p className="eyebrow">Camera stopped</p>
+      <p className="trouble__text">{camera.message ?? 'The camera is no longer running.'}</p>
+      <button
+        className="btn btn--primary"
+        onClick={camera.request}
+        disabled={camera.status === 'requesting'}
+      >
+        {camera.status === 'requesting' ? 'Asking…' : 'Turn it back on'}
+      </button>
     </div>
   );
 }

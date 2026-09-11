@@ -52,7 +52,12 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
   // Every deadline on screen is drawn against the server's clock, not this one.
   const now = localNow + (store.serverNow() - Date.now());
 
-  if (!cameraReady) {
+  // Once a match is running, a camera problem is shown on your own stage rather
+  // than swapping the whole screen for the permission gate: losing the prompt,
+  // the clock and your opponent's view is a worse outcome than the fault itself,
+  // and you cannot fix what you cannot see the consequences of.
+  const matchRunning = match.phase !== 'lobby' && match.phase !== 'matchResult';
+  if (!cameraReady && !matchRunning) {
     return <CameraGate camera={camera} roomCode={match.roomCode} onLeave={onLeave} />;
   }
 

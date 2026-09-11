@@ -1676,3 +1676,24 @@
     width: auto;
   }
 }
+
+.trouble {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: rgba(8, 8, 10, 0.9);
+  text-align: center;
+}
+
+.trouble__text {
+  max-width: 34ch;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
