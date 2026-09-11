@@ -1,0 +1,513 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { Challenge } from '../src/challenges.js';
+import {
+  DEFAULT_SETTINGS,
+  createMatch,
+  opponentOf,
+  playersInSeatOrder,
+  reduce,
+  tick,
+  type Action,
+  type EngineContext,
+  type MatchState,
+} from '../src/game.js';
+
+const AUTO: Challenge = {
+  id: 'test-auto',
+  prompt: 'SHOW SOMETHING RED',
+  category: 'color',
+  difficulty: 1,
+  durationMs: 20_000,
+  judging: 'auto',
+  detector: { kind: 'color', target: 'red' },
+  tags: ['color'],
+};
+
+const AUTO_2: Challenge = { ...AUTO, id: 'test-auto-2', prompt: 'SHOW SOMETHING BLUE' };
+
+const PEER: Challenge = {
+  id: 'test-peer',
+  prompt: 'SHOW SOMETHING OLD',
+  category: 'story',
+  difficulty: 2,
+  durationMs: 20_000,
+  judging: 'peer',
+  tags: ['story'],
+};
+
+let idCounter = 0;
+function ctxAt(now: number, pool: readonly Challenge[] = [AUTO, AUTO_2]): EngineContext {
+  return { now, newId: () => `r${++idCounter}`, random: () => 0.42, pool };
+}
+
+function apply(state: MatchState, action: Action, ctx: EngineContext): MatchState {
+  const result = reduce(state, action, ctx);
+  if (!result.ok) throw new Error(`action ${action.type} rejected: ${result.error}`);
+  return result.state;
+}
+
+function expectError(state: MatchState, action: Action, ctx: EngineContext): string {
+  const result = reduce(state, action, ctx);
+  if (result.ok) throw new Error(`expected ${action.type} to be rejected`);
+  return result.error;
+}
+
+/** Two players, cameras on, both ready -> countdown has started. */
+function seatedMatch(now = 1_000, pool: readonly Challenge[] = [AUTO, AUTO_2]): MatchState {
+  let s = createMatch('ABCDE', now);
+  const ctx = ctxAt(now, pool);
+  s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+  s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+  s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+  s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, ctx);
+  s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+  s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctx);
+  return s;
+}
+
+/** Fast-forwards into the live challenge window of the current round. */
+function intoChallenge(state: MatchState, pool: readonly Challenge[] = [AUTO, AUTO_2]): MatchState {
+  const at = state.phaseEndsAt;
+  return tick(state, ctxAt(at, pool));
+}
+
+beforeEach(() => {
+  idCounter = 0;
+});
+
+describe('joining', () => {
+  it('seats two players and refuses a third', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    expect(s.seats).toEqual(['p1', 'p2']);
+    expect(expectError(s, { type: 'join', playerId: 'p3', name: 'Alan' }, ctx)).toBe('room-full');
+  });
+
+  it('refuses a duplicate display name regardless of case', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    expect(expectError(s, { type: 'join', playerId: 'p2', name: '  aDa ' }, ctx)).toBe('name-taken');
+  });
+
+  it('treats a repeat join from a known player as a reconnect', () => {
+    let s = seatedMatch();
+    s = intoChallenge(s);
+    s = apply(s, { type: 'setConnected', playerId: 'p1', connected: false }, ctxAt(2_000));
+    expect(s.pausedAt).not.toBeNull();
+
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctxAt(3_000));
+    expect(s.pausedAt).toBeNull();
+    expect(s.players.p1?.connected).toBe(true);
+    expect(playersInSeatOrder(s)).toHaveLength(2);
+  });
+
+  it('reuses a freed seat after someone leaves the lobby', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    s = apply(s, { type: 'leave', playerId: 'p1' }, ctx);
+    expect(s.seats).toEqual([null, 'p2']);
+    s = apply(s, { type: 'join', playerId: 'p3', name: 'Alan' }, ctx);
+    expect(s.seats).toEqual(['p3', 'p2']);
+  });
+});
+
+describe('readiness', () => {
+  it('will not let a player ready up without a camera', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    expect(expectError(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx)).toBe(
+      'camera-required',
+    );
+  });
+
+  it('drops readiness when the camera disappears', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: false }, ctx);
+    expect(s.players.p1?.ready).toBe(false);
+  });
+
+  it('starts the countdown only when both players are ready', () => {
+    const s = seatedMatch(1_000);
+    expect(s.phase).toBe('countdown');
+    expect(s.phaseEndsAt).toBe(1_000 + DEFAULT_SETTINGS.countdownMs);
+    expect(s.round?.number).toBe(1);
+  });
+
+  it('does not accept readiness once a match is running', () => {
+    const s = intoChallenge(seatedMatch());
+    expect(expectError(s, { type: 'setReady', playerId: 'p1', ready: true }, ctxAt(5_000))).toBe(
+      'wrong-phase',
+    );
+  });
+});
+
+describe('auto rounds', () => {
+  it('reveals the prompt when the countdown expires and starts the clock there', () => {
+    const start = seatedMatch(1_000);
+    const live = intoChallenge(start);
+    expect(live.phase).toBe('challenge');
+    expect(live.round?.startedAt).toBe(start.phaseEndsAt);
+  });
+
+  it('ends the instant a valid answer lands', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p2',
+        roundId,
+        evidenceId: 'e1',
+        auto: { matched: true, confidence: 0.9, reason: 'ok' },
+      },
+      ctxAt(s.round!.startedAt + 2_400),
+    );
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p2');
+    expect(s.round?.outcome?.reason).toBe('only-valid');
+    expect(s.players.p2?.score).toBe(1);
+    expect(s.players.p1?.score).toBe(0);
+  });
+
+  it('awards the round to whoever was faster when both are valid', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    // A near-simultaneous pair: the server clock, not the client, decides.
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: false, confidence: 0.1, reason: 'no' } },
+      ctxAt(started + 1_000),
+    );
+    expect(s.phase).toBe('challenge');
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: { matched: true, confidence: 0.9, reason: 'yes' } },
+      ctxAt(started + 1_200),
+    );
+    expect(s.round?.outcome?.winnerId).toBe('p2');
+  });
+
+  it('scores a draw when nobody manages it', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: false, confidence: 0, reason: 'no' } }, ctxAt(started + 900));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: { matched: false, confidence: 0, reason: 'no' } }, ctxAt(started + 950));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBeNull();
+    expect(s.round?.outcome?.reason).toBe('both-failed');
+    expect(s.players.p1?.score).toBe(0);
+    expect(s.players.p2?.score).toBe(0);
+  });
+
+  it('resolves as no-submissions when the timer runs out empty', () => {
+    let s = intoChallenge(seatedMatch(0));
+    s = tick(s, ctxAt(s.phaseEndsAt));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.reason).toBe('no-submissions');
+    expect(s.round?.outcome?.perPlayer.p1?.note).toBe('Ran out of time');
+  });
+
+  it('rejects a second submission from the same player', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const ctx = ctxAt(s.round!.startedAt + 500);
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: false, confidence: 0, reason: 'no' } }, ctx);
+    expect(expectError(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a2' }, ctx)).toBe(
+      'already-submitted',
+    );
+  });
+
+  it('rejects a submission aimed at a stale round', () => {
+    const s = intoChallenge(seatedMatch(0));
+    expect(
+      expectError(s, { type: 'submit', playerId: 'p1', roundId: 'nope', evidenceId: 'a' }, ctxAt(5_000)),
+    ).toBe('wrong-round');
+  });
+
+  it('rejects a submission from someone who is not in the room', () => {
+    const s = intoChallenge(seatedMatch(0));
+    expect(
+      expectError(s, { type: 'submit', playerId: 'ghost', roundId: s.round!.id, evidenceId: 'a' }, ctxAt(5_000)),
+    ).toBe('not-in-room');
+  });
+});
+
+describe('peer rounds', () => {
+  const pool = [PEER];
+
+  it('opens judging once both answers are in', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    expect(s.round?.judging).toBe('peer');
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    expect(s.phase).toBe('challenge');
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    expect(s.phase).toBe('judging');
+  });
+
+  it('lets the faster approved answer take the round', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_000, pool));
+    expect(s.phase).toBe('judging');
+    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true }, ctxAt(started + 3_500, pool));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
+    expect(s.round?.outcome?.reason).toBe('faster');
+  });
+
+  it('hands the round to the only approved answer', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_100, pool));
+    expect(s.round?.outcome?.winnerId).toBe('p2');
+    expect(s.round?.outcome?.perPlayer.p1?.note).toBe('Rejected by your opponent');
+  });
+
+  it('counts an abstention as approval so refusing to judge is never a tactic', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = tick(s, ctxAt(s.phaseEndsAt, pool));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
+    expect(s.round?.outcome?.perPlayer.p2?.note).toBe('Unjudged — counted as good');
+  });
+
+  it('skips judging entirely when nobody answered', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    s = tick(s, ctxAt(s.phaseEndsAt, pool));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.reason).toBe('no-submissions');
+  });
+
+  it('refuses self-judging and votes for absent submissions', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = tick(s, ctxAt(s.phaseEndsAt, pool));
+    expect(s.phase).toBe('judging');
+    const ctx = ctxAt(started + 5_000, pool);
+    expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p1', approve: true }, ctx)).toBe(
+      'cannot-vote-for-self',
+    );
+    expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctx)).toBe(
+      'no-submission-to-judge',
+    );
+  });
+
+  it('refuses a second vote on the same submission', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    const ctx = ctxAt(started + 3_000, pool);
+    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctx);
+    expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false }, ctx)).toBe(
+      'already-voted',
+    );
+  });
+});
+
+describe('match lifecycle', () => {
+  function winRound(state: MatchState, winner: 'p1' | 'p2', at: number): MatchState {
+    const live = state.phase === 'countdown' ? tick(state, ctxAt(state.phaseEndsAt)) : state;
+    const roundId = live.round!.id;
+    return apply(
+      live,
+      {
+        type: 'submit',
+        playerId: winner,
+        roundId,
+        evidenceId: `e-${winner}-${live.round!.number}`,
+        auto: { matched: true, confidence: 1, reason: 'ok' },
+      },
+      ctxAt(live.round!.startedAt + at),
+    );
+  }
+
+  it('runs rounds back to back until the target is reached', () => {
+    let s = seatedMatch(0);
+    for (let i = 0; i < 3; i++) {
+      s = winRound(s, 'p1', 1_000);
+      expect(s.phase).toBe('roundResult');
+      s = tick(s, ctxAt(s.phaseEndsAt));
+    }
+    expect(s.phase).toBe('matchResult');
+    expect(s.winnerId).toBe('p1');
+    expect(s.endReason).toBe('target-reached');
+    expect(s.players.p1?.score).toBe(3);
+  });
+
+  it('does not repeat a challenge inside one match', () => {
+    let s = seatedMatch(0, [AUTO, AUTO_2, PEER]);
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const live = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, PEER]));
+      seen.push(live.round!.challengeId);
+      s = tick(live, ctxAt(live.phaseEndsAt, [AUTO, AUTO_2, PEER]));
+      if (s.phase === 'judging') s = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, PEER]));
+      s = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, PEER]));
+    }
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it('resets cleanly for a rematch once both players ask', () => {
+    let s = seatedMatch(0);
+    for (let i = 0; i < 3; i++) {
+      s = winRound(s, 'p1', 1_000);
+      s = tick(s, ctxAt(s.phaseEndsAt));
+    }
+    expect(s.phase).toBe('matchResult');
+    s = apply(s, { type: 'rematch', playerId: 'p1' }, ctxAt(500_000));
+    expect(s.phase).toBe('matchResult');
+    s = apply(s, { type: 'rematch', playerId: 'p2' }, ctxAt(500_100));
+    expect(s.phase).toBe('lobby');
+    expect(s.roundNumber).toBe(0);
+    expect(s.players.p1?.score).toBe(0);
+    expect(s.playedChallengeIds).toEqual([]);
+    expect(s.history).toEqual([]);
+    expect(s.winnerId).toBeNull();
+    // Camera state survives a rematch: nobody should re-grant permission.
+    expect(s.players.p1?.cameraReady).toBe(true);
+  });
+
+  it('ends in a draw only after sudden death is exhausted', () => {
+    let s = createMatch('ABCDE', 0, { winTarget: 99, maxRounds: 2, suddenDeathRounds: 1 });
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctx);
+
+    for (let i = 0; i < 3; i++) {
+      s = tick(s, ctxAt(s.phaseEndsAt)); // countdown -> challenge
+      s = tick(s, ctxAt(s.phaseEndsAt)); // challenge -> roundResult (draw)
+      expect(s.round?.outcome?.winnerId).toBeNull();
+      s = tick(s, ctxAt(s.phaseEndsAt));
+    }
+    expect(s.phase).toBe('matchResult');
+    expect(s.endReason).toBe('draw');
+    expect(s.winnerId).toBeNull();
+  });
+});
+
+describe('disconnects', () => {
+  it('freezes the clock while a player is away and restores it on return', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const deadline = s.phaseEndsAt;
+    const startedAt = s.round!.startedAt;
+
+    s = apply(s, { type: 'setConnected', playerId: 'p2', connected: false }, ctxAt(5_000));
+    expect(s.pausedAt).toBe(5_000);
+
+    // Time passing while paused must not consume the round.
+    const stillPaused = tick(s, ctxAt(5_000 + DEFAULT_SETTINGS.disconnectGraceMs - 1));
+    expect(stillPaused.phase).toBe('challenge');
+
+    s = apply(s, { type: 'setConnected', playerId: 'p2', connected: true }, ctxAt(13_000));
+    expect(s.pausedAt).toBeNull();
+    expect(s.phaseEndsAt).toBe(deadline + 8_000);
+    expect(s.round?.startedAt).toBe(startedAt + 8_000);
+  });
+
+  it('refuses submissions while the match is paused', () => {
+    let s = intoChallenge(seatedMatch(0));
+    s = apply(s, { type: 'setConnected', playerId: 'p2', connected: false }, ctxAt(5_000));
+    expect(
+      expectError(s, { type: 'submit', playerId: 'p1', roundId: s.round!.id, evidenceId: 'a' }, ctxAt(6_000)),
+    ).toBe('match-paused');
+  });
+
+  it('abandons the match when the grace period lapses', () => {
+    let s = intoChallenge(seatedMatch(0));
+    s = apply(s, { type: 'setConnected', playerId: 'p2', connected: false }, ctxAt(5_000));
+    s = tick(s, ctxAt(5_000 + DEFAULT_SETTINGS.disconnectGraceMs));
+    expect(s.phase).toBe('matchResult');
+    expect(s.endReason).toBe('abandoned');
+    expect(s.winnerId).toBeNull();
+  });
+
+  it('abandons the match when a player walks out mid-round', () => {
+    let s = intoChallenge(seatedMatch(0));
+    s = apply(s, { type: 'leave', playerId: 'p2' }, ctxAt(6_000));
+    expect(s.phase).toBe('matchResult');
+    expect(s.endReason).toBe('abandoned');
+    expect(s.seats).toEqual(['p1', null]);
+  });
+
+  it('does not pause a match that has not started', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'setConnected', playerId: 'p1', connected: false }, ctxAt(1_000));
+    expect(s.pausedAt).toBeNull();
+  });
+});
+
+describe('invariants', () => {
+  it('bumps the version on every accepted transition', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    const before = s.version;
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    expect(s.version).toBeGreaterThan(before);
+  });
+
+  it('leaves state untouched when a tick has nothing to do', () => {
+    const s = intoChallenge(seatedMatch(0));
+    expect(tick(s, ctxAt(s.round!.startedAt + 10))).toBe(s);
+  });
+
+  it('is idempotent once all due deadlines have fired', () => {
+    const s = intoChallenge(seatedMatch(0));
+    const once = tick(s, ctxAt(s.phaseEndsAt));
+    const twice = tick(once, ctxAt(s.phaseEndsAt));
+    expect(twice).toBe(once);
+  });
+
+  it('advances one phase and re-bases the clock when a tick arrives very late', () => {
+    const s = intoChallenge(seatedMatch(0));
+    // A server hiccup: no tick for a full minute. Players should get the round
+    // result they were owed, not three rounds fast-forwarded past them.
+    const late = s.phaseEndsAt + 60_000;
+    const caughtUp = tick(s, ctxAt(late));
+    expect(caughtUp.phase).toBe('roundResult');
+    expect(caughtUp.phaseEndsAt).toBe(late + DEFAULT_SETTINGS.roundResultMs);
+    expect(tick(caughtUp, ctxAt(late)).phase).toBe('roundResult');
+  });
+
+  it('knows who the opponent is', () => {
+    const s = seatedMatch(0);
+    expect(opponentOf(s, 'p1')?.id).toBe('p2');
+    expect(opponentOf(s, 'p2')?.id).toBe('p1');
+    expect(opponentOf(s, 'ghost')).toBeNull();
+  });
+});

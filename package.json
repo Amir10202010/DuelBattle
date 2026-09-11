@@ -1,0 +1,28 @@
+{
+  "name": "battle",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/client"
+  ],
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "build": "npm run build -w @battle/shared && npm run build -w @battle/server && npm run build -w @battle/client",
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w @battle/server\" \"npm run dev -w @battle/client\"",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^2.1.8"
+  }
+}
