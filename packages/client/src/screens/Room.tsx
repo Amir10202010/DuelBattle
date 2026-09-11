@@ -7,6 +7,7 @@ import { Announcer } from '../components/Announcer.jsx';
 import { ConnectionBadge, MuteButton, PausedOverlay } from '../components/Hud.jsx';
 import { useAnimationClock } from '../hooks/useNow.js';
 import { useMatchSound } from '../hooks/useMatchSound.js';
+import { useWakeLock } from '../hooks/useWakeLock.js';
 import { CameraGate } from './CameraGate.jsx';
 import { Lobby } from './Lobby.jsx';
 import { Arena } from './Arena.jsx';
@@ -37,6 +38,9 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
 
   useFrameSender(store, camera, cameraReady && connected);
   useMatchSound(match, youId);
+  // Held for the whole room, not just a live round: the lobby is where people
+  // put the phone down to go and find their opponent.
+  useWakeLock(cameraReady);
 
   const timed =
     match.phase === 'countdown' ||

@@ -50,6 +50,15 @@ export const config = {
   maxConnectionsPerIp: int('MAX_CONNECTIONS_PER_IP', 12),
   /** A socket that misses this many heartbeats is considered gone. */
   heartbeatMs: int('HEARTBEAT_MS', 15_000),
+  /**
+   * How long a socket may stay open without ever joining a room.
+   *
+   * The client connects as soon as the page loads, so this is also how long
+   * someone may read the landing page before their connection is recycled.
+   * Generous on purpose: per-IP connection limits are what actually stop
+   * squatting, and a short window here just churns real players.
+   */
+  idleSocketTtlMs: int('IDLE_SOCKET_TTL_MS', 10 * 60_000),
   /** Trust X-Forwarded-For. Only enable behind a proxy you control. */
   trustProxy: process.env.TRUST_PROXY === '1',
 } as const;

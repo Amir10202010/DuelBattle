@@ -16,9 +16,6 @@ import { log } from './log.js';
 
 /** Ceiling on a single frame, above the largest legal message by a small margin. */
 const MAX_MESSAGE_BYTES = 300_000;
-/** A connection that has not joined a room within this window is dropped. */
-const JOIN_GRACE_MS = 30_000;
-
 interface TokenBucket {
   tokens: number;
   lastRefill: number;
@@ -319,7 +316,7 @@ export class Gateway {
         session.socket.terminate();
         continue;
       }
-      if (!session.room && now - session.connectedAt > JOIN_GRACE_MS) {
+      if (!session.room && now - session.connectedAt > config.idleSocketTtlMs) {
         session.socket.close(4001, 'idle');
         continue;
       }
