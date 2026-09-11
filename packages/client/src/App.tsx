@@ -17,7 +17,10 @@ export function App() {
 
   useEffect(() => {
     store.start();
-    return () => store.stop();
+    // Deliberately no teardown. The store's lifetime is the page's, and closing
+    // the socket on unmount makes React's development double-mount look like a
+    // dropped connection — which replays the join intent and opens a second,
+    // orphaned room. The browser closes the socket on unload.
   }, [store]);
 
   // Arriving on a /r/CODE link with a session for that room walks straight back in.
@@ -29,10 +32,14 @@ export function App() {
     store.resumeSession(route.code);
   }, [route.code, snapshot.status, snapshot.screen, store]);
 
-  // Keep the address bar in step with where the player actually is.
+  // Once seated, the address bar shows the shareable room link.
+  //
+  // It deliberately only ever moves *into* a room. Clearing the URL whenever the
+  // app is on the home screen would wipe /r/CODE on the very first render of a
+  // freshly opened invite link, before the session has had a chance to resume.
+  // Leaving a room navigates explicitly instead.
   useEffect(() => {
     if (snapshot.roomCode && snapshot.screen === 'room') route.go(roomPath(snapshot.roomCode));
-    else if (snapshot.screen === 'home' && route.path !== '/') route.go('/');
   }, [snapshot.roomCode, snapshot.screen, route]);
 
   // Nothing should hold the camera open once the match is behind us.
@@ -48,6 +55,13 @@ export function App() {
     route.go('/');
   };
 
+  const abandon = () => {
+    store.dismissFatal();
+    camera.stop();
+    resumedFor.current = null;
+    route.go('/');
+  };
+
   return (
     <>
       {snapshot.fatalError && (
@@ -55,7 +69,7 @@ export function App() {
           <div className="overlay__inner">
             <p className="eyebrow">Disconnected</p>
             <h2 className="display overlay__title">{snapshot.fatalError}</h2>
-            <button className="btn btn--primary btn--lg" onClick={() => store.dismissFatal()}>
+            <button className="btn btn--primary btn--lg" onClick={abandon}>
               Back to the start
             </button>
           </div>

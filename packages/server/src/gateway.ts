@@ -226,7 +226,7 @@ export class Gateway {
   }
 
   private createRoom(session: Session, name: string, now: number): void {
-    if (session.room) this.leaveCurrentRoom(session, now);
+    this.leaveCurrentRoom(session, now);
     let room: Room;
     try {
       room = this.rooms.create(now);
@@ -246,7 +246,9 @@ export class Gateway {
       this.fail(session, 'room-not-found', 'No room with that code. Check the letters?');
       return;
     }
-    if (session.room && session.room !== room) this.leaveCurrentRoom(session, now);
+    // Releasing the current seat first — even when it is in this same room —
+    // is what stops one socket from occupying both sides of a match.
+    this.leaveCurrentRoom(session, now);
     this.seat(session, room, room.join(name, now), now);
   }
 
@@ -256,7 +258,12 @@ export class Gateway {
       this.fail(session, 'room-not-found', 'That room has closed.');
       return;
     }
-    this.seat(session, room, room.rejoin(token, now), now);
+    const outcome = room.rejoin(token, now);
+    // Only give up the seat we hold once the new one is known to be valid.
+    if (outcome.ok && (session.room !== room || session.playerId !== outcome.playerId)) {
+      this.leaveCurrentRoom(session, now);
+    }
+    this.seat(session, room, outcome, now);
   }
 
   private seat(
@@ -281,7 +288,8 @@ export class Gateway {
   }
 
   private leaveCurrentRoom(session: Session, now: number): void {
-    if (session.room && session.playerId) session.room.remove(session.playerId, now);
+    if (!session.room || !session.playerId) return;
+    session.room.remove(session.playerId, now);
     this.clearMembership(session);
   }
 

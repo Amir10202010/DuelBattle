@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { MAX_NAME_LENGTH, ROOM_CODE_LENGTH, isValidRoomCode, normalizeRoomCode } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
-import { rememberedName } from '../net/store.js';
+import { recoverableSession, rememberedName } from '../net/store.js';
 
 interface HomeProps {
   store: MatchStore;
@@ -39,6 +39,10 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
     // to ask is who they are.
     if (invitedCode) nameRef.current?.focus();
   }, [invitedCode]);
+
+  // A seat this browser still holds in the room being opened: offer it back
+  // explicitly rather than assuming this tab is the same player.
+  const recoverable = invitedCode ? recoverableSession(invitedCode) : null;
 
   const trimmedName = name.trim();
   const nameOk = trimmedName.length > 0;
@@ -107,6 +111,21 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
             />
             {touched && !nameOk && <p className="error-text">Pick a name so your opponent knows who won.</p>}
           </div>
+
+          {recoverable && (
+            <div className="resume">
+              <p className="resume__text">
+                This browser was in room {invitedCode} as <strong>{recoverable.name}</strong>.
+              </p>
+              <button
+                className="btn btn--block"
+                disabled={busy}
+                onClick={() => invitedCode && store.recoverSession(invitedCode)}
+              >
+                Take that seat back
+              </button>
+            </div>
+          )}
 
           {mode === 'choose' ? (
             <>

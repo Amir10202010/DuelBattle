@@ -37,33 +37,83 @@ type Intent =
   | { kind: 'rejoin'; code: string; token: string };
 
 interface StoredSession {
-  code: string;
   token: string;
   name: string;
+  at: number;
 }
 
-const SESSION_KEY = 'battle.session.v1';
+const SESSION_KEY = 'battle.sessions.v2';
 const NAME_KEY = 'battle.name.v1';
 const TOAST_MS = 4_000;
+/** Enough to walk back into a room you were in a moment ago, not a history. */
+const MAX_REMEMBERED_ROOMS = 4;
 
-function readSession(): StoredSession | null {
+/**
+ * A seat belongs to a tab, so the token that proves it lives in sessionStorage:
+ * two tabs on one machine are two players, and one must never inherit the
+ * other's seat by opening the same link.
+ *
+ * A copy also goes to localStorage, but only as an offer. If you close the tab
+ * by accident the seat is still held server-side, and the room link can hand it
+ * back — but that has to be a deliberate "continue as Ada", never an automatic
+ * takeover of a seat this tab never held.
+ */
+function readSessions(store: Storage): Record<string, StoredSession> {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredSession>;
-    if (typeof parsed.code !== 'string' || typeof parsed.token !== 'string') return null;
-    return { code: parsed.code, token: parsed.token, name: parsed.name ?? '' };
+    const raw = store.getItem(SESSION_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as Record<string, StoredSession>;
   } catch {
+    return {};
+  }
+}
+
+function storage(kind: 'session' | 'local'): Storage | null {
+  try {
+    return kind === 'session' ? sessionStorage : localStorage;
+  } catch {
+    // Some privacy modes throw on access, not just on write.
     return null;
   }
 }
 
-function writeSession(session: StoredSession | null): void {
-  try {
-    if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    else localStorage.removeItem(SESSION_KEY);
-  } catch {
-    // Private browsing modes throw on write; the session is a convenience only.
+function storages(): Storage[] {
+  return [storage('session'), storage('local')].filter((s): s is Storage => s !== null);
+}
+
+function sessionFrom(kind: 'session' | 'local', code: string): StoredSession | null {
+  const store = storage(kind);
+  if (!store) return null;
+  const found = readSessions(store)[code];
+  return found && typeof found.token === 'string' ? found : null;
+}
+
+/**
+ * A seat this browser held but this tab does not, i.e. the tab was closed and
+ * the room link reopened. Offered to the player rather than used silently.
+ */
+export function recoverableSession(code: string): { name: string } | null {
+  if (sessionFrom('session', code)) return null;
+  const stored = sessionFrom('local', code);
+  return stored ? { name: stored.name } : null;
+}
+
+function writeSession(code: string, session: StoredSession | null): void {
+  for (const store of storages()) {
+    try {
+      const all = readSessions(store);
+      if (session) all[code] = session;
+      else delete all[code];
+
+      const trimmed = Object.entries(all)
+        .sort((a, b) => (b[1]?.at ?? 0) - (a[1]?.at ?? 0))
+        .slice(0, MAX_REMEMBERED_ROOMS);
+      store.setItem(SESSION_KEY, JSON.stringify(Object.fromEntries(trimmed)));
+    } catch {
+      // Private browsing throws on write; sessions are a convenience only.
+    }
   }
 }
 
@@ -169,10 +219,18 @@ export class MatchStore {
     this.connection.send({ t: 'joinRoom', code, name });
   }
 
-  /** Attempts to re-enter a room this browser was already seated in. */
+  /** Re-enters a room this tab was already seated in. Never another tab's. */
   resumeSession(code: string): boolean {
-    const session = readSession();
-    if (!session || session.code !== code) return false;
+    return this.rejoinWith(sessionFrom('session', code), code);
+  }
+
+  /** Takes back a seat held by a tab that was closed. Always player-initiated. */
+  recoverSession(code: string): boolean {
+    return this.rejoinWith(sessionFrom('local', code), code);
+  }
+
+  private rejoinWith(session: StoredSession | null, code: string): boolean {
+    if (!session) return false;
     this.intent = { kind: 'rejoin', code, token: session.token };
     this.patch({ joining: true, joinError: null });
     this.connection.send({ t: 'rejoin', code, token: session.token });
@@ -205,8 +263,9 @@ export class MatchStore {
 
   leave(): void {
     this.connection.send({ t: 'leave' });
+    const code = this.snapshot.roomCode;
     this.intent = null;
-    writeSession(null);
+    if (code) writeSession(code, null);
     this.patch({
       screen: 'home',
       match: null,
@@ -219,8 +278,9 @@ export class MatchStore {
   }
 
   dismissFatal(): void {
+    const code = this.snapshot.roomCode;
     this.intent = null;
-    writeSession(null);
+    if (code) writeSession(code, null);
     this.patch({ fatalError: null, screen: 'home', match: null, you: null, roomCode: null });
   }
 
@@ -247,7 +307,7 @@ export class MatchStore {
         return;
       case 'joined': {
         const name = this.intent && 'name' in this.intent ? this.intent.name : rememberedName();
-        writeSession({ code: message.roomCode, token: message.token, name });
+        writeSession(message.roomCode, { token: message.token, name, at: Date.now() });
         // From here on, any reconnect re-enters the same seat.
         this.intent = { kind: 'rejoin', code: message.roomCode, token: message.token };
         this.patch({
@@ -299,7 +359,9 @@ export class MatchStore {
 
     if (message.code === 'session-expired') {
       // The seat is gone: forget it so we do not retry in a loop.
-      writeSession(null);
+      const code =
+        this.intent && 'code' in this.intent ? this.intent.code : this.snapshot.roomCode;
+      if (code) writeSession(code, null);
       this.intent = null;
       this.patch({
         joining: false,

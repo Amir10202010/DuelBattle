@@ -275,6 +275,42 @@ describe('hostile clients', () => {
     guest.close();
   });
 
+  it('will not let one socket occupy both seats', async () => {
+    const host = await Player.connect(port);
+    host.send({ t: 'createRoom', name: 'Ada' });
+    const joined = await host.waitFor<Extract<ServerMessage, { t: 'joined' }>>((m) => m.t === 'joined');
+    const firstSeat = host.playerId;
+
+    // The same connection tries to take the other seat under a second name.
+    host.send({ t: 'joinRoom', code: joined.roomCode, name: 'Grace' });
+    const state = await host.waitForState((s) => s.players[firstSeat] === undefined);
+    expect(Object.keys(state.players)).toHaveLength(1);
+    expect(Object.values(state.players)[0]?.name).toBe('Grace');
+
+    // And the room is genuinely open again, not merely reported as open.
+    const other = await Player.connect(port);
+    other.send({ t: 'joinRoom', code: joined.roomCode, name: 'Alan' });
+    await other.waitFor((m) => m.t === 'joined');
+    host.close();
+    other.close();
+  });
+
+  it('keeps the current seat when a rejoin token is rejected', async () => {
+    const { host, guest, code } = await pair();
+    const seat = host.playerId;
+    host.send({ t: 'rejoin', code, token: 'this-is-not-a-valid-token' });
+    const error = await host.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(error.code).toBe('session-expired');
+
+    // A failed recovery attempt must not cost the player the seat they hold.
+    guest.send({ t: 'cameraReady', ready: true });
+    const state = await guest.waitForState((s) => s.players[guest.playerId]?.cameraReady === true);
+    expect(state.players[seat]).toBeDefined();
+    expect(state.players[seat]?.connected).toBe(true);
+    host.close();
+    guest.close();
+  });
+
   it('rate limits a client that floods the socket', async () => {
     const player = await Player.connect(port);
     for (let i = 0; i < 200; i++) player.send({ t: 'ping', id: i });

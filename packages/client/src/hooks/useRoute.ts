@@ -4,14 +4,13 @@ import { isValidRoomCode, normalizeRoomCode } from '@battle/shared';
 export interface Route {
   /** Room code from the URL, if this is a shareable room link. */
   code: string | null;
-  path: string;
 }
 
 function parse(pathname: string): Route {
   const match = /^\/r\/([^/]+)\/?$/.exec(pathname);
-  if (!match) return { code: null, path: pathname };
+  if (!match) return { code: null };
   const code = normalizeRoomCode(decodeURIComponent(match[1] ?? ''));
-  return { code: isValidRoomCode(code) ? code : null, path: pathname };
+  return { code: isValidRoomCode(code) ? code : null };
 }
 
 /**

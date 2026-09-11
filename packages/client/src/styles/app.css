@@ -1234,3 +1234,18 @@
     height: 38px;
   }
 }
+
+.resume {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+}
+
+.resume__text {
+  font-size: 13px;
+  color: var(--text-dim);
+}
