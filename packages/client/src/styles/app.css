@@ -1504,3 +1504,18 @@
     flex: 1;
   }
 }
+
+.lookup {
+  font-size: 13px;
+  color: var(--text-dim);
+  min-height: 1.4em;
+}
+
+.lookup--open {
+  color: var(--good);
+}
+
+.lookup--full,
+.lookup--missing {
+  color: var(--warn);
+}

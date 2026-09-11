@@ -8,6 +8,8 @@ export interface HookHandle<T> {
   current: T;
   /** Runs an imperative call from the hook and settles everything it triggers. */
   run(fn: () => void): Promise<void>;
+  /** Same, for something that has to be awaited — advancing fake timers, say. */
+  runAsync(fn: () => Promise<unknown>): Promise<void>;
   /** Settles pending effects and microtasks without doing anything else. */
   flush(): Promise<void>;
   unmount(): void;
@@ -44,6 +46,12 @@ export function renderHook<T>(hook: () => T): HookHandle<T> {
     });
   };
   handle.run = (fn: () => void) => settle(fn);
+  handle.runAsync = async (fn: () => Promise<unknown>) => {
+    await act(async () => {
+      await fn();
+      await Promise.resolve();
+    });
+  };
   handle.flush = () => settle();
   handle.unmount = () => {
     act(() => root.unmount());

@@ -8,6 +8,7 @@ import {
 } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import { recoverableSession, rememberedName } from '../net/store.js';
+import { describeLookup, useRoomLookup } from '../hooks/useRoomLookup.js';
 
 interface HomeProps {
   store: MatchStore;
@@ -54,6 +55,11 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
   const nameOk = trimmedName.length > 0;
   const codeOk = isValidRoomCode(code);
   const busy = joining || offline;
+
+  // Checked while they are still looking at the field, rather than after they
+  // have handed over a camera.
+  const lookup = useRoomLookup(mode === 'join' ? code : '');
+  const lookupNote = describeLookup(lookup);
 
   const submitCreate = () => {
     setTouched(true);
@@ -171,10 +177,19 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
                   onKeyDown={(e) => e.key === 'Enter' && submitJoin()}
                 />
               </div>
+              {lookupNote && (
+                <p
+                  className={`lookup lookup--${lookup.state}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {lookupNote}
+                </p>
+              )}
               <button
                 className="btn btn--primary btn--lg btn--block"
                 onClick={submitJoin}
-                disabled={busy || !codeOk}
+                disabled={busy || !codeOk || lookup.state === 'full'}
               >
                 {joining ? 'Joining…' : 'Join the battle'}
               </button>
