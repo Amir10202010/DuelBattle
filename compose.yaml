@@ -1,0 +1,17 @@
+services:
+  duelbattle:
+    build: .
+    init: true
+    ports:
+      - '3000:3000'
+    environment:
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      STUN_URL: ${STUN_URL:-stun:stun.cloudflare.com:3478}
+    volumes:
+      - duelbattle-data:/app/data
+    restart: unless-stopped
+volumes:
+  duelbattle-data:
