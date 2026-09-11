@@ -311,6 +311,32 @@ function EvidenceShot({ image }: { image: string | undefined }) {
   return <img className="evidence" src={image} alt="Submitted answer" />;
 }
 
+/**
+ * What to do with your hands, for whatever is actually watching.
+ *
+ * One line cannot serve every round: "hold it up so it fills the middle of the
+ * frame" is the right advice for a colour hunt and flatly wrong for "black out
+ * your camera", where the whole answer is to cover the lens. The switch is
+ * exhaustive so a new detector cannot ship without telling players how to aim
+ * at it.
+ */
+function aimingHint(detector: DetectorSpec | null): string {
+  if (!detector) return 'Show it clearly — your opponent has to be able to tell.';
+  switch (detector.kind) {
+    case 'color':
+    case 'colorPair':
+      return 'Hold it up so it fills the middle of the frame.';
+    case 'coverage':
+      return 'Closer — it has to fill nearly the whole frame.';
+    case 'luminance':
+      return detector.mode === 'brighter'
+        ? 'Close to the lens: it has to out-shine the room.'
+        : 'Close to the lens: it has to be darker than the room.';
+    case 'darkness':
+      return 'Cover the lens completely.';
+  }
+}
+
 function ActionRow({
   store,
   match,
@@ -349,6 +375,7 @@ function ActionRow({
     }
     const matched = detection.result?.matched ?? false;
     const isAuto = round.judging === 'auto';
+    const detector = (isAuto && getChallenge(round.challengeId)?.detector) || null;
     return (
       <div className="actions">
         <div className="actions__row">
@@ -367,11 +394,7 @@ function ActionRow({
           </button>
         </div>
         <p className="actions__note dim">
-          {isAuto
-            ? matched
-              ? 'The camera has it. Be quick.'
-              : 'Hold it up so it fills the middle of the frame.'
-            : 'Show it clearly — your opponent has to be able to tell.'}
+          {matched ? 'The camera has it. Be quick.' : aimingHint(detector)}
           <span className="actions__key"> Space</span>
         </p>
       </div>
@@ -446,3 +469,5 @@ function ActionRow({
 
   return <div className="actions actions--waiting" />;
 }
+
+export { aimingHint as aimingHintForTesting };
