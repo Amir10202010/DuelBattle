@@ -19,6 +19,26 @@ export interface Rect {
   color: Rgb;
 }
 
+export interface SceneOptions {
+  /** Peak per-channel sensor noise, 0-255. A real webcam sits around 6-14. */
+  noise?: number;
+  /** How much darker the corners are than the centre, 0-1. Lenses do this. */
+  vignette?: number;
+  /** Overall exposure multiplier. Rooms are not all lit the same. */
+  exposure?: number;
+  /** Seed, so a "noisy" frame is still a repeatable one. */
+  seed?: number;
+}
+
+/**
+ * Deterministic value noise. Real sensor noise is not repeatable, but a test
+ * that fails one run in twenty is worse than no test.
+ */
+function jitter(seed: number, i: number): number {
+  const x = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+  return (x - Math.floor(x)) * 2 - 1;
+}
+
 /** Builds a raw RGBA scene at webcam-ish dimensions. */
 export function scene(background: Rgb, rects: Rect[] = [], width = FRAME_W, height = FRAME_H): Buffer {
   const data = Buffer.alloc(width * height * 4);
@@ -81,7 +101,7 @@ export function heldObjectFrame(color: Rgb, quality = 75): string {
 // Frames that satisfy (or fail) any detector the catalogue can produce
 // ---------------------------------------------------------------------------
 
-const FURNITURE: Rect[] = [
+export const FURNITURE: Rect[] = [
   // Something red that never moves: it must never answer a red challenge.
   { x: 0, y: 120, w: 60, h: 60, color: RED },
   { x: 190, y: 0, w: 50, h: 180, color: [140, 120, 100] },
@@ -148,5 +168,71 @@ export function failingFrameFor(detector: DetectorSpec): string {
       return heldObjectFrame([96, 98, 102]);
     case 'darkness':
       return heldObjectFrame([12, 12, 14]);
+  }
+}
+
+
+/**
+ * The same scene as a real camera would hand it over: noisy, unevenly lit and
+ * exposed to taste. Flat colour blocks flatter a detector that thresholds on
+ * per-pixel change and on hue.
+ */
+export function weathered(rgba: Buffer, opts: SceneOptions = {}, width = FRAME_W, height = FRAME_H): Buffer {
+  const noise = opts.noise ?? 10;
+  const vignette = opts.vignette ?? 0.25;
+  const exposure = opts.exposure ?? 1;
+  const seed = opts.seed ?? 1;
+  const out = Buffer.from(rgba);
+
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const maxR = Math.hypot(cx, cy);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const falloff = 1 - vignette * (Math.hypot(x - cx, y - cy) / maxR) ** 2;
+      for (let c = 0; c < 3; c++) {
+        const value = out[i + c]! * exposure * falloff + jitter(seed + c, i) * noise;
+        out[i + c] = Math.max(0, Math.min(255, Math.round(value)));
+      }
+    }
+  }
+  return out;
+}
+
+/** An empty room as a camera actually sees it. */
+export function realisticEmptyRoom(opts: SceneOptions = {}): string {
+  return jpegDataUrl(
+    weathered(scene(GREY, FURNITURE), opts),
+    opts.exposure && opts.exposure < 0.6 ? 55 : 62,
+  );
+}
+
+/** The same room with something held up, through the same camera. */
+export function realisticHeld(rgba: Buffer, opts: SceneOptions = {}): string {
+  return jpegDataUrl(weathered(rgba, opts), 76);
+}
+
+/** The raw scene behind `passingFrameFor`, so it can be weathered before encoding. */
+export function passingSceneFor(detector: DetectorSpec): Buffer {
+  switch (detector.kind) {
+    case 'color':
+      return scene(GREY, [...FURNITURE, { x: 80, y: 50, w: 80, h: 80, color: hexToRgb(colorSwatch(detector.target)) }]);
+    case 'colorPair':
+      return scene(GREY, [
+        ...FURNITURE,
+        { x: 70, y: 45, w: 50, h: 90, color: hexToRgb(colorSwatch(detector.targets[0])) },
+        { x: 120, y: 45, w: 50, h: 90, color: hexToRgb(colorSwatch(detector.targets[1])) },
+      ]);
+    case 'coverage':
+      return scene([210, 180, 90], []);
+    case 'luminance':
+      return scene(GREY, [
+        ...FURNITURE,
+        { x: 80, y: 50, w: 80, h: 80, color: detector.mode === 'darker' ? [12, 12, 14] : [248, 248, 244] },
+      ]);
+    case 'darkness':
+      return scene([2, 2, 3], []);
   }
 }

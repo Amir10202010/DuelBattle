@@ -67,6 +67,9 @@ export function verifySubmission(
 
   try {
     const result = runDetector(challenge.detector, baseline, submitted);
+    // Conditions the camera cannot settle either way go to the opponent, the
+    // same as a round with no baseline.
+    if (result.undecidable) return { kind: 'undecidable', reason: result.reason };
     return {
       kind: 'verdict',
       verdict: {

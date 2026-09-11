@@ -4,6 +4,13 @@ import { matchesColor, relativeLuminance, rgbToHsv, type ColorKey } from './colo
 
 export interface DetectionResult {
   matched: boolean;
+  /**
+   * Set when the conditions make this round impossible to settle either way —
+   * asking for something darker than a room that is already almost black, say.
+   * The server hands these to the opponent rather than failing the player for
+   * the state of their lighting.
+   */
+  undecidable?: true;
   /** 0..1, monotonic in "how clearly this passed". Never used as a threshold. */
   confidence: number;
   /**
@@ -57,7 +64,42 @@ function weightMapFor(width: number, height: number): Float32Array {
   return map;
 }
 
-export const DEFAULT_CHANGE_THRESHOLD = 32;
+/**
+ * How much a pixel must differ from the baseline to count as changed, as a
+ * fraction of how bright the room is.
+ *
+ * A fixed number cannot work. Measured across simulated cameras, a green object
+ * held against a grey wall produces a per-pixel delta around 38 in a well-lit
+ * room and around 20 in a dim one, while sensor noise runs at 4 and 9
+ * respectively. One threshold that clears the noise in a bright room sits above
+ * the *signal* in a dark one — which is exactly what happened: in an evening
+ * room the game could not see a green object at all.
+ *
+ * 0.35 of the room's mean level clears the noise and stays under the signal in
+ * every room measured, down to the point where a camera genuinely cannot tell
+ * the two apart. In a normally-lit room it works out at about 32, which is
+ * where this started.
+ */
+export const CHANGE_THRESHOLD_RATIO = 0.35;
+/** Floors and ceilings, so a black or blown-out frame still behaves. */
+export const MIN_CHANGE_THRESHOLD = 10;
+export const MAX_CHANGE_THRESHOLD = 48;
+
+/**
+ * Mean channel level a "normally exposed" room sits at, and the range the
+ * correction towards it is allowed to span.
+ *
+ * Hue survives exposure — scaling every channel by the same factor leaves both
+ * hue and saturation untouched — which is why a green mug is still green in a
+ * dim room. White and black are the exceptions: they are defined by how bright
+ * a pixel is, so in an evening room a white mug reads as mid-grey and the game
+ * would tell someone holding one up that it does not count. Correcting the
+ * frame towards a reference exposure first makes white and black mean the same
+ * thing in every room, and changes nothing for the colours that already did.
+ */
+const REFERENCE_LEVEL = 100;
+const MIN_EXPOSURE_GAIN = 0.6;
+const MAX_EXPOSURE_GAIN = 2.5;
 export const DEFAULT_MIN_SHARE = 0.32;
 export const DEFAULT_MIN_CHANGE = 0.035;
 
@@ -81,12 +123,40 @@ export interface ChangeAnalysis {
 }
 
 export interface AnalyseOptions {
-  /** Mean per-channel delta (0..255) above which a pixel counts as changed. */
+  /**
+   * Mean per-channel delta (0..255) above which a pixel counts as changed.
+   * Derived from the baseline's brightness when not given, which is almost
+   * always what you want.
+   */
   changeThreshold?: number;
   /** Colours to measure. Left empty, no colour work is done at all. */
   colors?: readonly ColorKey[];
   /** Luminance below which a pixel counts towards `darkShare`. */
   darkBelow?: number;
+}
+
+/** Mean channel level, sampled. A quarter of the pixels is plenty for a mean. */
+function meanLevel(frame: Frame): number {
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < frame.data.length; i += 16) {
+    sum += (frame.data[i]! + frame.data[i + 1]! + frame.data[i + 2]!) / 3;
+    n++;
+  }
+  return n === 0 ? 0 : sum / n;
+}
+
+/** The change threshold this room's lighting calls for. */
+export function changeThresholdFor(baseline: Frame): number {
+  const scaled = meanLevel(baseline) * CHANGE_THRESHOLD_RATIO;
+  return Math.min(MAX_CHANGE_THRESHOLD, Math.max(MIN_CHANGE_THRESHOLD, scaled));
+}
+
+/** How far this room's exposure has to be corrected to read colours from it. */
+export function exposureGainFor(baseline: Frame): number {
+  const level = meanLevel(baseline);
+  if (level <= 0) return MAX_EXPOSURE_GAIN;
+  return Math.min(MAX_EXPOSURE_GAIN, Math.max(MIN_EXPOSURE_GAIN, REFERENCE_LEVEL / level));
 }
 
 function assertComparable(baseline: Frame, current: Frame): void {
@@ -111,7 +181,7 @@ export function analyseChange(
   opts: AnalyseOptions = {},
 ): ChangeAnalysis {
   assertComparable(baseline, current);
-  const threshold = opts.changeThreshold ?? DEFAULT_CHANGE_THRESHOLD;
+  const threshold = opts.changeThreshold ?? changeThresholdFor(baseline);
   const colors = opts.colors ?? [];
   const { width, height } = current;
 
@@ -124,6 +194,7 @@ export function analyseChange(
   const darkBelow = opts.darkBelow ?? -1;
   const colorWeights = colors.map(() => 0);
   const weights = weightMapFor(width, height);
+  const gain = colors.length > 0 ? exposureGainFor(baseline) : 1;
 
   for (let p = 0, i = 0; p < weights.length; p++, i += 4) {
     const w = weights[p]!;
@@ -147,7 +218,13 @@ export function analyseChange(
     baselineLuma += relativeLuminance(br, bg, bb) * w;
 
     if (colors.length > 0) {
-      const hsv = rgbToHsv(r, g, b);
+      // Read the colour from an exposure-corrected pixel, so "white" means the
+      // same thing in an evening room as it does by a window.
+      const hsv = rgbToHsv(
+        Math.min(255, r * gain),
+        Math.min(255, g * gain),
+        Math.min(255, b * gain),
+      );
       for (let c = 0; c < colors.length; c++) {
         if (matchesColor(colors[c]!, hsv)) colorWeights[c]! += w;
       }
@@ -348,6 +425,26 @@ export function detectLuminance(
   const delta = opts.mode === 'darker' ? before - after : after - before;
   const target = before * opts.ratio;
   const metrics = { changeRatio: analysis.changeRatio, before, after, delta };
+
+  // Whether any object could pass at all in this light, measured against what
+  // is physically achievable rather than against the ratio. The darkest thing
+  // in the world is luminance zero, so the largest gap a dark object can open
+  // up is the room's own brightness; the brightest is one, and nothing can be
+  // 2.2 times brighter than a room already past half of it.
+  const reachable =
+    opts.mode === 'darker'
+      ? before >= MIN_LUMINANCE_DELTA
+      : target <= 1 && 1 - before >= MIN_LUMINANCE_DELTA;
+  if (analysis.changeRatio >= minChange && !reachable) {
+    return {
+      matched: false,
+      undecidable: true,
+      confidence: 0,
+      progress: 0,
+      reason: 'Too little light in here to call this one.',
+      metrics,
+    };
+  }
 
   if (analysis.changeRatio < minChange) {
     return {

@@ -21,7 +21,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/test/**/*.ts'],
+    files: ['**/test/**/*.ts', '**/test/**/*.tsx'],
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+  {
+    // Probes are measurement scripts. Printing numbers is the whole job.
+    files: ['**/*.probe.ts'],
+    rules: { 'no-console': 'off' },
   },
 );

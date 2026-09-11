@@ -3,7 +3,9 @@ import { createFrame, resizeFrame, type Frame } from '../src/vision/frame.js';
 import { COLOR_KEYS, matchesColor, relativeLuminance, rgbToHsv, type ColorKey } from '../src/vision/color.js';
 import {
   analyseChange,
+  changeThresholdFor,
   detectColorObject,
+  exposureGainFor,
   detectColorPair,
   detectCoverage,
   detectDarkness,
@@ -343,5 +345,87 @@ describe('runDetector', () => {
     expect(detectorColors({ kind: 'color', target: 'red' })).toEqual(['red']);
     expect(detectorColors({ kind: 'colorPair', targets: ['red', 'white'] })).toEqual(['red', 'white']);
     expect(detectorColors({ kind: 'coverage', minChange: 0.8 })).toEqual([]);
+  });
+});
+
+
+describe('adapting to the light in the room', () => {
+  /** A flat room at a given channel level. */
+  const room = (level: number) => blank(level, level + 2, level + 4);
+
+  it('lowers the change threshold in a dim room and raises it in a bright one', () => {
+    const dim = changeThresholdFor(room(45));
+    const normal = changeThresholdFor(room(95));
+    const bright = changeThresholdFor(room(160));
+    expect(dim).toBeLessThan(normal);
+    expect(normal).toBeLessThan(bright);
+    // A normally lit room lands where the fixed threshold used to be.
+    expect(normal).toBeGreaterThan(28);
+    expect(normal).toBeLessThan(38);
+  });
+
+  it('clamps the threshold rather than trusting an extreme frame', () => {
+    expect(changeThresholdFor(room(0))).toBeGreaterThanOrEqual(10);
+    expect(changeThresholdFor(room(254))).toBeLessThanOrEqual(48);
+  });
+
+  it('corrects exposure towards a reference, within limits', () => {
+    expect(exposureGainFor(room(50))).toBeGreaterThan(1);
+    expect(exposureGainFor(room(160))).toBeLessThan(1);
+    expect(exposureGainFor(room(0))).toBeLessThanOrEqual(2.5);
+    expect(exposureGainFor(room(255))).toBeGreaterThanOrEqual(0.6);
+  });
+
+  /**
+   * The reason exposure is corrected at all. Hue survives a dim room; "white"
+   * does not, and a player holding a white mug in the evening was told it did
+   * not count.
+   */
+  it('still calls a white object white in a dim room', () => {
+    const dim = room(48);
+    const held = paint(clone(dim), 16, 10, 32, 28, [132, 132, 130]);
+    expect(detectColorObject(dim, held, { target: 'white' }).matched).toBe(true);
+  });
+
+  it('does not start calling the wall white just because the room is dim', () => {
+    const dim = room(48);
+    // A slightly lighter grey card: brighter than the wall, nowhere near white.
+    const held = paint(clone(dim), 16, 10, 32, 28, [78, 79, 80]);
+    expect(detectColorObject(dim, held, { target: 'white' }).matched).toBe(false);
+  });
+
+  it('still recognises a colour in a bright room', () => {
+    const bright = room(170);
+    const held = paint(clone(bright), 16, 10, 32, 28, [230, 60, 55]);
+    expect(detectColorObject(bright, held, { target: 'red' }).matched).toBe(true);
+  });
+});
+
+describe('conditions a camera cannot settle', () => {
+  const room = (level: number) => blank(level, level + 2, level + 4);
+
+  it('hands over "darker than your room" when the room is already near black', () => {
+    const nearBlack = room(14);
+    const held = paint(clone(nearBlack), 16, 10, 32, 28, [0, 0, 0]);
+    const result = detectLuminance(nearBlack, held, { mode: 'darker', ratio: 0.45 });
+    expect(result.undecidable).toBe(true);
+    expect(result.reason).toMatch(/too little light/i);
+  });
+
+  it('hands over "brighter than your room" when the room is already blown out', () => {
+    // Something clearly different is held up, so the detector can see it — it
+    // simply cannot be 2.2 times brighter than a room already at the ceiling.
+    const blown = room(250);
+    const held = paint(clone(blown), 14, 8, 36, 32, [120, 120, 122]);
+    const result = detectLuminance(blown, held, { mode: 'brighter', ratio: 2.2 });
+    expect(result.undecidable).toBe(true);
+  });
+
+  it('decides it normally when the light allows', () => {
+    const normal = room(110);
+    const held = paint(clone(normal), 16, 10, 32, 28, [8, 8, 10]);
+    const result = detectLuminance(normal, held, { mode: 'darker', ratio: 0.45 });
+    expect(result.undecidable).toBeUndefined();
+    expect(result.matched).toBe(true);
   });
 });

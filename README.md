@@ -89,9 +89,21 @@ prompt is revealed becomes that round's **baseline**.
 Detection is then scored over what *changed* against that baseline, weighted
 towards the middle of the frame. A red rug that was already in shot is part of
 the baseline and earns nothing. A red mug lifted into view is scored on its own
-merits. If the server has no usable baseline it says so and hands the round to
-the opponent to judge, rather than inventing a verdict or failing the player for
-a dropped frame.
+merits.
+
+Both the change threshold and the colour reading are taken relative to how the
+room is actually lit, because fixed values break in the dark: a green mug held
+against a grey wall produces a per-pixel change of about 38 in a well-lit room
+and about 20 in an evening one, so a threshold that clears sensor noise in the
+first sits above the *signal* in the second. `packages/server/test/realistic.test.ts`
+plays every camera-judged challenge through simulated webcams — noisy, unevenly
+lit, variously exposed — and holds one line above all others: a genuine answer
+is never wrongly rejected.
+
+When the camera genuinely cannot settle a round — no usable baseline, or a room
+too dark to say whether anything is darker than it — the server says so and
+hands that round to the opponent, rather than inventing a verdict or failing a
+player for their lighting.
 
 ## Layout
 
