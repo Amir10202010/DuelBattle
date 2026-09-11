@@ -218,11 +218,6 @@ select {
   color: var(--text-dim);
 }
 
-.btn--danger {
-  --btn-border: rgba(255, 92, 92, 0.4);
-  color: var(--bad);
-}
-
 .btn--lg {
   min-height: 56px;
   padding: 0 var(--space-6);

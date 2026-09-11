@@ -380,10 +380,14 @@ function ActionRow({
     const theirs = round.submissions[opponent.id];
     const alreadyVoted = Boolean(theirs?.peer);
     if (!theirs) {
+      // Nothing of theirs to judge. Which of the two ways that happened matters
+      // to the person reading it: passing is a choice, the clock is not.
       return (
         <div className="actions actions--waiting">
           <p className="actions__note">
-            {opponent.name} ran out of time. Waiting on their verdict for yours…
+            {opponent.passed
+              ? `${opponent.name} passed. Waiting on their verdict for yours…`
+              : `${opponent.name} ran out of time. Waiting on their verdict for yours…`}
           </p>
         </div>
       );

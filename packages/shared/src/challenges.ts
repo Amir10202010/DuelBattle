@@ -194,7 +194,7 @@ export const CHALLENGES: readonly Challenge[] = [
   peer('obj-useless', 'SHOW THE MOST USELESS THING IN YOUR ROOM', 'object', 1, NORMAL, ['object', 'funny']),
   peer('obj-soft', 'SHOW SOMETHING SOFTER THAN A PILLOW', 'object', 2, NORMAL, ['object', 'texture']),
   peer('obj-tiny', 'SHOW THE SMALLEST THING YOU OWN', 'object', 2, NORMAL, ['object', 'size']),
-  peer('obj-heavy', 'LIFT THE HEAVIEST THING YOU CAN REACH', 'action', 2, NORMAL, ['object', 'size']),
+  peer('obj-heavy', 'SHOW THE HEAVIEST THING IN THE ROOM', 'object', 2, NORMAL, ['object', 'size'], 'Point the camera at it. No need to pick it up.'),
   peer('obj-battery', 'SHOW SOMETHING THAT NEEDS A BATTERY', 'object', 2, NORMAL, ['object', 'tech']),
   peer('obj-broken', 'SHOW SOMETHING THAT IS BROKEN', 'object', 3, NORMAL, ['object', 'story']),
   peer('obj-written', 'SHOW SOMETHING WITH YOUR HANDWRITING ON IT', 'object', 3, NORMAL, ['object', 'story']),
@@ -210,6 +210,10 @@ export const CHALLENGES: readonly Challenge[] = [
   peer('story-gift', 'SHOW SOMETHING YOU WOULD NEVER THROW AWAY', 'story', 3, LONG, ['story', 'sentimental']),
   peer('story-year', 'SHOW SOMETHING YOU HAVE HAD FOR 5+ YEARS', 'story', 3, LONG, ['story', 'time']),
   peer('story-embarrassing', 'SHOW THE THING YOU WOULD HIDE FROM A GUEST', 'story', 2, LONG, ['story', 'funny']),
+  peer('story-unused', 'SHOW SOMETHING YOU HAVE NEVER USED', 'story', 2, LONG, ['story', 'funny']),
+  peer('story-return', 'SHOW SOMETHING YOU MEANT TO RETURN', 'story', 3, LONG, ['story', 'funny']),
+  peer('story-fixed', 'SHOW SOMETHING YOU HAVE FIXED YOURSELF', 'story', 3, LONG, ['story', 'pride']),
+  peer('story-phone', 'SHOW SOMETHING OLDER THAN YOUR PHONE', 'story', 2, LONG, ['story', 'time']),
 
   // ---- Actions: get people out of their chair. ----
   peer('act-hands', 'SHOW BOTH HANDS, PALMS TO THE CAMERA', 'action', 1, SHORT, ['action', 'body']),
@@ -224,7 +228,7 @@ export const CHALLENGES: readonly Challenge[] = [
   // ---- Wildcards: rare, high-variance, memorable. ----
   peer('wild-swap', 'SHOW SOMETHING THAT PROVES WHAT TIME IT IS', 'wildcard', 3, NORMAL, ['wildcard']),
   peer('wild-three-red', 'SHOW THREE RED THINGS AT ONCE', 'wildcard', 3, NORMAL, ['wildcard', 'color']),
-  peer('wild-selfcam', 'SHOW YOUR SCREEN TO YOUR CAMERA', 'wildcard', 3, NORMAL, ['wildcard', 'meta']),
+  peer('wild-noise', 'SHOW SOMETHING THAT MAKES A NOISE', 'wildcard', 2, NORMAL, ['wildcard', 'sound'], 'Make it, so they can hear it.'),
 ];
 
 export const CHALLENGES_BY_ID: ReadonlyMap<string, Challenge> = new Map(
