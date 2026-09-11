@@ -10,8 +10,26 @@ services:
       TURN_URLS: ${TURN_URLS:-}
       TURN_SECRET: ${TURN_SECRET:-}
       STUN_URL: ${STUN_URL:-stun:stun.cloudflare.com:3478}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      YOLO_URL: http://127.0.0.1:8001
+      YOLO_SERVICE_TOKEN: ${YOLO_SERVICE_TOKEN:-}
     volumes:
       - duelbattle-data:/app/data
     restart: unless-stopped
+  yolo:
+    profiles: ['vision']
+    build: ./vision
+    # Shares the app's loopback; the detector port is never publicly exposed.
+    network_mode: service:duelbattle
+    depends_on:
+      - duelbattle
+    environment:
+      YOLO_SERVICE_TOKEN: ${YOLO_SERVICE_TOKEN:-}
+    volumes:
+      - duelbattle-models:/models
+    restart: unless-stopped
 volumes:
   duelbattle-data:
+  duelbattle-models:

@@ -1,10 +1,10 @@
 # DuelBattle
 
-**Your room is the arena.** A complete, local-first-development MVP of a private 1v1 webcam challenge game. Invite a friend, turn on your cameras, race to show an answer, confirm snapshots, win three rounds, and rematch.
+**Your room is the arena.** A 1v1 webcam challenge game with live random matchmaking, private friend invites, local YOLOv8 object detection and a Gemini photo judge. Submit your answer, compare scores, win three rounds, and rematch.
 
 ## Run locally
 
-Requires **Node.js 24.14+** and npm. No API keys, payment account, database service or AI service are required.
+Requires **Node.js 24.14+** and npm. AI judging requires your Gemini API key; without keys the app clearly labels battles as opponent review. No database service is required.
 
 ```sh
 npm ci
@@ -24,14 +24,51 @@ Stop the development process before starting production on the same port. SQLite
 
 **Playing from different computers:** use an HTTPS origin reachable by both players and set `APP_ORIGIN` to that exact origin. A localhost invite only works on the same computer. Browser camera APIs require HTTPS except on localhost. Provision TURN for reliable connectivity across restrictive networks.
 
+## Gemini and local YOLOv8
+
+Add your keys to `.env` (never to client code or Git):
+
+```dotenv
+GEMINI_API_KEYS=first-key,second-key,third-key
+GEMINI_MODEL=gemini-2.5-flash
+YOLO_URL=http://127.0.0.1:8001
+```
+
+`GEMINI_API_KEY` also accepts a single key. The plural setting takes precedence. Keep the associated Google projects on Free Tier if you want free usage: the app does not manage billing. [Gemini 2.5 Flash supports image input](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash) and has a [free tier](https://ai.google.dev/gemini-api/docs/pricing), subject to the project's quota. Keys in one project share limits. The pool deduplicates keys, rotates available keys, respects quota cooldowns, disables unauthorized keys, and tries at most three keys per round. It never switches models or enables billing.
+
+For local YOLOv8, install Python 3.11 and the CPU dependencies (PowerShell with `uv`):
+
+```powershell
+uv python install 3.11
+uv venv --python 3.11 .venv-yolo
+uv pip install --python .venv-yolo/Scripts/python.exe torch torchvision --index-url https://download.pytorch.org/whl/cpu
+uv pip install --python .venv-yolo/Scripts/python.exe -r vision/requirements.txt
+npm run yolo
+```
+
+Keep that process running, then start `npm run dev` in another terminal. On Linux/macOS use `.venv-yolo/bin/python` in the install commands. `YOLO_PYTHON` can override the interpreter. The first start downloads the official `yolov8n.pt` weights; inference runs on the CPU. The weights and virtual environment are Git-ignored. The detector listens on localhost and accepts only server requests, with bounded images. For a non-loopback deployment set `YOLO_SERVICE_TOKEN` on both services.
+
+YOLO returns recognized classes, confidence and boxes; Gemini sees the photos and uses those detections as hints. The pretrained YOLO model has a limited vocabulary and cannot decide creativity or arbitrary challenges. Gemini remains the photo judge. If YOLO is offline, the verdict explicitly says Gemini assessed the images directly.
+
+Real diagnostic (uses Ultralytics' bundled public bus photo, never player images; the second command consumes a Gemini request):
+
+```powershell
+.venv-yolo/Scripts/python.exe vision/smoke.py
+npm run ai:check
+```
+
+Restart the app after editing `.env`. The lobby displays **AI photo judge** when Gemini is configured. A bad key or an exhausted quota produces a visible no-points verdict, never a fabricated winner.
+
 ## What works
 
+- Random matchmaking: searches share a live queue, two different players enter one room, private rooms stay separate, and cancellation/disconnect/expiry removes a waiting player. Searching is free; both cameras and ready buttons are required to start.
 - Private create/join/invite flow with validated names, joining by a pasted code or link, and secure guest identity.
+- Gemini compares both photos, recognizes visible objects, scores fulfillment and presentation, and returns reasons. YOLOv8 provides actual local object detections.
 - Real Socket.IO state synchronization and peer-to-peer WebRTC camera/audio transport.
 - User-initiated camera permission, optional microphone, muted/off controls and friendly recovery states.
 - Server-authoritative ready/countdown/race/review/result/next-round/match-result state machine.
-- Forty-two reviewed challenges spanning all eleven categories, paced by round number; first to three wins, with bounded tie rounds.
-- Intentional JPEG snapshot submission, opponent confirmation, server receipt ordering, duplicate/replay guards and review expiry.
+- Forty-two reviewed peer challenges plus a photo-observable subset for AI, paced by round number; first to three wins, with bounded tie rounds.
+- Intentional JPEG snapshot submission, locked AI submissions or opponent confirmation, duplicate/replay guards and bounded judging/review deadlines.
 - Actual baseline-differenced colour assistance, run on-device for live feedback and re-run server-side as an observation for the reviewer. It never awards a point and never claims to identify a player or a held object.
 - Best-of-five scoring, simultaneous-attempt arbitration, per-round times in the play-by-play, a space-bar capture shortcut, rematches, invite copying, native share and clipboard fallback.
 - Refresh/reconnect recovery, pause when a player disconnects or disables their camera, 30-second grace period and stale-room cleanup.
@@ -42,11 +79,13 @@ Stop the development process before starting production on the same port. SQLite
 
 ## Verification: honest limits
 
-The shipping verifier is **opponent review**, including for objects, actions and personal/subjective prompts. A client cannot declare a win. It submits a snapshot; the other authenticated player judges it, and the server determines the result. An earlier pending snapshot blocks a later accepted one until reviewed or expired. Each review lasts eight seconds; each player may submit three snapshots per round. A race lasts 20 to 40 seconds depending on the challenge, and neither the prompt nor its length is sent before the countdown ends; a final pending review may extend adjudication by up to eight seconds.
+With Gemini configured, **AI judging** locks one photo per player. After both submit, or time expires, the server makes one comparison request with both photos and up to two context frames each. Submissions are hidden from the other player until judging starts. Gemini assesses fulfillment (0–70), presentation (0–30), visible objects and confidence. A valid answer with confidence at least 0.7 is eligible; the server chooses the higher score, with a draw within three points. A sole valid submission can win after the timer. No submissions need no API call. The judge has a 20-second deadline, and an outage awards no points. Leaving, disconnecting or disabling a camera aborts judging; a late result cannot affect another round. Verdicts and score breakdowns appear in the result and match recap. Images are discarded after the verdict; assessment metadata is stored with the match.
 
-Colour assistance runs locally at four samples per second and requires three stable detections. It is scored against a **baseline** — the last frame your camera sends before the prompt appears — so an object already in the room earns nothing, and only something you bring into view counts. The server re-runs the same pure function over the frames you submit and hands the result to your opponent as an observation. This is a real pixel heuristic, not AI object recognition: it cannot prove possession, and opponent review is always required. Arbitrary actions, poses and personal claims are not automatically recognised. There are no fake model responses and no continuous uploads.
+Without keys, **opponent review** remains available and is labeled throughout the UI. Each review lasts eight seconds, with three attempts per player. The first accepted snapshot by server receipt order wins; an earlier pending snapshot blocks a later accepted one until reviewed or expired. An AI outage never silently switches an ongoing AI battle to voting. A race lasts 20–40 seconds; neither its prompt nor its length is revealed early.
 
-There is no prize, ranked ladder or fraud-proof adjudication. Friends can intentionally approve incorrect answers; the MVP is an honor-based social game. Server receipt time favors lower-latency connections. It is not tournament timing.
+On-device colour guidance still runs at four samples per second against a pre-reveal baseline. This pixel heuristic is only framing assistance; Gemini and YOLO are separate real inference paths. AI challenges exclude invisible personal history, prices and spoken claims. Recognition and subjective photo scoring can be wrong; neither the snapshots nor YOLO prove liveness. Only deliberate submitted photos and their brief context reach Gemini, not continuous video. Google's API data policies apply, including potential product-improvement use on the free tier; the camera privacy dialog explains this.
+
+There is no prize, ranked ladder or fraud-proof adjudication. Peer mode depends on honest reviews. AI mode scores photo quality against the prompt, rather than rewarding whoever submits first. This remains a casual social game.
 
 ## Architecture and stack
 
@@ -66,9 +105,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for state, privacy, security an
 ## Intentional extension points
 
 - `VerificationProvider` in `server/verification.ts`: isolated evidence evaluation; provider outages fall back to human review.
+- `AiJudge` in `server/ai-judge.ts`: bounded Gemini comparison and validated assessments. `ObjectDetector` in `server/object-detector.ts`: optional local YOLOv8 hints. Only the engine awards points.
 - `ChallengeGenerator` / `generateProposal` in `server/challenges.ts`: schema and rule validation; all generated/custom proposals are quarantined as `PENDING_REVIEW`. Only the reviewed catalogue in `shared/challenges.ts` enters matches, and `validateCatalog` holds it to its invariants.
 - `SubscriptionProvider` and `Store.grantPremium`: server-owned entitlement boundary. No client Premium flag and no checkout/payment simulation. A real billing integration must authenticate customers and verify signed webhooks before writing entitlements.
-- `RoundSummary` and persisted match summaries: metadata groundwork for result/replay composition. Actual recording, clips, spectators, matchmaking, rankings and advanced vision are future work.
+- `RoundSummary` and persisted match summaries include AI assessments. Recording, clips, spectators and rankings remain future work.
 
 An operator can assign a real, time-bounded entitlement in the local database for evaluation:
 
@@ -104,7 +144,7 @@ POSIX:
 PLAYWRIGHT_CHANNEL=chrome npm run test:e2e
 ```
 
-Browser tests use Chromium's synthetic camera/microphone devices. They exercise the real `getUserMedia` → WebRTC → remote video pipeline and real HTTP/Socket.IO servers. They do not verify physical camera hardware or internet TURN routing. Permission failures are deliberately injected in one test; gameplay and winners are not mocked. Screenshots and traces are written to `test-results/` and `playwright-report/`. See [docs/QA.md](docs/QA.md) for the recorded audit.
+Browser tests use Chromium's synthetic camera/microphone devices. They exercise the real `getUserMedia` → WebRTC → remote video pipeline and real HTTP/Socket.IO servers. They do not verify physical camera hardware or internet TURN routing. Peer gameplay runs without mocked winners. The AI browser scenario injects deterministic assessments at the server provider boundary to test the UI without consuming API quota; `npm run ai:check` separately exercises real Gemini and YOLO recognition and compares the bus photo against a blank control. Screenshots and traces are written to `test-results/` and `playwright-report/`. See [docs/QA.md](docs/QA.md) for the recorded audit.
 
 ## Environment
 
@@ -121,13 +161,15 @@ Browser tests use Chromium's synthetic camera/microphone devices. They exercise 
 | `NODE_ENV`           | inferred by production entry point | `production` when running the built entry point              |
 | `PLAYWRIGHT_CHANNEL` | bundled Chromium                   | Optional installed test browser, e.g. `chrome` or `msedge`   |
 
-TURN credentials expire in one hour. Refreshing/rejoining creates a new peer connection and fetches new credentials. The shared secret must match your relay server. No AI or payment keys are used by this version.
+TURN credentials expire in one hour. Refreshing/rejoining creates a new peer connection and fetches new credentials. The shared secret must match your relay server. Gemini keys are server-only; all AI/YOLO settings are listed in `.env.example`.
 
 ## Deployment
 
 ```sh
 docker compose up --build -d
 ```
+
+To also run local YOLOv8 in Docker: `docker compose --profile vision up --build -d`. The detector shares the app container's loopback network; its port is not exposed. Its weights persist in the `duelbattle-models` volume.
 
 Run a **single replica** behind an HTTPS reverse proxy supporting WebSocket upgrades and an idle timeout longer than 60 seconds. Point `APP_ORIGIN` at the public origin. Mount the SQLite data directory, back it up using SQLite's backup facilities (or stop the process before copying), set a trusted proxy configuration, and provision a TURN relay. Health check: `/api/health`.
 

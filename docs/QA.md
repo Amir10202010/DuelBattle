@@ -1,5 +1,31 @@
 # Verification record
 
+## Gemini, YOLOv8 and matchmaking update — 2026-09-11
+
+- **105 tests passed** in nine Vitest suites, including real HTTP/Socket.IO matchmaking,
+  queue cancellation/expiry/identity isolation, AI state transitions, locked photos, score
+  arbitration, missing submissions, timeouts, interrupted judging, invalid provider output,
+  key rotation, quota cooldowns and refusal/error handling.
+- TypeScript, ESLint, Prettier and the production build passed.
+- All six browser scenarios passed across the main run and a targeted retry, using installed
+  Chrome. The initial full run passed five scenarios; the existing offline-recovery scenario
+  timed out, then passed alone in 25.6 seconds. The bundled Playwright Chromium executable
+  was absent, so `PLAYWRIGHT_CHANNEL=chrome` was used.
+- New browser coverage: random search, cancel/research, two browsers matched into the same
+  room, actual camera/WebRTC transport, AI submission locking, judging, identical verdicts
+  for both players, score/recognized-object rendering, mobile layout and axe checks.
+- The AI browser test uses deterministic server-provider assessments, visibly labeled as
+  test fixtures. It does not claim to test model accuracy.
+- **Real YOLOv8 + Gemini test passed** using the operator's `.env` keys. Local YOLOv8n
+  detected the bus and people in Ultralytics' bundled public sample. Gemini 2.5 Flash
+  recognized the bus, rejected a blank control image and chose the bus photo as winner
+  with a grounded explanation. Two live diagnostic Gemini calls were made in this update.
+  This is a connectivity/recognition smoke test, not a broad model-accuracy benchmark.
+- CPU Python environment and YOLO weights were installed locally; neither secrets nor
+  model weights are tracked in Git. No user camera photos were used for the diagnostics.
+
+## Earlier reconciliation audit (historical)
+
 Recorded after the reconciliation of `main` and [PR #1](https://github.com/Amir10202010/DuelBattle/pull/1).
 Environment: Windows 11, Node.js 24, an installed Google Chrome driven by Playwright
 (`PLAYWRIGHT_CHANNEL=chrome`; the bundled Chromium download was unavailable on this network).

@@ -18,7 +18,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build",
-    "subscription": "tsx scripts/subscription.ts"
+    "subscription": "tsx scripts/subscription.ts",
+    "yolo": "tsx scripts/yolo.ts",
+    "ai:check": "tsx scripts/check-ai.ts"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.2.6",

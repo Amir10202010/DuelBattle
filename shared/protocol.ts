@@ -1,14 +1,16 @@
 import type { z } from 'zod';
 import type { actionSchemas } from './validation';
 import type { Challenge } from './challenges';
+import type { Judgement } from './judging';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const states = [
   'WAITING_FOR_PLAYER',
   'READY',
   'COUNTDOWN',
   'CHALLENGE_ACTIVE',
+  'JUDGING',
   'ROUND_RESULT',
   'NEXT_ROUND',
   'MATCH_RESULT',
@@ -20,7 +22,8 @@ export const transitions: Record<GameState, readonly GameState[]> = {
   WAITING_FOR_PLAYER: ['READY', 'RECONNECTING', 'CANCELLED'],
   READY: ['COUNTDOWN', 'WAITING_FOR_PLAYER', 'RECONNECTING', 'CANCELLED'],
   COUNTDOWN: ['CHALLENGE_ACTIVE', 'RECONNECTING', 'CANCELLED'],
-  CHALLENGE_ACTIVE: ['ROUND_RESULT', 'RECONNECTING', 'CANCELLED'],
+  CHALLENGE_ACTIVE: ['JUDGING', 'ROUND_RESULT', 'RECONNECTING', 'CANCELLED'],
+  JUDGING: ['ROUND_RESULT', 'RECONNECTING', 'CANCELLED'],
   ROUND_RESULT: ['NEXT_ROUND', 'MATCH_RESULT', 'RECONNECTING', 'CANCELLED'],
   NEXT_ROUND: ['COUNTDOWN', 'RECONNECTING', 'CANCELLED'],
   MATCH_RESULT: ['COUNTDOWN', 'RECONNECTING', 'CANCELLED'],
@@ -54,12 +57,13 @@ export interface Attempt {
   playerId: string;
   receivedAt: number;
   expiresAt: number;
-  status: 'checking' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'checking' | 'pending' | 'submitted' | 'accepted' | 'rejected' | 'expired';
   image: string;
   contextImages: string[];
   observation?: string;
 }
 export interface Round {
+  judgement?: Judgement;
   id: string;
   number: number;
   /** Withheld by the server until the countdown finishes. */
@@ -71,6 +75,7 @@ export interface Round {
   reason: string | null;
 }
 export interface RoundSummary {
+  judgement?: Judgement;
   number: number;
   prompt: string;
   winnerId: string | null;
@@ -78,6 +83,8 @@ export interface RoundSummary {
   elapsedMs: Record<string, number | null>;
 }
 export interface RoomSnapshot {
+  mode: 'private' | 'random';
+  judgeMode: 'ai' | 'peer';
   code: string;
   hostId: string;
   state: GameState;
@@ -93,6 +100,7 @@ export interface RoomSnapshot {
   serverNow: number;
 }
 export interface Profile {
+  judgeMode?: 'ai' | 'peer';
   id: string;
   csrf: string;
   plan: 'free' | 'premium';
@@ -109,6 +117,7 @@ export interface ServerEvents {
   notice: (message: string) => void;
 }
 export interface ClientEvents {
+  find: (data: z.infer<typeof actionSchemas.find>, ack: Ack<{ code: string }>) => void;
   create: (data: z.infer<typeof actionSchemas.create>, ack: Ack<{ code: string }>) => void;
   join: (data: z.infer<typeof actionSchemas.join>, ack: Ack<RoomSnapshot>) => void;
   ready: (data: z.infer<typeof actionSchemas.ready>, ack: Ack) => void;

@@ -3,6 +3,10 @@ dist/
 data/
 .env
 .env.local
+.venv-yolo/
+__pycache__/
+*.pt
+vision/models/
 .sites-runtime/
 playwright-report/
 test-results/

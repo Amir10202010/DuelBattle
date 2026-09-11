@@ -31,6 +31,8 @@ export default defineConfig({
       APP_ORIGIN: 'http://localhost:3100',
       DATABASE_PATH: ':memory:',
       STUN_URL: '',
+      GEMINI_API_KEYS: '',
+      GEMINI_API_KEY: '',
     },
   },
 });

@@ -72,6 +72,8 @@ export function Battle({
     pending,
     canCapture,
   } = useBattle(code, connection);
+  const searching = room?.mode === 'random' && room.state === 'WAITING_FOR_PLAYER';
+  const ai = room?.judgeMode === 'ai';
   const header = (
     <header className="battle-header">
       <Brand light onClick={() => (joined ? setConfirmLeave(true) : navigate('/'))} />
@@ -242,18 +244,30 @@ export function Battle({
             {!matchState ? (
               <section className="lobby-title">
                 <div>
-                  <span className="eyebrow">PRIVATE ARENA · BEST OF FIVE</span>
-                  <h1>{opponent ? 'The rivalry is ready.' : 'Every rivalry starts here.'}</h1>
+                  <span className="eyebrow">
+                    {room.mode === 'random' ? 'RANDOM MATCH' : 'PRIVATE ARENA'} · BEST OF FIVE
+                  </span>
+                  <h1>
+                    {searching
+                      ? 'Finding your opponent.'
+                      : opponent
+                        ? 'The rivalry is ready.'
+                        : 'Every rivalry starts here.'}
+                  </h1>
                   <p>
-                    {opponent
-                      ? 'Cameras on. Both players ready. Let the chaos begin.'
-                      : 'Invite a friend. Turn on your camera. Start something.'}
+                    {searching
+                      ? 'You’re in the queue. We’ll match you with another player who presses Find opponent.'
+                      : opponent
+                        ? 'Cameras on. Both players ready. Let the chaos begin.'
+                        : 'Invite a friend. Turn on your camera. Start something.'}
                   </p>
                 </div>
-                <button className="button button-lime" onClick={() => void copy()}>
-                  {copied ? <Check size={18} /> : <Copy size={18} />}
-                  {copied ? 'Invite copied' : 'Copy invite link'}
-                </button>
+                {room.mode === 'private' && (
+                  <button className="button button-lime" onClick={() => void copy()}>
+                    {copied ? <Check size={18} /> : <Copy size={18} />}
+                    {copied ? 'Invite copied' : 'Copy invite link'}
+                  </button>
+                )}
               </section>
             ) : (
               <>
@@ -275,6 +289,32 @@ export function Battle({
                 </div>
                 <ChallengeStage room={room} now={now} userId={profile.id} />
               </>
+            )}
+            {searching && (
+              <div className="search-status" role="status">
+                <LoaderCircle className="spin" size={24} />
+                <div>
+                  <strong>Searching for a real player</strong>
+                  <p>
+                    Up to {Math.max(0, Math.ceil(((room.deadline ?? now) - now) / 1000))}s
+                    remaining. You can enable your camera while you wait.
+                  </p>
+                </div>
+                <button
+                  className="button button-outline-light button-small"
+                  disabled={busy}
+                  onClick={() => void run(leave)}
+                >
+                  Cancel search
+                </button>
+              </div>
+            )}
+            {!matchState && (
+              <p className="judge-lobby-note">
+                {ai
+                  ? 'AI judge · One photo per round. Google Gemini recognizes the objects and compares both answers, assisted by local YOLOv8. Fulfillment: 70 points. Presentation: 30 points. Within 3 points is a draw.'
+                  : 'Opponent review · AI is not connected. Your opponent confirms your photos.'}
+              </p>
             )}
             {showInvite && (
               <div className="invite-box">
@@ -311,6 +351,7 @@ export function Battle({
               </div>
               <CameraCard
                 player={opponent}
+                searching={searching}
                 stream={peer.remote}
                 peerState={peer.state}
                 active={!!matchState}
@@ -363,7 +404,8 @@ export function Battle({
                 >
                   {me.ready ? (
                     <>
-                      <Check size={20} /> Ready! {opponent?.ready ? '' : 'Waiting for your friend'}
+                      <Check size={20} /> Ready!{' '}
+                      {opponent?.ready ? '' : 'Waiting for your opponent'}
                     </>
                   ) : (
                     <>
@@ -379,7 +421,9 @@ export function Battle({
                 >
                   <Camera size={20} />
                   {pending
-                    ? 'Waiting for review…'
+                    ? ai
+                      ? 'Photo locked in'
+                      : 'Waiting for review…'
                     : myAttempts.length >= 3
                       ? 'Snapshots used'
                       : now >= room.round!.endsAt
@@ -391,30 +435,36 @@ export function Battle({
                 <span className="next-status" role="status">
                   {room.state === 'COUNTDOWN'
                     ? 'Wait for the timer…'
-                    : room.state === 'RECONNECTING'
-                      ? 'Battle paused'
-                      : 'Next up in a moment…'}
+                    : room.state === 'JUDGING'
+                      ? 'AI is comparing both photos…'
+                      : room.state === 'RECONNECTING'
+                        ? 'Battle paused'
+                        : 'Next up in a moment…'}
                 </span>
               )}
               <div className="verification-label">
                 <ShieldCheck size={16} />
-                <span>Friend verified</span>
+                <span>{ai ? 'AI photo judge' : 'Opponent review'}</span>
               </div>
             </div>
             <p className="arena-hint">
               {!matchState
                 ? !media.camera
                   ? 'Enable your camera to get ready. Microphone is optional.'
-                  : !opponent
-                    ? 'Your arena is open. Send the invite link to your friend.'
-                    : 'Both players need to be ready. One battle is counted for each of you when the countdown begins.'
-                : active && color
-                  ? detected
-                    ? `New ${color} pixels are stable. Show the object and interaction — your friend still confirms it.`
-                    : `Bring your ${color} object into frame. Show yourself holding or using it.`
-                  : active
-                    ? 'Show it clearly. Send your snapshot. Confirm your friend’s answer fairly.'
-                    : 'Keep it safe. Stay within reach. No running required.'}
+                  : searching
+                    ? 'Stay on this page. The battle opens when another player is matched.'
+                    : !opponent
+                      ? 'Your arena is open. Send the invite link to your friend.'
+                      : 'Both players need to be ready. One battle is counted for each of you when the countdown begins.'
+                : active && ai
+                  ? 'Make your answer clear in the photo. Press Space to submit. The AI compares both answers after submission or when time is up.'
+                  : active && color
+                    ? detected
+                      ? `New ${color} pixels are stable. Show the object and interaction — your friend still confirms it.`
+                      : `Bring your ${color} object into frame. Show yourself holding or using it.`
+                    : active
+                      ? 'Show it clearly. Send your snapshot. Confirm your friend’s answer fairly.'
+                      : 'Keep it safe. Stay within reach. No running required.'}
             </p>
             <ReviewPanel
               room={room}

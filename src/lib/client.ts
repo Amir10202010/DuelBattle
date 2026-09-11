@@ -11,7 +11,7 @@ import type {
 
 export type GameSocket = Socket<ServerEvents, ClientEvents>;
 type Action = keyof typeof actionSchemas;
-type Result<E extends Action> = E extends 'create'
+type Result<E extends Action> = E extends 'create' | 'find'
   ? { code: string }
   : E extends 'join'
     ? RoomSnapshot

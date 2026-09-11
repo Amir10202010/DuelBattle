@@ -101,7 +101,7 @@ export function Landing({
               </span>
             </h1>
             <p className="hero-description">
-              Challenge your friends to fast 1v1 battles
+              Challenge friends or random rivals to 1v1 battles
               <br className="desktop-break" /> through your camera. Ordinary stuff.
               <br className="desktop-break" /> Unreasonably competitive.
             </p>
@@ -182,7 +182,7 @@ export function Landing({
               </h2>
             </div>
             <p>
-              All you need is a friend, a camera,
+              All you need is a rival, a camera,
               <br />
               and whatever’s within reach.
             </p>
@@ -191,8 +191,8 @@ export function Landing({
             <article>
               <span className="step-number">01</span>
               <Link2 size={26} />
-              <h3>Call out a friend.</h3>
-              <p>Open an arena. Send the link. Your friend joins right in their browser.</p>
+              <h3>Find your rival.</h3>
+              <p>Match with someone searching now, or invite a friend to your private arena.</p>
             </article>
             <article>
               <span className="step-number">02</span>
@@ -205,8 +205,9 @@ export function Landing({
               <Trophy size={26} />
               <h3>Claim the bragging rights.</h3>
               <p>
-                Confirm each other’s snapshots. The first valid one wins. First to three takes the
-                battle.
+                {profile?.judgeMode === 'ai'
+                  ? 'The AI compares your photos and explains who wins. First to three takes the battle.'
+                  : 'Confirm each other’s snapshots. The first valid one wins. First to three takes the battle.'}
               </p>
             </article>
           </div>
@@ -294,12 +295,14 @@ export function Landing({
           </div>
           <div className="fair-copy">
             <p>
-              Hold your answer up to the camera and send a snapshot. Your friend confirms it; the
-              server keeps the clock and score.
+              {profile?.judgeMode === 'ai'
+                ? 'Hold your answer up and send a photo. Gemini compares both answers, with local YOLOv8 object detection. See the scores and the reason for each verdict.'
+                : 'Hold your answer up to the camera and send a snapshot. AI is not connected yet, so your opponent confirms it. The server keeps the clock and score.'}
             </p>
             <p>
-              On-device color guidance helps you frame your answer. Personal and creative challenges
-              need human judgment. No all-knowing AI referee. No background recording.
+              {profile?.judgeMode === 'ai'
+                ? 'The judge scores visible fulfillment and presentation. Similar scores draw. Only submitted photos and their brief context are sent for AI analysis.'
+                : 'On-device color guidance helps you frame your answer. Personal and creative challenges use opponent review. No background recording.'}
             </p>
             <button className="text-link" onClick={() => onInfo('rules')}>
               Read the house rules <ArrowRight size={17} />

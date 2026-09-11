@@ -31,7 +31,48 @@ export function ReviewPanel({
         block: 'nearest',
       });
   }, [attemptId]);
-  if (!round || room.state !== 'CHALLENGE_ACTIVE') return null;
+  if (!round) return null;
+  if (room.judgeMode === 'ai') {
+    if (!['CHALLENGE_ACTIVE', 'JUDGING'].includes(room.state)) return null;
+    const submitted = round.attempts.some((a) => a.playerId === userId);
+    return (
+      <div className="review-area">
+        <div className="attempt-status" role="status">
+          <Hourglass size={18} />
+          <span>
+            {room.state === 'JUDGING'
+              ? 'AI is reviewing the submitted photos. Both players receive the same verdict.'
+              : submitted
+                ? 'Photo locked in. Waiting for your opponent’s photo or the timer to end.'
+                : 'One photo per player. The best answer wins, regardless of who submits first.'}
+          </span>
+        </div>
+        {room.state === 'JUDGING' && (
+          <div className="ai-photo-grid">
+            {room.players.map((player) => {
+              const photo = round.attempts.find((a) => a.playerId === player.id);
+              return (
+                <figure key={player.id}>
+                  {photo?.image ? (
+                    <img
+                      src={photo.image}
+                      width="480"
+                      height="360"
+                      alt={`${player.name}’s submitted photo`}
+                    />
+                  ) : (
+                    <p>No photo submitted</p>
+                  )}
+                  <figcaption>{player.name}</figcaption>
+                </figure>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (room.state !== 'CHALLENGE_ACTIVE') return null;
   const mine = round.attempts.filter((a) => a.playerId === userId).at(-1);
   return (
     <div className="review-area">

@@ -25,7 +25,7 @@ export function App() {
   useEffect(() => {
     document.title = title;
   }, [title]);
-  const create = async (name: string) => {
+  const create = async (name: string, mode: 'private' | 'random') => {
     if (!connection.socket || !connection.connected) {
       setError('The arena is reconnecting. Try again in a moment.');
       return;
@@ -34,7 +34,9 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
-      const { code } = await request(connection.socket, 'create', { name });
+      const { code } = await request(connection.socket, mode === 'random' ? 'find' : 'create', {
+        name,
+      });
       saveName(name);
       setCreating(false);
       navigate(`/battle/${code}`);
@@ -82,13 +84,18 @@ export function App() {
         onClose={() => {
           if (!busy) setCreating(false);
         }}
-        onSubmit={(name) => void create(name)}
+        onSubmit={(name, mode) => void create(name, mode)}
+        judgeMode={connection.profile?.judgeMode}
         busy={busy}
         error={error ?? connection.error}
         connected={connection.connected}
         onRetry={connection.retry}
       />
-      <InfoDialog kind={info} onClose={() => setInfo(null)} />
+      <InfoDialog
+        kind={info}
+        onClose={() => setInfo(null)}
+        judgeMode={connection.profile?.judgeMode}
+      />
     </>
   );
 }

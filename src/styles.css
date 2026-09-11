@@ -11,6 +11,7 @@
   --muted: #60665c;
   --line: #dce0d5;
   --display: 'Barlow Condensed', Impact, sans-serif;
+  --body: 'DM Sans', sans-serif;
 }
 * {
   box-sizing: border-box;
@@ -832,6 +833,58 @@ dialog::backdrop {
   color: var(--muted);
   margin-top: 20px;
   text-align: center;
+}
+.battle-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 22px;
+  display: grid;
+  gap: 8px;
+}
+.battle-options legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.battle-options label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  margin: 0;
+  border: 1px solid #bcc5ad;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.battle-options label.selected {
+  border-color: #425b25;
+  background: #e7eddb;
+}
+.battle-options input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  accent-color: #354724;
+}
+.battle-options strong,
+.battle-options small {
+  display: block;
+}
+.battle-options strong {
+  font-size: 14px;
+}
+.battle-options small {
+  color: #535e49;
+  font-size: 11px;
+  margin-top: 4px;
+  font-weight: 400;
+}
+.judge-mode-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #535e49;
+  margin-top: 16px;
 }
 .form-error {
   font-size: 13px;

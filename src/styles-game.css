@@ -795,6 +795,134 @@
   border-top: 1px solid #3e4a34;
   padding-top: 23px;
 }
+.search-status {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid #627b4c;
+  background: #25301d;
+  border-radius: 8px;
+  margin-bottom: 18px;
+}
+.search-status > svg {
+  flex-shrink: 0;
+  color: #d0efab;
+}
+.search-status > div {
+  flex: 1;
+}
+.search-status p {
+  font-size: 13px;
+  color: #c0cdb4;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.judge-lobby-note {
+  color: #c0cdb4;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 16px 0 22px;
+  max-width: 800px;
+}
+.ai-verdict,
+.ai-photo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 22px 0 8px;
+}
+.ai-verdict article {
+  min-width: 0;
+  border: 1px solid #5f7150;
+  padding: 18px;
+  border-radius: 7px;
+  background: #26301f;
+  color: #edf5e3;
+}
+.ai-verdict .ai-winner {
+  border-color: #c5f580;
+}
+.ai-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ai-score b {
+  font: 600 34px/1 var(--display);
+  white-space: nowrap;
+}
+.ai-score b small {
+  font: 400 12px/1 var(--body);
+}
+.ai-verdict p {
+  font: 400 13px/1.6 var(--body);
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.ai-verdict small,
+.ai-verdict .ai-detector {
+  color: #c2d2b4;
+  font-size: 11px;
+}
+.ai-verdict .ai-recognized {
+  color: #d4edbc;
+  font-weight: 600;
+}
+.ai-photo-grid figure {
+  margin: 0;
+  background: #25301d;
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: center;
+}
+.ai-photo-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4/3;
+  object-fit: contain;
+}
+.ai-photo-grid figcaption,
+.ai-photo-grid figure > p {
+  padding: 12px;
+  font-size: 13px;
+}
+.recap-judgement {
+  grid-column: 1 / -1;
+  font-size: 13px;
+}
+.recap-judgement summary {
+  color: #c5f580;
+  cursor: pointer;
+  padding: 8px 0;
+}
+.recap-judgement > p {
+  line-height: 1.6;
+  padding: 10px 0;
+}
+.recap-judgement .ai-score strong {
+  text-align: left;
+}
+@media (max-width: 600px) {
+  .search-status {
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+  .search-status > div {
+    flex-basis: 70%;
+  }
+  .search-status > button {
+    width: 100%;
+  }
+  .ai-verdict {
+    grid-template-columns: 1fr;
+  }
+  .ai-photo-grid {
+    gap: 8px;
+  }
+}
 .round-recap > .eyebrow {
   display: block;
   margin-bottom: 15px;

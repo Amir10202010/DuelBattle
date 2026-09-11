@@ -112,6 +112,27 @@ describe('real HTTP and Socket.IO trust boundary', () => {
     const body = await response.text();
     expect(body).not.toContain('TURN_SECRET');
   });
+  it('matches two authenticated searches and sends both players the same live snapshot', async () => {
+    const alice = await identity();
+    const bob = await identity();
+    const a = await client(alice.cookie, alice.profile.csrf);
+    const b = await client(bob.cookie, bob.profile.csrf);
+    const first = await action<{ code: string }>(a, 'find', { name: 'SearchA' });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.error);
+    const update = new Promise<RoomSnapshot>((resolve) => a.once('snapshot', resolve));
+    const second = await action<{ code: string }>(b, 'find', { name: 'SearchB' });
+    expect(second).toEqual(first);
+    expect(await update).toMatchObject({ code: first.data.code, state: 'READY', mode: 'random' });
+    expect(instance.engine.snapshot(first.data.code).players).toHaveLength(2);
+    expect(await action(a, 'find', { name: 'Spoof', score: 999 })).toMatchObject({
+      ok: false,
+      code: 'INVALID_REQUEST',
+    });
+    await action(a, 'leave', { roomCode: first.data.code });
+    a.disconnect();
+    b.disconnect();
+  });
   it('caps concurrent sockets per identity even without joining a room', async () => {
     const { cookie, profile } = await identity();
     const opened = [];

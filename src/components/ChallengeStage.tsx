@@ -1,5 +1,6 @@
 import { Flag, Timer, Trophy, Zap } from 'lucide-react';
 import type { RoomSnapshot } from '../../shared/protocol';
+import { AiVerdict } from './AiVerdict';
 export function ChallengeStage({
   room,
   now,
@@ -37,9 +38,11 @@ export function ChallengeStage({
             ? 'GET READY'
             : isResult
               ? 'ROUND COMPLETE'
-              : isNext
-                ? 'UP NEXT'
-                : `${seconds}s`}
+              : room.state === 'JUDGING'
+                ? 'AI JUDGING'
+                : isNext
+                  ? 'UP NEXT'
+                  : `${seconds}s`}
         </span>
       </div>
       <div className="challenge-title-row">
@@ -50,11 +53,13 @@ export function ChallengeStage({
                 ? 'You win the round.'
                 : `${winner.name} wins the round.`
               : 'No points. Next round.'
-            : isNext
-              ? 'Keep that energy.'
-              : room.state === 'COUNTDOWN'
-                ? 'Get ready. Eyes on the arena.'
-                : (challenge?.prompt ?? 'Battle paused') + '.'}
+            : room.state === 'JUDGING'
+              ? 'Let the photos decide.'
+              : isNext
+                ? 'Keep that energy.'
+                : room.state === 'COUNTDOWN'
+                  ? 'Get ready. Eyes on the arena.'
+                  : (challenge?.prompt ?? 'Battle paused') + '.'}
         </h1>
         {room.state === 'COUNTDOWN' ? (
           <div
@@ -74,12 +79,17 @@ export function ChallengeStage({
       <p className="stage-instruction">
         {isResult
           ? round.reason
-          : isNext
-            ? 'A new challenge is on the way. Stay in frame.'
-            : room.state === 'COUNTDOWN'
-              ? 'Your next challenge is hidden until the countdown ends.'
-              : (challenge?.instructions ?? 'Turn your camera on to continue.')}
+          : room.state === 'JUDGING'
+            ? 'The AI is identifying objects and comparing how well each photo answers the challenge.'
+            : isNext
+              ? 'A new challenge is on the way. Stay in frame.'
+              : room.state === 'COUNTDOWN'
+                ? 'Your next challenge is hidden until the countdown ends.'
+                : (challenge?.instructions ?? 'Turn your camera on to continue.')}
       </p>
+      {isResult && round.judgement && (
+        <AiVerdict judgement={round.judgement} players={room.players} />
+      )}
       {room.state === 'CHALLENGE_ACTIVE' && (
         <div
           className="round-progress"

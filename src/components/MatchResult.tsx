@@ -13,6 +13,7 @@ import { useState } from 'react';
 import type { RoomSnapshot } from '../../shared/protocol';
 import { copyText } from '../lib/client';
 import { ResultAudio } from './ResultAudio';
+import { AiVerdict } from './AiVerdict';
 
 export function MatchResult({
   room,
@@ -127,7 +128,7 @@ export function MatchResult({
       </div>
       <p className="rematch-note" role="status">
         {me.rematch
-          ? 'Waiting for your friend to say yes…'
+          ? 'Waiting for your opponent to say yes…'
           : opponent.rematch
             ? `${opponent.name} wants a rematch. Your move.`
             : 'A rematch counts as one battle for each player.'}
@@ -141,7 +142,7 @@ export function MatchResult({
       <div className="round-recap">
         <span className="eyebrow">THE PLAY-BY-PLAY</span>
         {room.history.map((r) => (
-          <div key={r.number}>
+          <div key={r.number} className="recap-entry">
             <span className="recap-round">{String(r.number).padStart(2, '0')}</span>
             <span>{r.prompt}</span>
             <strong>
@@ -152,6 +153,13 @@ export function MatchResult({
                 </small>
               )}
             </strong>
+            {r.judgement && (
+              <details className="recap-judgement">
+                <summary>AI verdict and recognized objects</summary>
+                <p>{r.reason}</p>
+                <AiVerdict judgement={r.judgement} players={room.players} />
+              </details>
+            )}
           </div>
         ))}
       </div>

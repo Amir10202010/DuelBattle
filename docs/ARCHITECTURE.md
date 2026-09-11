@@ -2,11 +2,10 @@
 
 ## Scope and deployment decision
 
-One Node process serves the React client, the HTTP API, Socket.IO signalling and the
-authoritative game engine. A single writer owning every room removes distributed locks and
-multi-service failure modes, which is the right trade for a two-player game with ephemeral
-rooms. Deploy the whole app on a persistent Node host (Dockerfile and Compose file provided),
-never as a static frontend alone.
+One Node process serves the React client, HTTP API, Socket.IO signalling, matchmaking queue
+and authoritative game engine. An optional local Python process runs YOLOv8; the Node server
+calls Gemini for photo comparisons. Only the Node engine owns rooms, deadlines and scores.
+Deploy the app on a persistent Node host, never as a static frontend alone.
 
 Development runs on Node 24. The client is built by Vite and served from `dist/client` in
 production; in development Vite runs in middleware mode inside the same process, so there is
@@ -16,7 +15,7 @@ one origin and one port in both modes.
 
 There is exactly one implementation of each responsibility.
 
-- `shared/protocol.ts` — the room snapshot, the nine game states and the legal transitions
+- `shared/protocol.ts` — the room snapshot, game states (including `JUDGING`) and legal transitions
   between them. Imported by both sides; contains no runtime dependency on Zod, so the schema
   layer stays out of the browser bundle.
 - `shared/validation.ts` — the Zod schemas for every inbound action and for the challenge
@@ -25,7 +24,8 @@ There is exactly one implementation of each responsibility.
   (`validateCatalog`) and the single selection function (`selectChallenge`).
 - `shared/identity.ts` — the room-code and player-name rules, shared so the browser's
   feedback and the server's schema cannot drift apart.
-- `shared/adjudication.ts` — `firstConfirmed`: the one definition of who won a round.
+- `shared/adjudication.ts` — receipt ordering for peer review. `shared/judging.ts` — validated
+  AI assessments and score-based winner/tie rules.
 - `shared/vision/` — pure frame, colour and detector code. The same functions run in the
   browser for on-screen feedback and on the server over a decoded JPEG. Both sides normalise
   to one analysis resolution, so a verdict cannot depend on which side computed it.
@@ -34,6 +34,12 @@ There is exactly one implementation of each responsibility.
 - `server/verification.ts` — JPEG decoding with hard bounds, the `VerificationProvider`
   interface and the default opponent-review provider. No provider can award a point.
 - `server/challenges.ts` — validation and quarantine for custom or generated prompts.
+- `server/ai-judge.ts` — anonymous Gemini photo comparisons with strict JSON validation,
+  bounded output and concurrency. `server/gemini-keys.ts` manages operator-supplied keys,
+  deduplication, quota cooldowns and at most three key attempts per round.
+- `server/object-detector.ts` / `vision/server.py` — local YOLOv8 inference over submitted
+  JPEGs. Bounded requests, CPU inference, no image storage. Failure leaves Gemini available
+  and is disclosed in the verdict. Detector hints never award a point.
 - `server/store.ts` — SQLite migrations, expiring guest sessions, entitlements, atomic
   two-player usage charges and finished-match summaries. Rooms and evidence are deliberately
   memory-only.
@@ -67,8 +73,25 @@ latency is a real advantage here; this is a casual social game, not tournament t
 
 ## Verification
 
-The shipping verifier is the opponent. Detectors exist to give that person better evidence,
-not to replace them.
+When Gemini keys are configured, rooms use AI judging. One JPEG plus up to two earlier frames
+is locked per player. Photos stay hidden in active-round snapshots. Both submissions, or the
+race deadline, move the room to `JUDGING`. The detector gets the submitted photos; Gemini gets
+the images, brief context and detector hints. Anonymous A/B slots are randomly ordered and
+mapped back to server-owned identities. The server validates complete, unique participant
+coverage and derives the winner from scores. Validity and confidence >= 0.7 are required;
+scores within three points draw. Judging has a 20-second abortable deadline. A provider
+failure produces a no-points result; it never silently falls back to voting.
+
+Cancellation, camera interruption and disconnect abort the request. A round/controller
+identity guard discards late results. Images are discarded after the verdict. Object labels,
+confidence, scores and reasons persist as match metadata. There is one successful Gemini
+comparison per round; explicit quota/access errors may try up to three configured keys.
+Quota-limited keys cool down, invalid-access keys are disabled until process restart.
+Gemini quotas belong to projects, not individual keys; multiple keys in one project share
+the same quota. The app does not enable billing or change models to get around a limit.
+
+When no keys are configured, the UI explicitly labels rooms as opponent review. The
+following baseline assistance and verification provider apply to that mode.
 
 Every round captures a **baseline**: the last camera frame each player sends before the
 prompt is revealed. Colour detection runs over what changed since that baseline, weighted
@@ -99,6 +122,23 @@ the round number as a weighting rather than a filter, so a long match never runs
 
 Custom and generated prompts pass a schema and a rule check and are then **quarantined** as
 `PENDING_REVIEW`. Only the reviewed catalogue enters a match.
+
+AI matches use `AI_CHALLENGES`, a photo-observable subset of that catalogue. It includes
+objects, colors, visible poses, stacking and creative presentation. Prices, personal history,
+ownership and spoken stories are excluded. The selected subset marks `aiVerifiable: true`;
+the original peer catalogue retains its previous invariants.
+
+## Matchmaking
+
+`find` is a strict authenticated Socket.IO action. A waiting random room is the queue entry.
+Selection and seat assignment happen synchronously in the engine, so two requests cannot
+claim the same seat. Searches match only different identities with a live controlling socket,
+available usage and an unexpired random lobby. A repeated request returns the same room.
+Private rooms never enter the queue; manual joins cannot claim a random room's empty seat.
+The two clients subscribe to the same room and receive its authoritative snapshot. Search
+cancellation, disconnect and the two-minute deadline remove eligibility. Once matched,
+normal ready/camera checks, quotas, reconnection and rematches apply. This remains a
+single-process queue; horizontal scaling requires shared room ownership.
 
 ## Reconnection and media
 

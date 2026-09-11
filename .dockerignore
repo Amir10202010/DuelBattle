@@ -8,3 +8,6 @@ test-results
 playwright-report
 coverage
 *.log
+.venv-yolo
+vision/models
+__pycache__

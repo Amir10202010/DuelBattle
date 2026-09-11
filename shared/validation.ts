@@ -16,6 +16,7 @@ export const imageSchema = z
   .max(110_000)
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/);
 export const actionSchemas = {
+  find: z.object({ name: nameSchema }).strict(),
   create: z.object({ name: nameSchema }).strict(),
   join: z.object({ roomCode: roomCodeSchema, name: nameSchema }).strict(),
   ready: baseAction.extend({ ready: z.boolean() }),

@@ -423,6 +423,21 @@ export const CHALLENGES: readonly Challenge[] = [
 
 const BY_ID: ReadonlyMap<string, Challenge> = new Map(CHALLENGES.map((c) => [c.id, c]));
 
+/** Photo-observable prompts only; personal history, prices and spoken claims stay in peer mode. */
+export const AI_CHALLENGES: readonly Challenge[] = CHALLENGES.filter(
+  (c) =>
+    (!c.subjective && ['COLOR', 'OBJECT', 'OBJECT_ACTION', 'LETTER'].includes(c.category)) ||
+    [
+      'funny-hat',
+      'tiny-trophy',
+      'stack-three',
+      'both-hands',
+      'thumbs-up',
+      'freeze-pose',
+      'three-red-things',
+    ].includes(c.id),
+).map((c) => ({ ...c, aiVerifiable: true }));
+
 export function getChallenge(id: string): Challenge | undefined {
   return BY_ID.get(id);
 }
@@ -485,11 +500,12 @@ export function selectChallenge(
   previous: readonly string[] = [],
   random: () => number = Math.random,
   roundNumber = 1,
+  catalog: readonly Challenge[] = CHALLENGES,
 ): Challenge {
   const played = new Set(previous);
-  let pool = CHALLENGES.filter((c) => !played.has(c.id));
-  if (!pool.length) pool = CHALLENGES.filter((c) => c.id !== previous.at(-1));
-  if (!pool.length) pool = [...CHALLENGES];
+  let pool = catalog.filter((c) => !played.has(c.id));
+  if (!pool.length) pool = catalog.filter((c) => c.id !== previous.at(-1));
+  if (!pool.length) pool = [...catalog];
 
   const recent = previous.slice(-2).map(getChallenge);
   const judgedTwice = recent.length === 2 && recent.every((c) => c?.subjective);

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { selectChallenge, type Challenge } from '../shared/challenges';
+import { AI_CHALLENGES, CHALLENGES, selectChallenge, type Challenge } from '../shared/challenges';
 import { firstConfirmed } from '../shared/adjudication';
 import type { Frame } from '../shared/vision/frame';
 import {
@@ -11,6 +11,8 @@ import {
 } from '../shared/protocol';
 import { requireRule } from './errors';
 import { Store } from './store';
+import { JudgeUnavailable, type AiJudge } from './ai-judge';
+import { decidePhotos } from '../shared/judging';
 import {
   decodeEvidence,
   evaluateEvidence,
@@ -19,6 +21,7 @@ import {
 } from './verification';
 
 interface InternalRoom extends RoomSnapshot {
+  judging: AbortController | null;
   round: (Round & { challenge: Challenge }) | null;
   baselines: Map<string, { frame: Frame; at: number }>;
   createdAt: number;
@@ -36,6 +39,8 @@ export interface GameConfig {
   roomTtlMs: number;
   maxRooms: number;
   maxRounds: number;
+  searchMs: number;
+  judgingMs: number;
 }
 const defaultConfig: GameConfig = {
   countdownMs: 3000,
@@ -45,6 +50,8 @@ const defaultConfig: GameConfig = {
   roomTtlMs: 30 * 60_000,
   maxRooms: 500,
   maxRounds: 12,
+  searchMs: 120_000,
+  judgingMs: 20_000,
 };
 
 export class GameEngine {
@@ -58,6 +65,7 @@ export class GameEngine {
     config: Partial<GameConfig> = {},
     private verifier: VerificationProvider = new OpponentVerificationProvider(),
     private random = Math.random,
+    private aiJudge?: AiJudge,
   ) {
     this.config = { ...defaultConfig, ...config };
   }
@@ -76,6 +84,8 @@ export class GameEngine {
   snapshot(code: string): RoomSnapshot {
     const r = this.get(code);
     return structuredClone({
+      mode: r.mode,
+      judgeMode: r.judgeMode,
       code: r.code,
       hostId: r.hostId,
       state: r.state,
@@ -102,6 +112,11 @@ export class GameEngine {
     const hidden =
       room.state === 'COUNTDOWN' ||
       (room.state === 'RECONNECTING' && room.resume?.state === 'COUNTDOWN');
+    if (room.judgeMode === 'ai' && room.state === 'CHALLENGE_ACTIVE')
+      return {
+        ...round,
+        attempts: round.attempts.map((a) => ({ ...a, image: '', contextImages: [] })),
+      };
     return hidden
       ? { ...round, challenge: null, endsAt: round.startsAt }
       : { ...round, challenge: round.challenge };
@@ -141,11 +156,71 @@ export class GameEngine {
       score: 0,
     };
   }
-  create(userId: string, name: string, socketId: string) {
+  private eligible(userId: string) {
+    const profile = this.store.profile({ id: userId, csrf: '', expiresAt: 0 }, this.now());
+    requireRule(
+      profile.remaining !== 0,
+      'USAGE_LIMIT',
+      "You've reached today's free battle limit. Come back after midnight UTC.",
+    );
+    requireRule(
+      !profile.nextBattleAt,
+      'USAGE_LIMIT',
+      'Your next Premium battle unlocks one hour after your last.',
+    );
+  }
+  find(userId: string, name: string, socketId: string) {
+    const current = this.memberships.get(userId);
+    if (current && this.rooms.get(current)?.state !== 'CANCELLED') {
+      const room = this.get(current);
+      requireRule(
+        room.sockets.get(userId) === socketId,
+        'DUPLICATE_JOIN',
+        'You already have a battle open in another tab.',
+      );
+      requireRule(
+        room.mode === 'random',
+        'OTHER_ROOM',
+        'Leave your current battle before searching.',
+      );
+      return { code: current };
+    }
+    this.eligible(userId);
+    const candidates = [...this.rooms.values()].filter(
+      (room) =>
+        room.mode === 'random' &&
+        room.state === 'WAITING_FOR_PLAYER' &&
+        room.players.length === 1 &&
+        room.players[0].id !== userId &&
+        room.players[0].connected &&
+        room.sockets.has(room.players[0].id) &&
+        this.now() < (room.deadline ?? 0),
+    );
+    while (candidates.length) {
+      const [room] = candidates.splice(Math.floor(this.random() * candidates.length), 1);
+      try {
+        this.eligible(room.players[0].id);
+      } catch {
+        this.cancel(room, 'Your battle allowance is unavailable. Search again when it resets.');
+        this.publish(room);
+        continue;
+      }
+      // Selection + joining is synchronous, so concurrent requests cannot claim the same slot.
+      this.join(room.code, userId, name, socketId, true);
+      return { code: room.code };
+    }
+    return this.create(userId, name, socketId, 'random');
+  }
+  create(userId: string, name: string, socketId: string, mode: RoomSnapshot['mode'] = 'private') {
     const current = this.memberships.get(userId);
     if (current) {
       const existing = this.rooms.get(current);
       if (existing && existing.state !== 'CANCELLED') {
+        requireRule(
+          existing.mode === mode,
+          'OTHER_ROOM',
+          'Leave your current battle before opening another.',
+        );
         requireRule(
           existing.sockets.get(userId) === socketId,
           'DUPLICATE_JOIN',
@@ -159,22 +234,15 @@ export class GameEngine {
       'BUSY',
       'All arenas are busy. Try again in a moment.',
     );
-    const profile = this.store.profile({ id: userId, csrf: '', expiresAt: 0 }, this.now());
-    requireRule(
-      profile.remaining !== 0,
-      'USAGE_LIMIT',
-      "You've reached today's free battle limit. Come back after midnight UTC.",
-    );
-    requireRule(
-      !profile.nextBattleAt,
-      'USAGE_LIMIT',
-      'Your next Premium battle unlocks one hour after your last.',
-    );
+    this.eligible(userId);
     let code: string;
     do {
       code = randomBytes(5).toString('hex').toUpperCase();
     } while (this.rooms.has(code));
     const room: InternalRoom = {
+      mode,
+      judgeMode: this.aiJudge ? 'ai' : 'peer',
+      judging: null,
       code,
       hostId: userId,
       state: 'WAITING_FOR_PLAYER',
@@ -183,7 +251,7 @@ export class GameEngine {
       matchId: null,
       round: null,
       history: [],
-      deadline: null,
+      deadline: mode === 'random' ? this.now() + this.config.searchMs : null,
       winnerId: null,
       message: null,
       revision: 0,
@@ -201,7 +269,7 @@ export class GameEngine {
     this.publish(room);
     return { code };
   }
-  join(code: string, userId: string, name: string, socketId: string) {
+  join(code: string, userId: string, name: string, socketId: string, matchmaking = false) {
     const room = this.get(code);
     requireRule(
       room.state !== 'CANCELLED',
@@ -232,6 +300,12 @@ export class GameEngine {
       this.tryResume(room);
     } else {
       requireRule(
+        room.mode === 'private' || matchmaking,
+        'PRIVATE_JOIN_ONLY',
+        'Use Find opponent to join a random battle.',
+      );
+      this.eligible(userId);
+      requireRule(
         room.players.length < 2 && room.state === 'WAITING_FOR_PLAYER',
         'ROOM_FULL',
         'This battle already has two players.',
@@ -256,7 +330,9 @@ export class GameEngine {
     }
     if (
       !camera &&
-      ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'ROUND_RESULT', 'NEXT_ROUND'].includes(room.state)
+      ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'JUDGING', 'ROUND_RESULT', 'NEXT_ROUND'].includes(
+        room.state,
+      )
     )
       this.pause(room, 'A camera is off. Turn it back on to resume.');
     this.tryResume(room);
@@ -306,7 +382,12 @@ export class GameEngine {
     this.prepareRound(room);
   }
   private prepareRound(room: InternalRoom) {
-    const challenge = selectChallenge(room.selected, this.random, room.history.length + 1);
+    const challenge = selectChallenge(
+      room.selected,
+      this.random,
+      room.history.length + 1,
+      room.judgeMode === 'ai' ? AI_CHALLENGES : CHALLENGES,
+    );
     room.baselines.clear();
     room.selected.push(challenge.id);
     room.selected = room.selected.slice(-100);
@@ -365,10 +446,12 @@ export class GameEngine {
     );
     requireRule(
       !round.attempts.some(
-        (a) => a.playerId === userId && ['checking', 'pending', 'accepted'].includes(a.status),
+        (a) =>
+          a.playerId === userId &&
+          ['checking', 'pending', 'submitted', 'accepted'].includes(a.status),
       ),
       'PENDING_REVIEW',
-      'Your snapshot is already with your opponent.',
+      'Your snapshot has already been submitted.',
     );
     requireRule(
       round.attempts.filter((a) => a.playerId === userId).length < 3,
@@ -389,6 +472,13 @@ export class GameEngine {
       contextImages,
     };
     round.attempts.push(attempt);
+    if (room.judgeMode === 'ai') {
+      attempt.status = 'submitted';
+      attempt.expiresAt = round.endsAt;
+      if (round.attempts.length === 2) this.beginJudging(room);
+      this.publish(room);
+      return;
+    }
     this.publish(room);
     const baseline = room.baselines.get(userId);
     const { decision, fallback } = await evaluateEvidence(this.verifier, {
@@ -433,6 +523,7 @@ export class GameEngine {
     accept: boolean,
   ) {
     const { room } = this.member(code, userId, socketId);
+    requireRule(room.judgeMode === 'peer', 'AI_JUDGED', 'The AI judge decides this battle.');
     requireRule(
       room.state === 'CHALLENGE_ACTIVE' && room.round?.id === roundId,
       'INVALID_ROUND',
@@ -461,7 +552,81 @@ export class GameEngine {
     if (winner)
       this.finishRound(room, winner.playerId, 'First valid snapshot, confirmed by the opponent.');
   }
+  private beginJudging(room: InternalRoom) {
+    const round = room.round!;
+    if (!round.attempts.length) {
+      this.finishRound(
+        room,
+        null,
+        'Neither player submitted a photo in time. No points this round.',
+      );
+      return;
+    }
+    const controller = new AbortController();
+    room.judging = controller;
+    this.change(room, 'JUDGING', this.now() + this.config.judgingMs);
+    const current = () =>
+      room.state === 'JUDGING' &&
+      room.round === round &&
+      room.judging === controller &&
+      !controller.signal.aborted;
+    let timer: ReturnType<typeof setTimeout>;
+    void Promise.race([
+      Promise.resolve().then(() =>
+        this.aiJudge!.judge({
+          challenge: round.challenge,
+          photos: round.attempts.map((a) => ({
+            playerId: a.playerId,
+            image: a.image,
+            contextImages: a.contextImages,
+          })),
+          signal: controller.signal,
+        }),
+      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('AI judge timed out')), this.config.judgingMs);
+        timer.unref();
+      }),
+    ])
+      .then((assessments) => {
+        if (!current()) return;
+        // Enforce identity coverage even when an alternate server provider is injected.
+        if (
+          assessments.length !== round.attempts.length ||
+          new Set(assessments.map((a) => a.playerId)).size !== assessments.length ||
+          assessments.some((a) => !round.attempts.some((p) => p.playerId === a.playerId))
+        )
+          throw new Error('Invalid AI participant mapping');
+        const judgement = decidePhotos(assessments);
+        round.judgement = judgement;
+        for (const attempt of round.attempts)
+          attempt.status = assessments.some(
+            (a) => a.playerId === attempt.playerId && a.valid && a.confidence >= 0.7,
+          )
+            ? 'accepted'
+            : 'rejected';
+        this.finishRound(room, judgement.winnerId, judgement.reason);
+        this.publish(room);
+      })
+      .catch((error: unknown) => {
+        if (!current()) return;
+        this.finishRound(
+          room,
+          null,
+          error instanceof JudgeUnavailable
+            ? error.publicReason
+            : 'The AI judge is unavailable. No points were awarded.',
+        );
+        this.publish(room);
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        controller.abort();
+      });
+  }
   private finishRound(room: InternalRoom, winnerId: string | null, reason: string) {
+    room.judging?.abort();
+    room.judging = null;
     const round = room.round!;
     round.winnerId = winnerId;
     round.reason = reason;
@@ -475,6 +640,7 @@ export class GameEngine {
       }),
     );
     room.history.push({
+      ...(round.judgement ? { judgement: round.judgement } : {}),
       number: round.number,
       prompt: round.challenge.prompt,
       winnerId,
@@ -483,7 +649,12 @@ export class GameEngine {
     });
     room.baselines.clear();
     round.attempts = []; // Images are ephemeral and never leave this round.
-    this.change(room, 'ROUND_RESULT', this.now() + this.config.resultMs);
+    this.change(
+      room,
+      'ROUND_RESULT',
+      this.now() +
+        (room.judgeMode === 'ai' ? Math.max(8000, this.config.resultMs) : this.config.resultMs),
+    );
   }
   rematch(code: string, userId: string, socketId: string) {
     const { room, player } = this.member(code, userId, socketId);
@@ -516,12 +687,19 @@ export class GameEngine {
     p.microphone = false;
     p.ready = false;
     room.sockets.delete(userId);
+    if (room.mode === 'random' && room.state === 'WAITING_FOR_PLAYER') {
+      this.cancel(room, 'Search stopped because you disconnected. Start a new search.');
+      this.publish(room);
+      return;
+    }
     if (room.state !== 'CANCELLED' && room.state !== 'RECONNECTING')
       this.pause(room, 'Your opponent disconnected. Holding the arena for 30 seconds.');
     this.publish(room);
   }
   private pause(room: InternalRoom, message: string) {
-    if (room.round && ['COUNTDOWN', 'CHALLENGE_ACTIVE'].includes(room.state)) {
+    room.judging?.abort();
+    room.judging = null;
+    if (room.round && ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'JUDGING'].includes(room.state)) {
       room.round.attempts = [];
       room.baselines.clear();
     }
@@ -536,7 +714,7 @@ export class GameEngine {
     if (room.state !== 'RECONNECTING' || !room.resume || !room.players.every((p) => p.connected))
       return;
     const { state, remaining } = room.resume;
-    const active = ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'NEXT_ROUND'].includes(state);
+    const active = ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'JUDGING', 'NEXT_ROUND'].includes(state);
     if (active && !room.players.every((p) => p.camera)) return;
     if (room.deadline !== null && this.now() >= room.deadline) {
       this.cancel(room, 'The reconnect window ended. Start a new battle.');
@@ -544,7 +722,7 @@ export class GameEngine {
     }
     room.resume = null;
     room.message = null;
-    if (state === 'CHALLENGE_ACTIVE' || state === 'COUNTDOWN') {
+    if (state === 'CHALLENGE_ACTIVE' || state === 'COUNTDOWN' || state === 'JUDGING') {
       room.round!.id = randomUUID();
       room.round!.attempts = [];
       room.nonces.clear();
@@ -564,6 +742,8 @@ export class GameEngine {
     this.publish(room);
   }
   private cancel(room: InternalRoom, message: string) {
+    room.judging?.abort();
+    room.judging = null;
     this.change(room, 'CANCELLED');
     room.message = message;
     if (room.round) room.round.attempts = [];
@@ -587,6 +767,13 @@ export class GameEngine {
         continue;
       }
       if (room.state === 'CHALLENGE_ACTIVE') {
+        if (room.judgeMode === 'ai') {
+          if (now >= room.round!.endsAt) {
+            this.beginJudging(room);
+            this.publish(room);
+          }
+          continue;
+        }
         let changed = false;
         for (const attempt of room.round!.attempts)
           if (['checking', 'pending'].includes(attempt.status) && now >= attempt.expiresAt) {
@@ -607,6 +794,15 @@ export class GameEngine {
         if (changed) this.publish(room);
       } else if (room.deadline !== null && now >= room.deadline) {
         switch (room.state) {
+          case 'WAITING_FOR_PLAYER':
+            this.cancel(
+              room,
+              'No opponent found this time. Start another search or invite a friend.',
+            );
+            break;
+          case 'JUDGING':
+            this.finishRound(room, null, 'The AI judge timed out. No points were awarded.');
+            break;
           case 'COUNTDOWN':
             if (!room.players.every((p) => p.connected && p.camera)) {
               this.pause(room, 'A camera is off. Turn it back on to resume.');
@@ -642,5 +838,8 @@ export class GameEngine {
         this.publish(room);
       }
     }
+  }
+  close() {
+    for (const room of this.rooms.values()) room.judging?.abort();
   }
 }

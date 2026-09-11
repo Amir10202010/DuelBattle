@@ -3,6 +3,7 @@ import { Camera, CameraOff, Check, MicOff, Volume2 } from 'lucide-react';
 import type { Player } from '../../shared/protocol';
 
 interface CameraCardProps {
+  searching?: boolean;
   player?: Player;
   stream: MediaStream | null;
   local?: boolean;
@@ -27,6 +28,7 @@ export function CameraCard({
   onEnable,
   requesting,
   onReconnect,
+  searching,
 }: CameraCardProps) {
   const ownRef = useRef<HTMLVideoElement>(null);
   const ref = videoRef ?? ownRef;
@@ -108,7 +110,11 @@ export function CameraCard({
             <>
               <span className="empty-opponent">?</span>
               <h3>A worthy opponent?</h3>
-              <p>Send your link. This spot is reserved for your friend.</p>
+              <p>
+                {searching
+                  ? 'We’re looking for another player in the queue.'
+                  : 'Send your link. This spot is reserved for your friend.'}
+              </p>
             </>
           )}
         </div>
@@ -131,7 +137,7 @@ export function CameraCard({
       </div>
       <div className="camera-bottom">
         <span>
-          {player?.name ?? 'Waiting for a friend'}
+          {player?.name ?? (searching ? 'Searching for an opponent' : 'Waiting for a friend')}
           {player && !player.connected && <small> · disconnected</small>}
         </span>
         <span className="camera-indicators">

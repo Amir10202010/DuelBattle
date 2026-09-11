@@ -3,7 +3,16 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import hooks from 'eslint-plugin-react-hooks';
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'test-results/**',
+      'playwright-report/**',
+      '.venv-yolo/**',
+      'vision/models/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

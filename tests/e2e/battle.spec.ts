@@ -253,3 +253,48 @@ test('permission failure is recoverable and camera-off players cannot ready', as
   await page.screenshot({ path: 'test-results/camera-error-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('random matchmaking: cancel a search, match two browsers and connect their cameras', async ({
+  page: a,
+  browser,
+}) => {
+  const contextB = await browser.newContext({ permissions: ['camera', 'microphone'] });
+  const b = await contextB.newPage();
+  const search = async (page: Page, name: string) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Start a Battle', exact: true }).first().click();
+    await page.getByRole('radio', { name: /Random opponent/ }).check();
+    await page.getByRole('textbox', { name: 'Your player name' }).fill(name);
+    await page.getByRole('button', { name: 'Find opponent', exact: true }).click();
+  };
+  try {
+    await search(a, 'QueueA');
+    await expect(a.getByRole('heading', { name: 'Finding your opponent.' })).toBeVisible();
+    await expect(a.getByRole('button', { name: 'Copy invite link' })).toHaveCount(0);
+    await a.setViewportSize({ width: 390, height: 844 });
+    await a.screenshot({ path: 'test-results/matchmaking-mobile.png', fullPage: true });
+    expect(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await accessible(a);
+    const oldRoom = a.url();
+    await a.getByRole('button', { name: 'Cancel search' }).click();
+    await expect(a).toHaveURL('/');
+    await search(a, 'QueueA');
+    await expect(a.getByRole('heading', { name: 'Finding your opponent.' })).toBeVisible();
+    expect(a.url()).not.toBe(oldRoom);
+    await search(b, 'QueueB');
+    await expect(b.getByRole('heading', { name: 'The rivalry is ready.' })).toBeVisible();
+    await expect(a.getByRole('heading', { name: 'The rivalry is ready.' })).toBeVisible();
+    expect(a.url()).toBe(b.url());
+    await enableCamera(a);
+    await enableCamera(b);
+    await expect(a.locator('.camera-opponent video')).toHaveJSProperty('readyState', 4);
+    await a.getByRole('button', { name: 'I’m ready' }).click();
+    await b.getByRole('button', { name: 'I’m ready' }).click();
+    await expect(a.getByText('GET READY', { exact: true })).toBeVisible();
+    await a.getByRole('button', { name: 'Leave battle', exact: true }).click();
+    await a.getByRole('button', { name: 'Leave battle', exact: true }).last().click();
+    await expect(b.getByRole('heading', { name: 'Call it a timeout.' })).toBeVisible();
+  } finally {
+    await contextB.close();
+  }
+});

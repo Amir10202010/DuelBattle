@@ -169,13 +169,15 @@ export function useBattle(code: string, connection: ReturnType<typeof useConnect
   };
   const matchState = room && !['WAITING_FOR_PLAYER', 'READY', 'CANCELLED'].includes(room.state);
   const myAttempts = room?.round?.attempts.filter((a) => a.playerId === profile?.id) ?? [];
-  const pending = myAttempts.some((a) => ['checking', 'pending', 'accepted'].includes(a.status));
+  const pending = myAttempts.some((a) =>
+    ['checking', 'pending', 'submitted', 'accepted'].includes(a.status),
+  );
   const canCapture =
     active &&
     media.camera &&
     !pending &&
     !busy &&
-    myAttempts.length < 3 &&
+    myAttempts.length < (room?.judgeMode === 'ai' ? 1 : 3) &&
     now < (room?.round?.endsAt ?? 0);
   // Both hands are usually busy holding the answer up: the space bar sends it.
   const captureRef = useRef({ canCapture, submit });

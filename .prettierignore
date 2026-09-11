@@ -6,3 +6,5 @@ playwright-report
 coverage
 package-lock.json
 .sites-runtime
+.venv-yolo
+vision/models

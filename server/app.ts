@@ -13,8 +13,10 @@ import { GameEngine, type GameConfig } from './game';
 import { GameError } from './errors';
 import { RateLimiter } from './rate-limit';
 import { PROTOCOL_VERSION } from '../shared/protocol';
+import type { AiJudge } from './ai-judge';
 
 interface AppConfig {
+  aiJudge?: AiJudge;
   databasePath: string;
   origin: string;
   production?: boolean;
@@ -77,6 +79,9 @@ export async function createApp(config: AppConfig) {
     (room) => io.to(room.code).emit('snapshot', room),
     Date.now,
     config.game,
+    undefined,
+    undefined,
+    config.aiJudge,
   );
   app.use(
     helmet({
@@ -124,7 +129,7 @@ export async function createApp(config: AppConfig) {
         path: '/',
       });
     }
-    res.json(store.profile(session));
+    res.json({ ...store.profile(session), judgeMode: config.aiJudge ? 'ai' : 'peer' });
   });
   app.get('/api/ice', (req, res) => {
     const session = store.session(cookieToken(req.headers.cookie));
@@ -204,6 +209,16 @@ export async function createApp(config: AppConfig) {
         if (previous !== socket.id && previous !== code) void socket.leave(previous);
       void socket.join(code);
     };
+    socket.on(
+      'find',
+      handle(actionSchemas.find, (data) => {
+        limits.take(`create:${peerIp(socket)}`, 20, 60 * 60_000);
+        const result = engine.find(userId, data.name, socket.id);
+        subscribe(result.code);
+        socket.emit('snapshot', engine.snapshot(result.code));
+        return result;
+      }),
+    );
     socket.on(
       'create',
       handle(actionSchemas.create, (data) => {
@@ -358,6 +373,7 @@ export async function createApp(config: AppConfig) {
     engine,
     store,
     close: async () => {
+      engine.close();
       clearInterval(tick);
       clearInterval(cleanup);
       await vite?.close();
