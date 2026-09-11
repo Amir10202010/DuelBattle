@@ -50,10 +50,6 @@ export const MATCH_LENGTHS = [
   { winTarget: 5, maxRounds: 15, label: 'Long' },
 ] as const;
 
-export function isMatchLength(winTarget: number): boolean {
-  return MATCH_LENGTHS.some((length) => length.winTarget === winTarget);
-}
-
 export const DEFAULT_SETTINGS: MatchSettings = {
   winTarget: 3,
   maxRounds: 9,
@@ -276,9 +272,24 @@ export function playersInSeatOrder(state: MatchState): PlayerState[] {
     .filter((p): p is PlayerState => Boolean(p));
 }
 
-export function opponentOf(state: MatchState, playerId: PlayerId): PlayerState | null {
+/**
+ * Anything with two seats and the players in them — the authoritative match
+ * state or the redacted view the client gets. Keeping the lookup in one place
+ * matters more than it looks: written inline, "the seat that is not mine"
+ * quietly returns the other player to somebody who is not seated at all.
+ */
+export interface SeatedState<P> {
+  seats: readonly (PlayerId | null)[];
+  players: Record<PlayerId, P>;
+}
+
+export function opponentIdOf(state: SeatedState<unknown>, playerId: PlayerId): PlayerId | null {
   if (!state.seats.includes(playerId)) return null;
-  const other = state.seats.find((id) => id !== null && id !== playerId);
+  return state.seats.find((id) => id !== null && id !== playerId) ?? null;
+}
+
+export function opponentOf<P>(state: SeatedState<P>, playerId: PlayerId): P | null {
+  const other = opponentIdOf(state, playerId);
   return other ? state.players[other] ?? null : null;
 }
 

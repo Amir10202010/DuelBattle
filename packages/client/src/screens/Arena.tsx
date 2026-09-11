@@ -3,6 +3,8 @@ import {
   colorSwatch,
   detectorColors,
   getChallenge,
+  opponentIdOf,
+  opponentOf,
   type DetectorSpec,
   type PublicMatchState,
   type PublicPlayer,
@@ -30,8 +32,8 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
   const round = match.round;
   const challenge = round ? getChallenge(round.challengeId) ?? null : null;
   const you = match.players[youId] ?? null;
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] ?? null : null;
+  const opponentId = opponentIdOf(match, youId);
+  const opponent = opponentOf(match, youId);
   const yourSeat = you?.seat ?? 0;
   const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
 

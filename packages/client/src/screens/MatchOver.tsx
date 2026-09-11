@@ -1,4 +1,4 @@
-import { getChallenge, type PublicMatchState, type RoundOutcome } from '@battle/shared';
+import { getChallenge, opponentOf, type PublicMatchState, type RoundOutcome } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import { SeriesLine } from '../components/Series.jsx';
 
@@ -42,8 +42,7 @@ function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kin
 
 export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverProps) {
   const you = match.players[youId] ?? null;
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] ?? null : null;
+  const opponent = opponentOf(match, youId);
   const winner = match.winnerId ? match.players[match.winnerId] ?? null : null;
 
   const headline =

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { PublicMatchState } from '@battle/shared';
+import { opponentIdOf, opponentOf, type PublicMatchState } from '@battle/shared';
 
 const DEFAULT_TITLE = 'Battle — your room is the game';
 
@@ -12,8 +12,8 @@ const DEFAULT_TITLE = 'Battle — your room is the game';
  */
 function titleFor(match: PublicMatchState | null, youId: string | null): string | null {
   if (!match || !youId) return null;
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] : undefined;
+  const opponentId = opponentIdOf(match, youId);
+  const opponent = opponentOf(match, youId) ?? undefined;
 
   if (match.phase === 'lobby') {
     if (!opponent) return `Waiting for someone — room ${match.roomCode}`;

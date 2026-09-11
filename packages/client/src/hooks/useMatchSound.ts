@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { PublicMatchState } from '@battle/shared';
+import { opponentIdOf, opponentOf, type PublicMatchState } from '@battle/shared';
 import { sound } from '../media/sound.js';
 
 /**
@@ -19,8 +19,8 @@ export function useMatchSound(match: PublicMatchState | null, youId: string | nu
     previous.current = match;
     if (!match || !youId) return;
 
-    const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-    const opponent = opponentId ? match.players[opponentId] : undefined;
+    const opponentId = opponentIdOf(match, youId);
+    const opponent = opponentOf(match, youId) ?? undefined;
     const opponentWasThere = before ? Object.keys(before.players).length > 1 : false;
 
     if (opponent && !opponentWasThere && match.phase === 'lobby') {

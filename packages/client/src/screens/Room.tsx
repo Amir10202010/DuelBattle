@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { PublicMatchState } from '@battle/shared';
+import { opponentOf, type PublicMatchState } from '@battle/shared';
 import type { MatchStore, StoreSnapshot } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import {
@@ -66,8 +66,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
     return <CameraGate camera={camera} roomCode={match.roomCode} onLeave={onLeave} />;
   }
 
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] ?? null : null;
+  const opponent = opponentOf(match, youId);
 
   return (
     <div className="room">

@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import type { PublicMatchState } from '@battle/shared';
+import { opponentIdOf, opponentOf, type PublicMatchState } from '@battle/shared';
 
 /**
  * How the night stands, across rematches.
@@ -9,8 +9,8 @@ import type { PublicMatchState } from '@battle/shared';
  * of view — "you lead" rather than a bare pair of numbers.
  */
 export function seriesLine(match: PublicMatchState, youId: string): string | null {
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] : undefined;
+  const opponentId = opponentIdOf(match, youId);
+  const opponent = opponentOf(match, youId);
   const mine = match.series[youId] ?? 0;
   const theirs = opponentId ? match.series[opponentId] ?? 0 : 0;
   const played = mine + theirs;

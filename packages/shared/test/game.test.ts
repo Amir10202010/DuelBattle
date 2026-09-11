@@ -6,6 +6,7 @@ import {
   PHOTO_FINISH_MS,
   challengeInRoom,
   createMatch,
+  opponentIdOf,
   opponentOf,
   playersInSeatOrder,
   reduce,
@@ -553,7 +554,25 @@ describe('invariants', () => {
     const s = seatedMatch(0);
     expect(opponentOf(s, 'p1')?.id).toBe('p2');
     expect(opponentOf(s, 'p2')?.id).toBe('p1');
+    expect(opponentIdOf(s, 'p1')).toBe('p2');
+  });
+
+  /**
+   * Written inline — as it was in eight places in the client — "the seat that
+   * is not mine" hands somebody who is not seated at all the other player, and
+   * calls them their opponent.
+   */
+  it('has no opponent for someone who is not in the room', () => {
+    const s = seatedMatch(0);
     expect(opponentOf(s, 'ghost')).toBeNull();
+    expect(opponentIdOf(s, 'ghost')).toBeNull();
+  });
+
+  it('has no opponent while you are alone in the room', () => {
+    let s = createMatch('ABCDE', 0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctxAt(0));
+    expect(opponentOf(s, 'p1')).toBeNull();
+    expect(opponentIdOf(s, 'p1')).toBeNull();
   });
 });
 

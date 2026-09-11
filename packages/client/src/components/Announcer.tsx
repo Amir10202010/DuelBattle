@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { getChallenge, type PublicMatchState } from '@battle/shared';
+import { getChallenge, opponentOf, type PublicMatchState } from '@battle/shared';
 
 /** Joins sentences without doubling the punctuation they already carry. */
 function sentences(...parts: (string | null | undefined)[]): string {
@@ -19,8 +19,7 @@ function sentences(...parts: (string | null | undefined)[]): string {
  * sentence per transition is both quieter and more complete.
  */
 export function announcementFor(match: PublicMatchState, youId: string): string | null {
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] : undefined;
+  const opponent = opponentOf(match, youId) ?? undefined;
   const you = match.players[youId];
   const challenge = match.round ? getChallenge(match.round.challengeId) : undefined;
 

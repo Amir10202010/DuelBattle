@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { MATCH_LENGTHS, samplePrompts, type PublicMatchState } from '@battle/shared';
+import { MATCH_LENGTHS, opponentOf, samplePrompts, type PublicMatchState } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
@@ -16,8 +16,7 @@ interface LobbyProps {
 
 export function Lobby({ store, match, youId, camera }: LobbyProps) {
   const you = match.players[youId] ?? null;
-  const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
-  const opponent = opponentId ? match.players[opponentId] ?? null : null;
+  const opponent = opponentOf(match, youId);
   const yourSeat = you?.seat ?? 0;
   const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
 
