@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { normalizeRoomCode } from '@battle/shared';
 import type { RoomManager } from './rooms.js';
+import { config } from './config.js';
 import { log } from './log.js';
 
 const MIME: Record<string, string> = {
@@ -22,6 +23,54 @@ const MIME: Record<string, string> = {
 export interface HttpOptions {
   clientDir: string;
   rooms: RoomManager;
+}
+
+/**
+ * Per-IP budget for the room lookup.
+ *
+ * The endpoint exists so the join screen can say "no room with that code"
+ * before asking anyone for a camera, but unmetered it is also a way to sweep
+ * the code space for rooms with a free seat and drop in on strangers. A code is
+ * one of 32^5, so a handful of guesses a minute costs an attacker centuries and
+ * costs a real player nothing.
+ */
+const LOOKUP_BURST = 20;
+const LOOKUP_REFILL_PER_SEC = 0.5;
+/** Buckets are dropped once a client could not possibly still be limited. */
+const LOOKUP_BUCKET_TTL_MS = 5 * 60_000;
+
+interface Bucket {
+  tokens: number;
+  seenAt: number;
+}
+
+class LookupLimiter {
+  private readonly buckets = new Map<string, Bucket>();
+  private lastSweep = 0;
+
+  /** True when the request may proceed. */
+  take(key: string, now: number): boolean {
+    this.sweep(now);
+    const bucket = this.buckets.get(key) ?? { tokens: LOOKUP_BURST, seenAt: now };
+    bucket.tokens = Math.min(
+      LOOKUP_BURST,
+      bucket.tokens + ((now - bucket.seenAt) / 1000) * LOOKUP_REFILL_PER_SEC,
+    );
+    bucket.seenAt = now;
+    this.buckets.set(key, bucket);
+
+    if (bucket.tokens < 1) return false;
+    bucket.tokens -= 1;
+    return true;
+  }
+
+  private sweep(now: number): void {
+    if (now - this.lastSweep < LOOKUP_BUCKET_TTL_MS) return;
+    this.lastSweep = now;
+    for (const [key, bucket] of this.buckets) {
+      if (now - bucket.seenAt > LOOKUP_BUCKET_TTL_MS) this.buckets.delete(key);
+    }
+  }
 }
 
 /**
@@ -54,9 +103,10 @@ const DOCUMENT_HEADERS: Record<string, string> = {
 
 export function createHttpServer(options: HttpOptions): Server {
   const clientRoot = options.clientDir ? resolve(options.clientDir) : '';
+  const lookupLimiter = new LookupLimiter();
 
   return createServer((req, res) => {
-    void handle(req, res, options, clientRoot).catch((err) => {
+    void handle(req, res, options, clientRoot, lookupLimiter).catch((err) => {
       log.error('request failed', {
         url: req.url,
         error: err instanceof Error ? err.stack ?? err.message : String(err),
@@ -72,6 +122,7 @@ async function handle(
   res: ServerResponse,
   options: HttpOptions,
   clientRoot: string,
+  lookupLimiter: LookupLimiter,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
@@ -89,7 +140,19 @@ async function handle(
   // a camera permission prompt.
   const roomLookup = /^\/api\/rooms\/([^/]+)$/.exec(url.pathname);
   if (roomLookup) {
-    const room = options.rooms.get(normalizeRoomCode(decodeURIComponent(roomLookup[1] ?? '')));
+    if (!lookupLimiter.take(clientKey(req), Date.now())) {
+      res.setHeader('retry-after', '30');
+      json(res, 429, { error: 'rate-limited' });
+      return;
+    }
+    let code: string;
+    try {
+      code = normalizeRoomCode(decodeURIComponent(roomLookup[1] ?? ''));
+    } catch {
+      json(res, 404, { exists: false });
+      return;
+    }
+    const room = options.rooms.get(code);
     if (!room) {
       json(res, 404, { exists: false });
       return;
@@ -146,6 +209,15 @@ async function serveStatic(
     return;
   }
   createReadStream(filePath).pipe(res);
+}
+
+function clientKey(req: IncomingMessage): string {
+  if (config.trustProxy) {
+    const forwarded = req.headers['x-forwarded-for'];
+    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
+    if (first) return first.trim();
+  }
+  return req.socket.remoteAddress ?? 'unknown';
 }
 
 /** Resolves a URL path inside `root`, or null if it tries to escape. */

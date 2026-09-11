@@ -1,6 +1,15 @@
+import { randomInt } from 'node:crypto';
 import { generateRoomCode, isValidRoomCode } from '@battle/shared';
 import { Room } from './room.js';
 import { log } from './log.js';
+
+/**
+ * Room codes are the only thing standing between a match and a stranger, so
+ * they come from the CSPRNG rather than Math.random, whose state can be
+ * recovered from a handful of observed outputs. 2^31 divides evenly by the
+ * 32-character alphabet, so the mapping stays uniform.
+ */
+const CODE_RANDOM = () => randomInt(0, 2 ** 31) / 2 ** 31;
 
 export interface RoomManagerOptions {
   maxRooms: number;
@@ -28,7 +37,7 @@ export class RoomManager {
       }
     }
     for (let attempt = 0; attempt < 12; attempt++) {
-      const code = generateRoomCode();
+      const code = generateRoomCode(CODE_RANDOM);
       if (this.rooms.has(code)) continue;
       const room = new Room(code, now);
       this.rooms.set(code, room);

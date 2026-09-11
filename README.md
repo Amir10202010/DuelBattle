@@ -115,6 +115,11 @@ matter in production:
 `MAX_CONNECTIONS_PER_IP`, `EMPTY_ROOM_TTL_MS` and `MAX_ROOM_AGE_MS` are the
 capacity and abuse limits; see `packages/server/src/config.ts`.
 
+A busy room holds two evidence snapshots, two live frames and two decoded
+baselines — roughly 700 KB at the size ceilings. `MAX_ROOMS` therefore sets a
+memory ceiling as much as a capacity one: the default of 500 is about 350 MB of
+room state.
+
 ## Deploying
 
 One process serves everything:
@@ -136,5 +141,10 @@ Serve it over HTTPS. Browsers will not hand out a camera otherwise.
 
 There is no database. Live frames are relayed to the opponent and the most
 recent one per player is held in memory as the round's baseline. Evidence
-snapshots are kept for the two most recent rounds so they can be judged and
-shown, then dropped. Everything a room holds disappears when the room does.
+snapshots are kept for the round being judged or shown, then dropped.
+Everything a room holds disappears when the room does.
+
+Room codes come from the CSPRNG, not `Math.random`: they are the only thing
+standing between a match and a stranger. The room lookup is rate limited per IP
+for the same reason — it exists so the join screen can fail fast, not so the
+code space can be swept for rooms with a free seat.

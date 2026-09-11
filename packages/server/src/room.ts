@@ -25,8 +25,15 @@ export type Send = (message: ServerMessage) => void;
 
 /** A live frame is only usable as a baseline while it still reflects the room. */
 const BASELINE_MAX_AGE_MS = 4_000;
-/** Evidence snapshots are dropped once they are this many rounds old. */
-const EVIDENCE_ROUND_RETENTION = 2;
+/**
+ * Evidence snapshots are dropped once they are this many rounds old.
+ *
+ * One is enough: judging and the result screen both show the *current* round,
+ * and pruning happens when the next round's countdown starts, by which point
+ * the previous result is off screen. Holding two doubled the largest term in a
+ * room's memory footprint for nothing.
+ */
+const EVIDENCE_ROUND_RETENTION = 1;
 /** Live frames are relayed at most this often, regardless of what a client sends. */
 const FRAME_RELAY_INTERVAL_MS = 150;
 

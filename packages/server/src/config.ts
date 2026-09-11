@@ -36,7 +36,12 @@ export const config = {
   emptyRoomTtlMs: int('EMPTY_ROOM_TTL_MS', 5 * 60_000),
   /** Absolute ceiling on a room's lifetime, regardless of activity. */
   maxRoomAgeMs: int('MAX_ROOM_AGE_MS', 6 * 60 * 60_000),
-  maxRooms: int('MAX_ROOMS', 2_000),
+  /**
+   * A busy room holds, at worst, two evidence snapshots, two live frames and
+   * two decoded baselines — roughly 700 KB. The default is therefore a ceiling
+   * of about 350 MB of room state; raise it only with that arithmetic in mind.
+   */
+  maxRooms: int('MAX_ROOMS', 500),
   /** Sustained client messages per second before we start dropping. */
   messageRatePerSec: int('MESSAGE_RATE_PER_SEC', 25),
   /** Image-bearing messages get their own, much tighter budget. */

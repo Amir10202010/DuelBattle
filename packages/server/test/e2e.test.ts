@@ -149,6 +149,21 @@ describe('http surface', () => {
     const error = await new Promise<Error>((resolve) => socket.once('error', resolve));
     expect(error).toBeInstanceOf(Error);
   });
+
+  // Last in this block on purpose: it exhausts the lookup budget for this IP,
+  // which every other lookup test in here shares.
+  it('will not let anyone sweep the code space for open rooms', async () => {
+    // The lookup exists so the join screen can fail fast, not so a stranger can
+    // hunt for rooms with a free seat and drop in on them.
+    const statuses: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      const res = await fetch(`http://127.0.0.1:${port}/api/rooms/ZZZZ${i % 10}`);
+      statuses.push(res.status);
+    }
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
+    // The first few still answer, so a real player typing a code is unaffected.
+    expect(statuses.slice(0, 5).every((s) => s !== 429)).toBe(true);
+  });
 });
 
 describe('a full match over the wire', () => {
