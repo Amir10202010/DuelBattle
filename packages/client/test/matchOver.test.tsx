@@ -101,3 +101,76 @@ describe('the match recap', () => {
     view.unmount();
   });
 });
+
+describe('why you lost each round', () => {
+  const row = (container: HTMLElement) =>
+    container.querySelector('.recap__why')?.textContent ?? null;
+
+  function withOutcome(over: Parameters<typeof outcome>[0]) {
+    return render(
+      props({ match: publicMatch({ phase: 'matchResult', history: [outcome(over)] }) }),
+    );
+  }
+
+  it('says nothing accusatory about a round you won', () => {
+    const view = withOutcome({ winnerId: 'p1', reason: 'faster' });
+    expect(row(view.container)).toBe('won it');
+    view.unmount();
+  });
+
+  it('says how much slower you were when you both had it', () => {
+    const view = withOutcome({
+      winnerId: 'p2',
+      reason: 'faster',
+      perPlayer: {
+        p1: { valid: true, elapsedMs: 4_200, note: 'ok' },
+        p2: { valid: true, elapsedMs: 3_000, note: 'ok' },
+      },
+    });
+    expect(row(view.container)).toBe('1.2s slower');
+    view.unmount();
+  });
+
+  /**
+   * The one a player most needs to be able to see a pattern in: a peer round
+   * lost because the opponent voted it down, every time.
+   */
+  it('says when your answer was voted down', () => {
+    const view = withOutcome({
+      judging: 'peer',
+      winnerId: 'p2',
+      reason: 'only-valid',
+      perPlayer: { p1: { valid: false, elapsedMs: 2_000, note: 'Rejected by your opponent' } },
+    });
+    expect(row(view.container)).toBe('voted down');
+    expect(view.container.querySelector('.recap__why')?.className).toContain('is-rejected');
+    view.unmount();
+  });
+
+  it('tells passing apart from running out of time', () => {
+    const passed = withOutcome({
+      winnerId: 'p2',
+      perPlayer: { p1: { valid: false, elapsedMs: null, note: 'Passed' } },
+    });
+    expect(row(passed.container)).toBe('passed');
+    passed.unmount();
+
+    const timedOut = withOutcome({
+      winnerId: 'p2',
+      perPlayer: { p1: { valid: false, elapsedMs: null, note: 'Ran out of time' } },
+    });
+    expect(row(timedOut.container)).toBe('out of time');
+    timedOut.unmount();
+  });
+
+  it('says the camera did not see it when that is what happened', () => {
+    const view = withOutcome({
+      winnerId: 'p2',
+      perPlayer: {
+        p1: { valid: false, elapsedMs: 5_000, note: 'That does not read as red — try filling more of the frame.' },
+      },
+    });
+    expect(row(view.container)).toBe('not detected');
+    view.unmount();
+  });
+});

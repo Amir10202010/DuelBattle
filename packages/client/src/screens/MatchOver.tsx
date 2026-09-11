@@ -1,4 +1,4 @@
-import { getChallenge, type PublicMatchState } from '@battle/shared';
+import { getChallenge, type PublicMatchState, type RoundOutcome } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import { SeriesLine } from '../components/Series.jsx';
 
@@ -9,6 +9,35 @@ interface MatchOverProps {
   /** `${roundId}:${playerId}` -> JPEG data URL, as collected during the match. */
   evidence: Record<string, string>;
   onLeave: () => void;
+}
+
+/**
+ * Why you lost a round, in two or three words.
+ *
+ * The full reason is only on screen for the five seconds of the round result,
+ * and by the recap it is gone — so a player who lost 3-0 has no way to tell
+ * whether they were slower, not detected, or simply voted down every time. That
+ * last one is worth being able to see.
+ */
+function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kind: string } | null {
+  if (outcome.winnerId === youId) return null;
+  const mine = outcome.perPlayer[youId];
+  if (!mine) return { label: 'no answer', kind: 'missed' };
+
+  if (mine.valid) {
+    const theirs = outcome.winnerId ? outcome.perPlayer[outcome.winnerId] : undefined;
+    if (mine.elapsedMs != null && theirs?.elapsedMs != null) {
+      const behind = (mine.elapsedMs - theirs.elapsedMs) / 1000;
+      return { label: `${behind.toFixed(1)}s slower`, kind: 'slower' };
+    }
+    return { label: 'slower', kind: 'slower' };
+  }
+
+  const note = mine.note.toLowerCase();
+  if (note.includes('rejected')) return { label: 'voted down', kind: 'rejected' };
+  if (note.includes('passed')) return { label: 'passed', kind: 'missed' };
+  if (note.includes('ran out')) return { label: 'out of time', kind: 'missed' };
+  return { label: 'not detected', kind: 'missed' };
 }
 
 export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverProps) {
@@ -70,11 +99,14 @@ export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverP
             const winnerName = outcome.winnerId
               ? match.players[outcome.winnerId]?.name ?? 'Unknown'
               : 'Nobody';
-            const mine = outcome.perPlayer[youId];
+            const custom = match.customChallenges.find((c) => c.id === outcome.challengeId);
+            const why = yourOutcome(outcome, youId);
             return (
               <li key={outcome.roundNumber} className="recap__row">
                 <span className="recap__num mono">{String(outcome.roundNumber).padStart(2, '0')}</span>
-                <span className="recap__prompt">{challenge?.prompt ?? outcome.challengeId}</span>
+                <span className="recap__prompt">
+                  {challenge?.prompt ?? custom?.prompt ?? outcome.challengeId}
+                </span>
                 <span
                   className={`recap__winner ${outcome.winnerId === youId ? 'is-you' : ''} ${
                     outcome.winnerId === null ? 'is-draw' : ''
@@ -82,8 +114,8 @@ export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverP
                 >
                   {winnerName}
                 </span>
-                <span className="recap__time mono dim">
-                  {mine?.elapsedMs != null ? `${(mine.elapsedMs / 1000).toFixed(1)}s` : '—'}
+                <span className={`recap__why ${why ? `is-${why.kind}` : ''}`}>
+                  {why?.label ?? 'won it'}
                 </span>
               </li>
             );
