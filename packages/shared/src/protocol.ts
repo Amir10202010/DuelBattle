@@ -34,6 +34,7 @@ export type ClientMessage =
   | { t: 'addChallenge'; prompt: string }
   | { t: 'removeChallenge'; id: string }
   | { t: 'setWinTarget'; winTarget: number }
+  | { t: 'pass'; roundId: string }
   | { t: 'leave' }
   | { t: 'ping'; id: number }
   | { t: 'frame'; image: string; seq: number };
@@ -66,6 +67,8 @@ export interface PublicPlayer {
   rematchVote: boolean;
   /** True once this player has locked in an answer for the live round. */
   submitted: boolean;
+  /** True once this player has given up on the live round. */
+  passed: boolean;
 }
 
 export interface PublicSubmission {
@@ -160,6 +163,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
           validAnswers: p.validAnswers,
           rematchVote: p.rematchVote,
           submitted: Boolean(round?.submissions[id]),
+          passed: round?.passes[id] !== undefined,
         } satisfies PublicPlayer,
       ]),
     ),

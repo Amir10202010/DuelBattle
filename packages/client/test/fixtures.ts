@@ -11,6 +11,7 @@ export function player(overrides: Partial<PublicPlayer> & { id: string }): Publi
     validAnswers: 0,
     rematchVote: false,
     submitted: false,
+    passed: false,
     ...overrides,
   };
 }

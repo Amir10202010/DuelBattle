@@ -40,6 +40,8 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
 
   const isChallenge = match.phase === 'challenge';
   const locked = Boolean(you?.submitted);
+  const passed = Boolean(you?.passed);
+  const done = locked || passed;
 
   const detection = useLocalDetection({
     videoRef: camera.videoRef,
@@ -62,7 +64,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
   }, [round, isChallenge, locked, submitting, camera.videoRef, store]);
 
   useEffect(() => {
-    if (!isChallenge || locked) return;
+    if (!isChallenge || done) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== ' ' && e.key !== 'Enter') return;
       const target = e.target as HTMLElement | null;
@@ -72,13 +74,13 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isChallenge, locked, lockIn]);
+  }, [isChallenge, done, lockIn]);
 
-  const selfState = match.phase === 'roundResult' ? resultState(match, youId) : locked ? 'locked' : 'live';
+  const selfState = match.phase === 'roundResult' ? resultState(match, youId) : done ? 'locked' : 'live';
   const peerState =
     match.phase === 'roundResult'
       ? resultState(match, opponentId)
-      : opponent?.submitted
+      : opponent?.submitted || opponent?.passed
         ? 'locked'
         : 'live';
 
@@ -89,7 +91,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
 
   return (
     <div className="arena">
-      <PromptBand match={match} now={now} detection={detection} showMeter={!locked} />
+      <PromptBand match={match} now={now} detection={detection} showMeter={!done} />
 
       <div className="arena__stages">
         <StageFrame
@@ -102,7 +104,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
               {match.phase === 'roundResult' && round && (
                 <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
               )}
-              {locked && isChallenge && <LockedBadge />}
+              {isChallenge && (locked || passed) && <LockedBadge passed={passed} />}
             </>
           }
         >
@@ -118,7 +120,9 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
               {(match.phase === 'judging' || match.phase === 'roundResult') && round && opponentId && (
                 <EvidenceShot image={evidence[`${round.id}:${opponentId}`]} />
               )}
-              {opponent?.submitted && isChallenge && <LockedBadge them />}
+              {isChallenge && (opponent?.submitted || opponent?.passed) && (
+                <LockedBadge them passed={Boolean(opponent?.passed)} />
+              )}
             </>
           }
         >
@@ -132,7 +136,8 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
         youId={youId}
         opponent={opponent}
         detection={detection}
-        locked={locked}
+        done={done}
+        passed={passed}
         submitting={submitting}
         onLockIn={lockIn}
       />
@@ -269,10 +274,11 @@ function Countdown({ match, now }: { match: PublicMatchState; now: number }) {
   );
 }
 
-function LockedBadge({ them = false }: { them?: boolean }) {
+function LockedBadge({ them = false, passed = false }: { them?: boolean; passed?: boolean }) {
+  const label = passed ? 'Passed' : them ? 'Locked in' : 'You locked in';
   return (
-    <div className="lockedbadge">
-      <span>{them ? 'Locked in' : 'You locked in'}</span>
+    <div className={`lockedbadge ${passed ? 'lockedbadge--passed' : ''}`}>
+      <span>{label}</span>
     </div>
   );
 }
@@ -288,7 +294,8 @@ function ActionRow({
   youId,
   opponent,
   detection,
-  locked,
+  done,
+  passed,
   submitting,
   onLockIn,
 }: {
@@ -297,18 +304,22 @@ function ActionRow({
   youId: string;
   opponent: PublicPlayer | null;
   detection: Detection;
-  locked: boolean;
+  done: boolean;
+  passed: boolean;
   submitting: boolean;
   onLockIn: () => void;
 }) {
   const round = match.round;
 
   if (match.phase === 'challenge' && round) {
-    if (locked || submitting) {
+    if (done || submitting) {
       return (
         <div className="actions actions--waiting">
           <p className="actions__note">
-            {opponent?.submitted ? 'Scoring…' : `Waiting for ${opponent?.name ?? 'your opponent'}…`}
+            {passed ? 'Passed. ' : ''}
+            {opponent?.submitted || opponent?.passed
+              ? 'Scoring…'
+              : `Waiting for ${opponent?.name ?? 'your opponent'}…`}
           </p>
         </div>
       );
@@ -317,12 +328,21 @@ function ActionRow({
     const isAuto = round.judging === 'auto';
     return (
       <div className="actions">
-        <button
-          className={`btn btn--lg lockin ${matched || !isAuto ? 'lockin--hot' : ''}`}
-          onClick={onLockIn}
-        >
-          {matched || !isAuto ? 'Lock it in' : 'Lock in anyway'}
-        </button>
+        <div className="actions__row">
+          <button
+            className={`btn btn--lg lockin ${matched || !isAuto ? 'lockin--hot' : ''}`}
+            onClick={onLockIn}
+          >
+            {matched || !isAuto ? 'Lock it in' : 'Lock in anyway'}
+          </button>
+          <button
+            className="btn actions__pass"
+            onClick={() => store.pass(round.id)}
+            title="Give up on this round"
+          >
+            Pass
+          </button>
+        </div>
         <p className="actions__note dim">
           {isAuto
             ? matched

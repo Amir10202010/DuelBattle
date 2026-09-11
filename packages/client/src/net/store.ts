@@ -261,6 +261,10 @@ export class MatchStore {
     this.connection.send({ t: 'submit', roundId, image });
   }
 
+  pass(roundId: string): void {
+    this.connection.send({ t: 'pass', roundId });
+  }
+
   vote(roundId: string, targetId: string, approve: boolean): void {
     this.connection.send({ t: 'vote', roundId, targetId, approve });
   }

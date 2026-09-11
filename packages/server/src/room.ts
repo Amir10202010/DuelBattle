@@ -56,6 +56,7 @@ const ACTION_ERROR_COPY: Record<ActionError, string> = {
   'wrong-phase': 'That is not possible right now.',
   'wrong-round': 'That round has already moved on.',
   'already-submitted': 'You have already locked in this round.',
+  'already-passed': 'You have already passed on this round.',
   'already-voted': 'You have already judged that answer.',
   'cannot-vote-for-self': 'You cannot judge your own answer.',
   'no-such-target': 'That player is not here.',
@@ -232,6 +233,12 @@ export class Room {
         break;
       case 'submit':
         this.onSubmit(playerId, seat, message.roundId, message.image, now);
+        break;
+      case 'pass':
+        this.reportError(
+          seat,
+          this.dispatch({ type: 'pass', playerId, roundId: message.roundId }, now),
+        );
         break;
       case 'vote':
         this.reportError(

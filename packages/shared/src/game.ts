@@ -134,6 +134,14 @@ export interface RoundState {
   /** Server clock at prompt reveal. Elapsed times are measured from here. */
   startedAt: number;
   submissions: Record<PlayerId, Submission>;
+  /**
+   * Players who gave up on this round, by the time they did.
+   *
+   * Staring at a timer for twenty seconds because there is genuinely nothing
+   * purple in the room is the least fun the game has to offer, and if both
+   * players are stuck it is twenty seconds of nothing at all.
+   */
+  passes: Record<PlayerId, number>;
   outcome: RoundOutcome | null;
 }
 
@@ -196,6 +204,7 @@ export type Action =
   | { type: 'setCameraReady'; playerId: PlayerId; cameraReady: boolean }
   | { type: 'setReady'; playerId: PlayerId; ready: boolean }
   | { type: 'submit'; playerId: PlayerId; roundId: string; evidenceId: string; auto?: AutoVerdict }
+  | { type: 'pass'; playerId: PlayerId; roundId: string }
   | { type: 'vote'; playerId: PlayerId; roundId: string; targetId: PlayerId; approve: boolean }
   | { type: 'rematch'; playerId: PlayerId }
   | { type: 'addChallenge'; playerId: PlayerId; prompt: string; id: string }
@@ -216,6 +225,7 @@ export type ActionError =
   | 'wrong-phase'
   | 'wrong-round'
   | 'already-submitted'
+  | 'already-passed'
   | 'already-voted'
   | 'cannot-vote-for-self'
   | 'no-such-target'
@@ -303,6 +313,8 @@ export function reduce(state: MatchState, action: Action, ctx: EngineContext): R
       return setReady(state, action.playerId, action.ready, ctx);
     case 'submit':
       return submit(state, action, ctx);
+    case 'pass':
+      return pass(state, action, ctx);
     case 'vote':
       return vote(state, action, ctx);
     case 'rematch':
@@ -585,7 +597,7 @@ function submit(
   let next: MatchState = { ...state, round };
 
   const seated = playersInSeatOrder(next);
-  const everyoneAnswered = seated.every((p) => round.submissions[p.id]);
+  const everyoneAnswered = seated.every((p) => isDone(round, p.id));
 
   if (round.judging === 'auto') {
     const someoneMatched = Object.values(round.submissions).some((s) => s.auto?.matched);
@@ -600,6 +612,35 @@ function submit(
     next = openJudging(next, ctx);
   }
 
+  return { ok: true, state: bump(next) };
+}
+
+/** Whether a player has finished with this round, either way. */
+function isDone(round: RoundState, playerId: PlayerId): boolean {
+  return Boolean(round.submissions[playerId]) || round.passes[playerId] !== undefined;
+}
+
+function pass(
+  state: MatchState,
+  action: Extract<Action, { type: 'pass' }>,
+  ctx: EngineContext,
+): Result {
+  if (state.pausedAt !== null) return { ok: false, error: 'match-paused' };
+  if (state.phase !== 'challenge' || !state.round) return { ok: false, error: 'wrong-phase' };
+  if (state.round.id !== action.roundId) return { ok: false, error: 'wrong-round' };
+  if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
+  if (state.round.submissions[action.playerId]) return { ok: false, error: 'already-submitted' };
+  if (state.round.passes[action.playerId] !== undefined) return { ok: false, error: 'already-passed' };
+
+  const round: RoundState = {
+    ...state.round,
+    passes: { ...state.round.passes, [action.playerId]: ctx.now },
+  };
+  let next: MatchState = { ...state, round };
+
+  if (playersInSeatOrder(next).every((p) => isDone(round, p.id))) {
+    next = closeChallenge(next, ctx);
+  }
   return { ok: true, state: bump(next) };
 }
 
@@ -674,6 +715,7 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
     // Set for real when the countdown ends and the prompt is revealed.
     startedAt: ctx.now + state.settings.countdownMs,
     submissions: {},
+    passes: {},
     outcome: null,
   };
 
@@ -743,7 +785,11 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
   for (const player of seated) {
     const submission = round.submissions[player.id];
     if (!submission) {
-      perPlayer[player.id] = { valid: false, elapsedMs: null, note: 'Ran out of time' };
+      perPlayer[player.id] = {
+        valid: false,
+        elapsedMs: null,
+        note: round.passes[player.id] !== undefined ? 'Passed' : 'Ran out of time',
+      };
       continue;
     }
     const isValid =

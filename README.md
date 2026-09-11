@@ -43,6 +43,13 @@ combination that cannot actually be decided:
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
 
+### Giving up on a round
+
+Sometimes there is genuinely nothing purple in the room. A pass ends your part
+of the round immediately; if both of you pass, the round ends there rather than
+running another fifteen seconds of nobody doing anything. Your opponent can
+still win it after you have passed.
+
 ### How long a match is
 
 The lobby offers first to 2, 3 or 5, and either player can change it — it is a

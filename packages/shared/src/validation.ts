@@ -74,6 +74,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('removeChallenge'), id: z.string().min(1).max(64) }),
   z.object({ t: z.literal('setWinTarget'), winTarget: z.number().int().min(1).max(20) }),
+  z.object({ t: z.literal('pass'), roundId: z.string().min(1).max(64) }),
   z.object({ t: z.literal('leave') }),
   z.object({ t: z.literal('ping'), id: z.number().int() }),
   z.object({ t: z.literal('frame'), image: frameImageSchema, seq: z.number().int().nonnegative() }),

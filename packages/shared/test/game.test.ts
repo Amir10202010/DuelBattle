@@ -812,3 +812,112 @@ describe('match length', () => {
     expect(s.settings.winTarget).toBe(5);
   });
 });
+
+
+describe('passing on a round', () => {
+  it('ends the round early when both players give up', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const startedAt = s.round!.startedAt;
+
+    s = apply(s, { type: 'pass', playerId: 'p1', roundId }, ctxAt(startedAt + 2_000));
+    // One player passing must not end it: the other may still win.
+    expect(s.phase).toBe('challenge');
+
+    s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 2_500));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBeNull();
+  });
+
+  it('says they passed rather than that they ran out of time', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    s = apply(s, { type: 'pass', playerId: 'p1', roundId }, ctxAt(s.round!.startedAt + 1_000));
+    s = tick(s, ctxAt(s.phaseEndsAt));
+
+    expect(s.round?.outcome?.perPlayer.p1?.note).toBe('Passed');
+    expect(s.round?.outcome?.perPlayer.p2?.note).toBe('Ran out of time');
+  });
+
+  it('lets the other player still win it', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const startedAt = s.round!.startedAt;
+
+    s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_000));
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p1',
+        roundId,
+        evidenceId: 'a',
+        auto: { matched: true, confidence: 1, reason: 'ok' },
+      },
+      ctxAt(startedAt + 4_000),
+    );
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
+  });
+
+  it('refuses to pass twice', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const ctx = ctxAt(s.round!.startedAt + 1_000);
+
+    s = apply(s, { type: 'pass', playerId: 'p1', roundId }, ctx);
+    expect(expectError(s, { type: 'pass', playerId: 'p1', roundId }, ctx)).toBe('already-passed');
+  });
+
+  it('refuses to pass after answering', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const ctx = ctxAt(s.round!.startedAt + 1_000);
+
+    // A wrong answer leaves the round open, so there is still something to
+    // refuse: you do not get to answer and then take it back.
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p1',
+        roundId,
+        evidenceId: 'a',
+        auto: { matched: false, confidence: 0, reason: 'no' },
+      },
+      ctx,
+    );
+    expect(s.phase).toBe('challenge');
+    expect(expectError(s, { type: 'pass', playerId: 'p1', roundId }, ctx)).toBe('already-submitted');
+  });
+
+  it('is refused while the match is paused or between rounds', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const paused = apply(s, { type: 'setConnected', playerId: 'p2', connected: false }, ctxAt(5_000));
+    expect(expectError(paused, { type: 'pass', playerId: 'p1', roundId }, ctxAt(6_000))).toBe(
+      'match-paused',
+    );
+
+    s = tick(s, ctxAt(s.phaseEndsAt));
+    expect(s.phase).toBe('roundResult');
+    expect(expectError(s, { type: 'pass', playerId: 'p1', roundId }, ctxAt(9_000))).toBe(
+      'wrong-phase',
+    );
+  });
+
+  it('leaves a peer round with something to judge when only one passes', () => {
+    const pool = [PEER];
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const startedAt = s.round!.startedAt;
+
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(startedAt + 1_000, pool));
+    s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_500, pool));
+    expect(s.phase).toBe('judging');
+
+    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true }, ctxAt(startedAt + 3_000, pool));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
+  });
+});
