@@ -3,6 +3,7 @@ import type { PublicMatchState } from '@battle/shared';
 import type { MatchStore, StoreSnapshot } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { LIVE_FRAME_QUALITY, createLiveCapture } from '../media/capture.js';
+import { Announcer } from '../components/Announcer.jsx';
 import { ConnectionBadge, MuteButton, PausedOverlay } from '../components/Hud.jsx';
 import { useAnimationClock } from '../hooks/useNow.js';
 import { useMatchSound } from '../hooks/useMatchSound.js';
@@ -56,6 +57,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
 
   return (
     <div className="room">
+      <Announcer match={match} youId={youId} />
       <header className="room__bar">
         <span className="room__code mono" title="Room code">
           {match.roomCode}

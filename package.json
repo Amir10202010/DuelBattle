@@ -14,7 +14,7 @@
   "scripts": {
     "build": "npm run build -w @battle/shared && npm run build -w @battle/server && npm run build -w @battle/client",
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w @battle/server\" \"npm run dev -w @battle/client\"",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "tsc -p tsconfig.check.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

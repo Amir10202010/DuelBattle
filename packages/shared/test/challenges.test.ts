@@ -3,6 +3,7 @@ import {
   CHALLENGES,
   getChallenge,
   pickChallenge,
+  samplePrompts,
   validateCatalog,
   type Challenge,
   type JudgingMode,
@@ -73,7 +74,7 @@ describe('validateCatalog', () => {
 
   it('flags a peer challenge that carries a detector', () => {
     expect(
-      validateCatalog([{ ...base, detector: { kind: 'presence', minChange: 0.1 } }]),
+      validateCatalog([{ ...base, detector: { kind: 'coverage', minChange: 0.8 } }]),
     ).toContain('x: peer round must not carry a detector');
   });
 
@@ -140,5 +141,43 @@ describe('pickChallenge', () => {
     const a = pickChallenge({ used: [], roundNumber: 3, random: seeded });
     const b = pickChallenge({ used: [], roundNumber: 3, random: seeded });
     expect(a.id).toBe(b.id);
+  });
+});
+
+
+describe('samplePrompts', () => {
+  it('returns the number asked for', () => {
+    expect(samplePrompts(3)).toHaveLength(3);
+    expect(samplePrompts(1)).toHaveLength(1);
+  });
+
+  it('returns real prompts from the catalogue', () => {
+    const all = new Set(CHALLENGES.map((c) => c.prompt));
+    for (const prompt of samplePrompts(4)) expect(all.has(prompt)).toBe(true);
+  });
+
+  it('never repeats itself inside one sample', () => {
+    for (let i = 0; i < 200; i++) {
+      const sample = samplePrompts(4);
+      expect(new Set(sample).size).toBe(sample.length);
+    }
+  });
+
+  it('shows the range rather than four of the same kind', () => {
+    // A new player waiting in the lobby should not conclude the whole game is
+    // about colours.
+    for (let i = 0; i < 100; i++) {
+      const sample = samplePrompts(3);
+      const categories = sample.map(
+        (prompt) => CHALLENGES.find((c) => c.prompt === prompt)!.category,
+      );
+      expect(new Set(categories).size).toBe(categories.length);
+    }
+  });
+
+  it('survives a degenerate random source', () => {
+    expect(samplePrompts(3, () => 0)).toHaveLength(3);
+    expect(samplePrompts(3, () => 0.999999)).toHaveLength(3);
+    expect(samplePrompts(3, () => 1)).toHaveLength(3);
   });
 });

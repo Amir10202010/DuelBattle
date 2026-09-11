@@ -166,12 +166,19 @@ function PromptBand({
   const challenge = round ? getChallenge(round.challengeId) : null;
   const hidden = match.phase === 'countdown';
 
+  // What a full timer bar means, taken from the match rather than assumed.
   const totalMs = useMemo(() => {
-    if (match.phase === 'challenge') return challenge?.durationMs ?? 25_000;
-    if (match.phase === 'judging') return 15_000;
-    if (match.phase === 'roundResult') return 5_500;
-    return 3_200;
-  }, [match.phase, challenge]);
+    switch (match.phase) {
+      case 'challenge':
+        return challenge?.durationMs ?? match.settings.judgingMs;
+      case 'judging':
+        return match.settings.judgingMs;
+      case 'roundResult':
+        return match.settings.roundResultMs;
+      default:
+        return match.settings.countdownMs;
+    }
+  }, [match.phase, match.settings, challenge]);
 
   return (
     <header className={`prompt ${hidden ? 'prompt--hidden' : ''}`}>
@@ -187,7 +194,7 @@ function PromptBand({
         )}
       </div>
 
-      <h1 className="prompt__text display" aria-live="assertive">
+      <h1 className="prompt__text display">
         {hidden ? 'Get ready' : challenge?.prompt ?? '…'}
       </h1>
       {!hidden && challenge?.hint && <p className="prompt__hint dim">{challenge.hint}</p>}
@@ -251,7 +258,7 @@ function Countdown({ match, now }: { match: PublicMatchState; now: number }) {
   const remaining = Math.max(0, (match.phaseEndsAt ?? now) - now);
   const count = Math.ceil(remaining / 1000);
   return (
-    <div className="countdown" aria-live="assertive">
+    <div className="countdown" aria-hidden="true">
       <span key={count} className="countdown__num display">
         {count > 0 ? count : 'GO'}
       </span>

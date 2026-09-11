@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import type { PublicMatchState } from '@battle/shared';
+import { useCallback, useMemo, useState } from 'react';
+import { samplePrompts, type PublicMatchState } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
@@ -35,6 +35,8 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
         )}
       </div>
 
+      <Taster />
+
       <div className="lobby__controls">
         <ReadyBar store={store} match={match} youId={youId} hasOpponent={Boolean(opponent)} />
         {camera.devices.length > 1 && (
@@ -52,6 +54,21 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
           </select>
         )}
       </div>
+    </div>
+  );
+}
+
+/** What the game is about to ask, so nobody readies up blind. */
+function Taster() {
+  const prompts = useMemo(() => samplePrompts(3), []);
+  return (
+    <div className="taster">
+      <span className="eyebrow taster__label">Rounds look like</span>
+      <ul className="taster__list">
+        {prompts.map((prompt) => (
+          <li key={prompt}>{prompt}</li>
+        ))}
+      </ul>
     </div>
   );
 }

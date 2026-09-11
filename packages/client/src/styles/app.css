@@ -1313,3 +1313,51 @@
   color: var(--text-faint);
   border-style: dashed;
 }
+
+.taster {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-1);
+  min-width: 0;
+}
+
+.taster__label {
+  flex: none;
+}
+
+.taster__list {
+  display: flex;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.taster__list::-webkit-scrollbar {
+  display: none;
+}
+
+.taster__list li {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.taster__list li + li::before {
+  content: '·';
+  margin-right: var(--space-4);
+  color: var(--text-faint);
+}
+
+@media (max-width: 760px) {
+  .taster {
+    display: none;
+  }
+}

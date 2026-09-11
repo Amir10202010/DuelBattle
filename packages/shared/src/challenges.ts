@@ -259,6 +259,27 @@ export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): 
   return problems;
 }
 
+/**
+ * A few prompts that show the range of the game, for the lobby.
+ *
+ * Deliberately spread across categories rather than sampled at random: three
+ * colour rounds in a row would tell a new player the game is only about
+ * colours, which is the wrong expectation to set while they wait.
+ */
+export function samplePrompts(count = 3, random: RandomSource = Math.random): string[] {
+  const wanted: ChallengeCategory[] = ['color', 'story', 'action', 'object', 'wildcard'];
+  const picked: string[] = [];
+
+  for (const category of wanted) {
+    if (picked.length >= count) break;
+    const options = CHALLENGES.filter((c) => c.category === category);
+    if (options.length === 0) continue;
+    const choice = options[Math.min(options.length - 1, Math.floor(random() * options.length))];
+    if (choice) picked.push(choice.prompt);
+  }
+  return picked.slice(0, count);
+}
+
 export interface PickOptions {
   /** Challenge ids already played in this match. */
   used: readonly string[];

@@ -1,0 +1,27 @@
+{
+  // Type-checks everything, tests included. The per-package tsconfigs exist to
+  // emit build output and so deliberately exclude tests; without this, a test
+  // helper can drift out of sync with the types it claims to produce and
+  // nothing would say so.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "paths": {
+      "@battle/shared": ["./packages/shared/src/index.ts"],
+      "@battle/shared/validation": ["./packages/shared/src/validation.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx",
+    "packages/*/test/**/*.ts",
+    "packages/*/test/**/*.tsx",
+    "vitest.config.ts",
+    "eslint.config.js"
+  ],
+  "exclude": ["**/dist/**", "**/node_modules/**"]
+}
