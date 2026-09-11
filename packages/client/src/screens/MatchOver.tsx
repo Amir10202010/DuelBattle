@@ -24,6 +24,14 @@ function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kin
   const mine = outcome.perPlayer[youId];
   if (!mine) return { label: 'no answer', kind: 'missed' };
 
+  // A vetoed round has no winner and two explanations: one of you was rejected,
+  // and the other one is the reason it counted for nobody.
+  if (outcome.reason === 'vetoed') {
+    return mine.valid
+      ? { label: 'you said no', kind: 'rejected' }
+      : { label: 'voted down', kind: 'rejected' };
+  }
+
   if (mine.valid) {
     const theirs = outcome.winnerId ? outcome.perPlayer[outcome.winnerId] : undefined;
     if (mine.elapsedMs != null && theirs?.elapsedMs != null) {

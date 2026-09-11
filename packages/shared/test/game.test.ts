@@ -318,7 +318,8 @@ describe('peer rounds', () => {
     expect(s.round?.outcome?.reason).toBe('faster');
   });
 
-  it('hands the round to the only approved answer', () => {
+  it('gives a rejection no winner, so voting no never wins the round', () => {
+    // The whole point: p2 was slower and would have lost the race, and says no.
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
@@ -326,8 +327,40 @@ describe('peer rounds', () => {
     s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
     s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
     s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_100, pool));
-    expect(s.round?.outcome?.winnerId).toBe('p2');
-    expect(s.round?.outcome?.perPlayer.p1?.note).toBe('Rejected by your opponent');
+
+    expect(s.round?.outcome?.winnerId).toBeNull();
+    expect(s.round?.outcome?.reason).toBe('vetoed');
+    expect(s.players.p2?.score).toBe(0);
+    expect(s.players.p1?.score).toBe(0);
+    expect(s.round?.outcome?.perPlayer.p1?.note).toContain('Rejected by your opponent');
+    expect(s.round?.outcome?.perPlayer.p2?.note).toContain('You said no');
+  });
+
+  it('still credits the rejector a valid answer, it just wins them nothing', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_100, pool));
+
+    expect(s.round?.outcome?.perPlayer.p2?.valid).toBe(true);
+    expect(s.players.p2?.validAnswers).toBe(1);
+    expect(s.players.p2?.score).toBe(0);
+  });
+
+  it('voids the round when both of them say no', () => {
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
+    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false }, ctxAt(started + 3_100, pool));
+
+    expect(s.round?.outcome?.winnerId).toBeNull();
+    expect(s.round?.outcome?.reason).toBe('vetoed');
   });
 
   it('counts an abstention as approval so refusing to judge is never a tactic', () => {
@@ -349,20 +382,30 @@ describe('peer rounds', () => {
     expect(s.round?.outcome?.reason).toBe('no-submissions');
   });
 
-  it('refuses self-judging and votes for absent submissions', () => {
+  it('refuses self-judging', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
     s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = tick(s, ctxAt(s.phaseEndsAt, pool));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
     expect(s.phase).toBe('judging');
     const ctx = ctxAt(started + 5_000, pool);
     expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p1', approve: true }, ctx)).toBe(
       'cannot-vote-for-self',
     );
-    expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctx)).toBe(
-      'no-submission-to-judge',
-    );
+  });
+
+  it('settles without judging when only one of them answered', () => {
+    // Nobody is left who could cast a verdict: the person who sat the round out
+    // does not get a say, so there is nothing to wait fifteen seconds for.
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = tick(s, ctxAt(s.phaseEndsAt, pool));
+
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
   });
 
   it('refuses a second vote on the same submission', () => {
@@ -940,7 +983,9 @@ describe('passing on a round', () => {
     );
   });
 
-  it('leaves a peer round with something to judge when only one passes', () => {
+  it('does not let the player who passed judge the one who answered', () => {
+    // Passing is giving up on the round. Handing the person who gave up a veto
+    // over the person who did not is the cheapest denial in the game.
     const pool = [PEER];
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
@@ -948,9 +993,21 @@ describe('passing on a round', () => {
 
     s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(startedAt + 1_000, pool));
     s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_500, pool));
-    expect(s.phase).toBe('judging');
 
-    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true }, ctxAt(startedAt + 3_000, pool));
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
+  });
+
+  it('settles at once when the pass lands before the answer', () => {
+    // Same round, opposite order: it must not matter which action closed it.
+    const pool = [PEER];
+    let s = intoChallenge(seatedMatch(0, pool), pool);
+    const roundId = s.round!.id;
+    const startedAt = s.round!.startedAt;
+
+    s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_000, pool));
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(startedAt + 1_500, pool));
+
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBe('p1');
   });

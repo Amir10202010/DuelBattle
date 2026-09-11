@@ -415,7 +415,11 @@ function ActionRow({
             Yes
           </button>
         </div>
-        {alreadyVoted && <p className="actions__note dim">Verdict in. Waiting for theirs…</p>}
+        <p className="actions__note dim">
+          {alreadyVoted
+            ? 'Verdict in. Waiting for theirs…'
+            : 'Say no and the round counts for nobody — you included.'}
+        </p>
       </div>
     );
   }

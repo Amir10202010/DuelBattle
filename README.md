@@ -43,12 +43,29 @@ combination that cannot actually be decided:
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
 
+#### Why saying "no" cannot win you the round
+
+Your opponent is the only judge available for a prompt no camera can settle,
+and they are also the person who gains if you are marked invalid. Scored
+naively, "No" is the dominant move in every peer round: it turns a race you
+might lose into a win you cannot. So a rejection **voids the round for both
+players** — nobody scores. An honest rejection still stops a bogus answer from
+counting; it just costs the judge the round too, which is the thing that makes
+the verdict worth believing. The arena says so above the buttons before you
+press one.
+
+Two rules follow from the same idea. Judging only opens when **both** of you
+answered, so sitting a round out is never a way to deny a point you did not
+contest. And no verdict by the deadline counts as approval, so abstaining is
+never cheaper than judging.
+
 ### Giving up on a round
 
 Sometimes there is genuinely nothing purple in the room. A pass ends your part
 of the round immediately; if both of you pass, the round ends there rather than
 running another fifteen seconds of nobody doing anything. Your opponent can
-still win it after you have passed.
+still win it after you have passed — and on a peer round they win it outright,
+because passing forfeits your say as well as your answer.
 
 ### How long a match is
 

@@ -103,7 +103,9 @@ export type RoundReason =
   | 'only-valid'
   | 'both-failed'
   | 'both-perfect-tie'
-  | 'no-submissions';
+  | 'no-submissions'
+  /** Somebody rejected an answer, which voids the round for both players. */
+  | 'vetoed';
 
 export interface PlayerRoundResult {
   valid: boolean;
@@ -609,17 +611,12 @@ function submit(
   const seated = playersInSeatOrder(next);
   const everyoneAnswered = seated.every((p) => isDone(round, p.id));
 
-  if (round.judging === 'auto') {
-    const someoneMatched = Object.values(round.submissions).some((s) => s.auto?.matched);
-    if (everyoneAnswered) {
-      next = closeChallenge(next, ctx);
-    } else if (someoneMatched) {
-      // The race is won, but hold the door open for a photo finish. Only ever
-      // shortens the round: a late winner must not extend it.
-      next = { ...next, phaseEndsAt: Math.min(next.phaseEndsAt, ctx.now + PHOTO_FINISH_MS) };
-    }
-  } else if (everyoneAnswered) {
-    next = openJudging(next, ctx);
+  if (everyoneAnswered) {
+    next = closeChallenge(next, ctx);
+  } else if (round.judging === 'auto' && Object.values(round.submissions).some((s) => s.auto?.matched)) {
+    // The race is won, but hold the door open for a photo finish. Only ever
+    // shortens the round: a late winner must not extend it.
+    next = { ...next, phaseEndsAt: Math.min(next.phaseEndsAt, ctx.now + PHOTO_FINISH_MS) };
   }
 
   return { ok: true, state: bump(next) };
@@ -682,8 +679,7 @@ function vote(
   };
   let next: MatchState = { ...state, round };
 
-  const pending = Object.values(round.submissions).filter((s) => !s.peer);
-  if (pending.length === 0) next = resolveRound(next, ctx);
+  if (awaitingVerdict(next, round).length === 0) next = resolveRound(next, ctx);
 
   return { ok: true, state: bump(next) };
 }
@@ -776,8 +772,33 @@ function closeChallenge(state: MatchState, ctx: EngineContext): MatchState {
   if (!state.round) return state;
   if (state.round.judging === 'auto') return resolveRound(state, ctx);
 
-  const hasSubmissions = Object.keys(state.round.submissions).length > 0;
-  return hasSubmissions ? openJudging(state, ctx) : resolveRound(state, ctx);
+  // Opening judging when nobody is eligible to vote would be fifteen seconds of
+  // both players looking at a question neither of them can answer.
+  return awaitingVerdict(state, state.round).length > 0
+    ? openJudging(state, ctx)
+    : resolveRound(state, ctx);
+}
+
+/**
+ * The submissions that can still receive a verdict.
+ *
+ * Only your opponent judges you, and only if they answered the round
+ * themselves. That is the whole of "you do not get to judge a round you did
+ * not play": a submission whose judge passed or ran out of time is not waiting
+ * for anything, so the round is settled now and the person who sat it out
+ * never gets a say. Otherwise passing would be a free way to deny a point you
+ * never contested.
+ */
+function awaitingVerdict(state: MatchState, round: RoundState): PlayerId[] {
+  if (round.judging !== 'peer') return [];
+  return playersInSeatOrder(state)
+    .filter((player) => {
+      const submission = round.submissions[player.id];
+      if (!submission || submission.peer) return false;
+      const judge = opponentIdOf(state, player.id);
+      return judge !== null && round.submissions[judge] !== undefined;
+    })
+    .map((player) => player.id);
 }
 
 function openJudging(state: MatchState, ctx: EngineContext): MatchState {
@@ -791,6 +812,18 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
   const seated = playersInSeatOrder(state);
   const perPlayer: Record<PlayerId, PlayerRoundResult> = {};
   const valid: { id: PlayerId; elapsedMs: number }[] = [];
+
+  // A rejection voids the round for both players, including the one who cast
+  // it.
+  //
+  // Your opponent is the only judge available for a prompt no camera can
+  // settle, and they are also the person who gains when you are marked
+  // invalid. Left alone that makes "No" the dominant move in every peer round:
+  // it turns a race you might lose into a win you cannot. Voiding the round
+  // takes the prize away. An honest rejection still stops a bogus answer from
+  // scoring — it just costs the judge the round too, which is the thing that
+  // makes a verdict worth believing.
+  const vetoed = Object.values(round.submissions).some((s) => s.peer?.approve === false);
 
   for (const player of seated) {
     const submission = round.submissions[player.id];
@@ -808,18 +841,25 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
         : // No vote by the deadline counts as approval: abstaining should never
           // be a cheaper way to deny a point than actually judging.
           submission.peer?.approve ?? true;
+    const rejectedByThem = Object.values(round.submissions).some(
+      (s) => s.peer?.approve === false && s.peer.voterId === player.id,
+    );
 
     perPlayer[player.id] = {
       valid: isValid,
       elapsedMs: submission.elapsedMs,
-      note: isValid ? noteForValid(round.judging, submission) : noteForInvalid(round.judging, submission),
+      note: isValid
+        ? noteForValid(round.judging, submission, rejectedByThem)
+        : noteForInvalid(round.judging, submission),
     };
     if (isValid) valid.push({ id: player.id, elapsedMs: submission.elapsedMs });
   }
 
   let winnerId: PlayerId | null = null;
   let reason: RoundReason;
-  if (valid.length === 0) {
+  if (vetoed) {
+    reason = 'vetoed';
+  } else if (valid.length === 0) {
     reason = Object.keys(round.submissions).length === 0 ? 'no-submissions' : 'both-failed';
   } else if (valid.length === 1) {
     winnerId = valid[0]!.id;
@@ -865,15 +905,16 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
   return next;
 }
 
-function noteForValid(judging: JudgingMode, s: Submission): string {
+function noteForValid(judging: JudgingMode, s: Submission, youRejectedTheirs: boolean): string {
   if (judging === 'auto') return s.auto?.reason ?? 'Verified';
+  if (youRejectedTheirs) return 'You said no — the round counts for nobody';
   if (!s.peer) return 'Unjudged — counted as good';
   return 'Approved by your opponent';
 }
 
 function noteForInvalid(judging: JudgingMode, s: Submission): string {
   if (judging === 'auto') return s.auto?.reason ?? 'Not detected';
-  return 'Rejected by your opponent';
+  return 'Rejected by your opponent — the round counts for nobody';
 }
 
 function afterRoundResult(state: MatchState, ctx: EngineContext): MatchState {

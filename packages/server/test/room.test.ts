@@ -285,13 +285,29 @@ describe('evidence handling', () => {
     const { roundId } = intoChallenge(h, { withBaseline: false });
     h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
     h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
-    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: false }, 6_000);
+    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_000);
     h.room.handle(h.p2, { t: 'vote', roundId, targetId: h.p1, approve: true }, 6_100);
 
     const state = h.r1.state;
     expect(state.phase).toBe('roundResult');
     expect(state.round?.outcome?.winnerId).toBe(h.p1);
     expect(state.players[h.p1]?.score).toBe(1);
+  });
+
+  it('lets nobody score the round somebody rejected', () => {
+    const h = seated();
+    const { roundId } = intoChallenge(h, { withBaseline: false });
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+    // p2 was slower and would have lost. Saying no must not hand them the round.
+    h.room.handle(h.p2, { t: 'vote', roundId, targetId: h.p1, approve: false }, 6_000);
+    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_100);
+
+    const state = h.r1.state;
+    expect(state.phase).toBe('roundResult');
+    expect(state.round?.outcome?.winnerId).toBeNull();
+    expect(state.players[h.p1]?.score).toBe(0);
+    expect(state.players[h.p2]?.score).toBe(0);
   });
 
   it('refuses a vote on your own answer', () => {
