@@ -7,6 +7,7 @@ import {
   opponentOf,
   type DetectorSpec,
   type PublicMatchState,
+  type RoundJudging,
   type PublicPlayer,
 } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
@@ -197,12 +198,7 @@ function PromptBand({
         <span className="eyebrow">
           Round {round?.number ?? 1} · first to {match.settings.winTarget}
         </span>
-        {round?.judging === 'peer' && !hidden && (
-          <span className="badge badge--peer">Your opponent decides this one</span>
-        )}
-        {round?.judging === 'auto' && !hidden && (
-          <span className="badge badge--auto">Camera decides this one</span>
-        )}
+        {!hidden && round && <JudgeBadge judging={round.judging} />}
       </div>
 
       <h1 className="prompt__text display">
@@ -237,6 +233,17 @@ function PromptBand({
  * same 0..1 scale, so one meter renders a colour round, a "fill the frame"
  * round and a "black out the lens" round without knowing which is which.
  */
+/** Who is deciding this round, said plainly before it starts. */
+function JudgeBadge({ judging }: { judging: RoundJudging }) {
+  if (judging === 'auto') {
+    return <span className="badge badge--auto">Camera decides this one</span>;
+  }
+  if (judging === 'ai') {
+    return <span className="badge badge--ai">The AI judge decides this one</span>;
+  }
+  return <span className="badge badge--peer">Your opponent decides this one</span>;
+}
+
 function DetectionMeter({ detection, detector }: { detection: Detection; detector: DetectorSpec }) {
   const matched = detection.result?.matched ?? false;
   const progress = detection.result?.progress ?? 0;
@@ -320,8 +327,12 @@ function EvidenceShot({ image }: { image: string | undefined }) {
  * exhaustive so a new detector cannot ship without telling players how to aim
  * at it.
  */
-function aimingHint(detector: DetectorSpec | null): string {
-  if (!detector) return 'Show it clearly — your opponent has to be able to tell.';
+function aimingHint(detector: DetectorSpec | null, judging?: RoundJudging): string {
+  if (!detector) {
+    return judging === 'ai'
+      ? 'Show it clearly — the AI judge has to be able to see it.'
+      : 'Show it clearly — your opponent has to be able to tell.';
+  }
   switch (detector.kind) {
     case 'color':
     case 'colorPair':
@@ -394,9 +405,17 @@ function ActionRow({
           </button>
         </div>
         <p className="actions__note dim">
-          {matched ? 'The camera has it. Be quick.' : aimingHint(detector)}
+          {matched ? 'The camera has it. Be quick.' : aimingHint(detector, round.judging)}
           <span className="actions__key"> Space</span>
         </p>
+      </div>
+    );
+  }
+
+  if (match.phase === 'judging' && round?.aiPending) {
+    return (
+      <div className="actions actions--waiting">
+        <p className="actions__note">The AI judge is looking at both answers…</p>
       </div>
     );
   }

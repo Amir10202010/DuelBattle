@@ -38,14 +38,15 @@ export function announcementFor(match: PublicMatchState, youId: string): string 
         challenge.prompt,
         match.round?.judging === 'auto'
           ? 'The camera decides this one'
-          : 'Your opponent decides this one',
+          : match.round?.judging === 'ai'
+            ? 'The AI judge decides this one'
+            : 'Your opponent decides this one',
         challenge.hint,
       );
 
     case 'judging':
-      return opponent
-        ? `Judging. Does ${opponent.name}'s answer count?`
-        : 'Judging.';
+      if (match.round?.aiPending) return 'The AI judge is looking at both answers.';
+      return opponent ? `Judging. Does ${opponent.name}'s answer count?` : 'Judging.';
 
     case 'roundResult': {
       const outcome = match.round?.outcome;

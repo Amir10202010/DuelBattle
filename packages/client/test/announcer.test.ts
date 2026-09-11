@@ -38,6 +38,26 @@ describe('match narration', () => {
 
     const peer = announcementFor(publicMatch({ phase: 'challenge', round: round(PEER.id) }), 'p1');
     expect(peer).toContain('opponent decides');
+
+    const ai = announcementFor(
+      publicMatch({ phase: 'challenge', round: { ...round(PEER.id), judging: 'ai' as const } }),
+      'p1',
+    );
+    expect(ai).toContain('AI judge decides');
+  });
+
+  it('says the referee is looking rather than asking for a verdict', () => {
+    // Being asked "does their answer count?" while a referee is already
+    // deciding is a question with no button attached to it.
+    const said = announcementFor(
+      publicMatch({
+        phase: 'judging',
+        round: { ...round(PEER.id), judging: 'ai' as const, aiPending: true },
+      }),
+      'p1',
+    );
+    expect(said).toContain('AI judge is looking');
+    expect(said).not.toContain('Does');
   });
 
   it('never doubles the punctuation a reason already carries', () => {

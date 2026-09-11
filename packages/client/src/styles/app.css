@@ -551,6 +551,13 @@
   background: var(--seat-a-soft);
 }
 
+/* A third judge needs a third colour, or the badge stops carrying information. */
+.badge--ai {
+  color: var(--good);
+  border-color: rgba(87, 217, 138, 0.35);
+  background: rgba(87, 217, 138, 0.12);
+}
+
 .arena__stages {
   flex: 1;
   min-height: 0;
