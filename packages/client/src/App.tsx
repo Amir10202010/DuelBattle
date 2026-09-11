@@ -3,6 +3,7 @@ import { MatchStore } from './net/store.js';
 import { useCamera } from './media/useCamera.js';
 import { sound } from './media/sound.js';
 import { roomPath, useRoute } from './hooks/useRoute.js';
+import { useDocumentTitle } from './hooks/useDocumentTitle.js';
 import { Toasts } from './components/Hud.jsx';
 import { Home } from './screens/Home.jsx';
 import { Room } from './screens/Room.jsx';
@@ -15,6 +16,7 @@ export function App() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const camera = useCamera();
   const route = useRoute();
+  useDocumentTitle(snapshot.match, snapshot.you);
 
   // Browsers refuse to start an audio context outside a gesture, and every cue
   // in the game fires from a state transition rather than a click. One listener
