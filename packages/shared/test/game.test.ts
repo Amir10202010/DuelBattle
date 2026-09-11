@@ -509,8 +509,14 @@ describe('peer rounds', () => {
 });
 
 describe('match lifecycle', () => {
-  function winRound(state: MatchState, winner: 'p1' | 'p2', at: number): MatchState {
-    const live = state.phase === 'countdown' ? tick(state, ctxAt(state.phaseEndsAt)) : state;
+  function winRound(
+    state: MatchState,
+    winner: 'p1' | 'p2',
+    at: number,
+    pool?: readonly Challenge[],
+  ): MatchState {
+    const ctx = (now: number) => (pool ? ctxAt(now, pool) : ctxAt(now));
+    const live = state.phase === 'countdown' ? tick(state, ctx(state.phaseEndsAt)) : state;
     const submitted = apply(
       live,
       {
@@ -520,10 +526,10 @@ describe('match lifecycle', () => {
         evidenceId: `e-${winner}-${live.round!.number}`,
         auto: { matched: true, confidence: 1, reason: 'ok' },
       },
-      ctxAt(live.round!.startedAt + at),
+      ctx(live.round!.startedAt + at),
     );
     // The photo-finish window closes on the next tick.
-    return tick(submitted, ctxAt(submitted.phaseEndsAt));
+    return tick(submitted, ctx(submitted.phaseEndsAt));
   }
 
   it('runs rounds back to back until the target is reached', () => {
@@ -570,6 +576,34 @@ describe('match lifecycle', () => {
     expect(s.winnerId).toBeNull();
     // Camera state survives a rematch: nobody should re-grant permission.
     expect(s.players.p1?.cameraReady).toBe(true);
+  });
+
+  it('does not deal the rematch the deck they have just put down', () => {
+    // Enough of a deck that avoiding the last match is actually possible.
+    const deck = Array.from({ length: 8 }, (_, i) => ({
+      ...AUTO,
+      id: `deck-${i}`,
+      prompt: `SHOW SOMETHING NUMBER ${i}`,
+    }));
+    let s = seatedMatch(0, deck);
+    for (let i = 0; i < 3; i++) {
+      s = winRound(s, 'p1', 1_000, deck);
+      s = tick(s, ctxAt(s.phaseEndsAt, deck));
+    }
+    expect(s.phase).toBe('matchResult');
+    const justPlayed = [...s.recentChallengeIds];
+    expect(justPlayed.length).toBe(3);
+
+    s = apply(s, { type: 'rematch', playerId: 'p1' }, ctxAt(500_000, deck));
+    s = apply(s, { type: 'rematch', playerId: 'p2' }, ctxAt(500_100, deck));
+    // The in-match list is cleared; the room's memory of them is not.
+    expect(s.playedChallengeIds).toEqual([]);
+    expect(s.recentChallengeIds).toEqual(justPlayed);
+
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctxAt(500_200, deck));
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctxAt(500_201, deck));
+    expect(s.round).not.toBeNull();
+    expect(justPlayed).not.toContain(s.round?.challengeId);
   });
 
   it('ends in a draw only after sudden death is exhausted', () => {

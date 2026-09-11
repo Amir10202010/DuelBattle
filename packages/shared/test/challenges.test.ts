@@ -178,6 +178,37 @@ describe('pickChallenge', () => {
 });
 
 
+describe('pickChallenge and what a room has seen lately', () => {
+  it('reaches past the prompts the room just played', () => {
+    const recent = CHALLENGES.slice(0, 20).map((c) => c.id);
+    for (let i = 0; i < 200; i++) {
+      const picked = pickChallenge({ used: [], avoid: recent, roundNumber: 4 });
+      expect(recent).not.toContain(picked.id);
+    }
+  });
+
+  it('plays a seen prompt rather than let round one stop being camera-judged', () => {
+    // Every auto challenge is in the avoid list. The opener matters more than
+    // the freshness, so the freshness is what gives.
+    const allAuto = CHALLENGES.filter((c) => c.judging === 'auto').map((c) => c.id);
+    for (let i = 0; i < 100; i++) {
+      const picked = pickChallenge({ used: [], avoid: allAuto, roundNumber: 1 });
+      expect(picked.judging).toBe('auto');
+    }
+  });
+
+  it('still refuses to repeat inside the match it is playing', () => {
+    // `used` is the hard rule; `avoid` is the soft one, and they do not trade.
+    const used = CHALLENGES.filter((c) => c.judging === 'peer')
+      .slice(0, 30)
+      .map((c) => c.id);
+    for (let i = 0; i < 200; i++) {
+      const picked = pickChallenge({ used, avoid: [], roundNumber: 5 });
+      expect(used).not.toContain(picked.id);
+    }
+  });
+});
+
 describe('samplePrompts', () => {
   it('returns the number asked for', () => {
     expect(samplePrompts(3)).toHaveLength(3);

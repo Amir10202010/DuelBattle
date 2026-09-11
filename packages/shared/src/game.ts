@@ -35,6 +35,9 @@ export interface MatchSettings {
  * window lets both answers land so the round is decided on elapsed time and the
  * loser is told they were slower, which is what actually happened.
  */
+/** How many recent prompts a room remembers between matches. */
+const RECENT_CHALLENGE_MEMORY = 20;
+
 export const PHOTO_FINISH_MS = 500;
 
 /**
@@ -158,6 +161,15 @@ export interface MatchState {
   round: RoundState | null;
   roundNumber: number;
   playedChallengeIds: string[];
+  /**
+   * Prompts this room has played lately, across matches.
+   *
+   * `playedChallengeIds` empties on a rematch, which is exactly when repetition
+   * is most obvious: the same two people, the same room, the deck they have
+   * this second put down. This one survives, so the picker has a reason to
+   * reach for something else.
+   */
+  recentChallengeIds: string[];
   recentModes: JudgingMode[];
   history: RoundOutcome[];
   /** Prompts the players wrote themselves, drawn alongside the catalogue. */
@@ -257,6 +269,7 @@ export function createMatch(
     round: null,
     roundNumber: 0,
     playedChallengeIds: [],
+    recentChallengeIds: [],
     recentModes: [],
     history: [],
     customChallenges: [],
@@ -710,6 +723,7 @@ function rematch(state: MatchState, playerId: PlayerId, ctx: EngineContext): Res
 function startRound(state: MatchState, ctx: EngineContext): MatchState {
   const challenge = pickChallenge({
     used: state.playedChallengeIds,
+    avoid: state.recentChallengeIds,
     roundNumber: state.roundNumber + 1,
     recentModes: state.recentModes,
     ...(ctx.random ? { random: ctx.random } : {}),
@@ -736,6 +750,9 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
     round,
     roundNumber,
     playedChallengeIds: [...state.playedChallengeIds, challenge.id],
+    // One long match is fifteen rounds, so a window of twenty covers the match
+    // just played and a little either side of it.
+    recentChallengeIds: [...state.recentChallengeIds, challenge.id].slice(-RECENT_CHALLENGE_MEMORY),
     recentModes: [...state.recentModes, challenge.judging].slice(-4),
     players: Object.fromEntries(
       Object.entries(state.players).map(([id, p]) => [id, { ...p, ready: false }]),
@@ -984,6 +1001,7 @@ function resetForRematch(state: MatchState, _ctx: EngineContext): MatchState {
     round: null,
     roundNumber: 0,
     playedChallengeIds: [],
+    // recentChallengeIds deliberately survives: it is the whole point.
     recentModes: [],
     history: [],
     winnerId: null,

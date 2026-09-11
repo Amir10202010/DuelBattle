@@ -69,6 +69,19 @@ left, which is all it is for. Without that, a rejected answer came back to life
 on an abstention, and a verified one could be voted away by whoever was about
 to lose to it.
 
+### What the room remembers
+
+The picker never repeats a prompt inside a match, always opens on a
+camera-judged one, never runs three peer rounds back to back, and ramps
+difficulty. It also remembers the last twenty prompts the *room* played, across
+matches — because the moment repetition is most obvious is a rematch, where the
+same two people are handed the deck they have just put down. Simulated over
+3,000 rematches, that memory took repeats from the previous match from 1.70 per
+nine rounds to 0.00, with round one still camera-judged every time.
+
+It is a preference, not a rule: if honouring it would cost the opener its
+detector, the opener wins and you play a prompt you have seen.
+
 ### Giving up on a round
 
 Sometimes there is genuinely nothing purple in the room. A pass ends your part

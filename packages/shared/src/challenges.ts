@@ -382,6 +382,11 @@ export interface PickOptions {
   roundNumber: number;
   /** Judging modes of the previous rounds, most recent last. */
   recentModes?: readonly JudgingMode[];
+  /**
+   * Played in a recent match in this room. A reason to pick something else,
+   * never a reason to break the rules above it.
+   */
+  avoid?: readonly string[];
   random?: RandomSource;
   pool?: readonly Challenge[];
 }
@@ -413,6 +418,17 @@ export function pickChallenge(opts: PickOptions): Challenge {
   if (opts.roundNumber <= 1 || lastTwoArePeer) {
     const autos = candidates.filter((c) => c.judging === 'auto');
     if (autos.length > 0) candidates = autos;
+  }
+
+  // Two people who just finished a match and hit rematch should not be handed
+  // the deck they have this second put down. Soft, and applied after the mode
+  // rule so it can never cost round one its camera-judged opener: if every
+  // candidate left is one they have seen, they play it again rather than the
+  // round changing shape.
+  if (opts.avoid?.length) {
+    const seen = new Set(opts.avoid);
+    const fresh = candidates.filter((c) => !seen.has(c.id));
+    if (fresh.length > 0) candidates = fresh;
   }
 
   const targetDifficulty = opts.roundNumber <= 1 ? 1 : opts.roundNumber <= 3 ? 2 : 3;
