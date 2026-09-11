@@ -404,26 +404,15 @@ function ActionRow({
   if (match.phase === 'judging' && round && opponent) {
     const theirs = round.submissions[opponent.id];
     const alreadyVoted = Boolean(theirs?.peer);
-    if (theirs && !theirs.needsVerdict && !theirs.peer) {
-      // The camera read their frame before the round fell back to judging.
-      // Asking anyway would be theatre: the vote would not be accepted.
+    // Judging only opens when both of you answered, so their answer is here.
+    // What varies is whether anybody is being asked about it: a frame the
+    // camera read before the round fell back is already settled, and asking
+    // would be theatre -- the vote would not be accepted.
+    if (theirs && !theirs.needsVerdict && !alreadyVoted) {
       return (
         <div className="actions actions--waiting">
           <p className="actions__note">
             The camera settled {opponent.name}&rsquo;s answer. Waiting on their verdict for yours…
-          </p>
-        </div>
-      );
-    }
-    if (!theirs) {
-      // Nothing of theirs to judge. Which of the two ways that happened matters
-      // to the person reading it: passing is a choice, the clock is not.
-      return (
-        <div className="actions actions--waiting">
-          <p className="actions__note">
-            {opponent.passed
-              ? `${opponent.name} passed. Waiting on their verdict for yours…`
-              : `${opponent.name} ran out of time. Waiting on their verdict for yours…`}
           </p>
         </div>
       );
