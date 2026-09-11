@@ -59,6 +59,16 @@ answered, so sitting a round out is never a way to deny a point you did not
 contest. And no verdict by the deadline counts as approval, so abstaining is
 never cheaper than judging.
 
+#### When a camera-judged round falls back
+
+An auto round downgrades to peer judging when the server cannot read *a* frame
+— usually a baseline that never arrived. The frames it *could* read are already
+settled: their verdict stands, nobody is asked to vote on them, and a vote on
+one is refused rather than recorded. Peer judging fills the gap the camera
+left, which is all it is for. Without that, a rejected answer came back to life
+on an abstention, and a verified one could be voted away by whoever was about
+to lose to it.
+
 ### Giving up on a round
 
 Sometimes there is genuinely nothing purple in the room. A pass ends your part

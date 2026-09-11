@@ -67,14 +67,18 @@ function seated(): Harness {
  */
 function intoChallenge(
   h: Harness,
-  opts: { at?: number; withBaseline?: boolean } = {},
+  opts: { at?: number; withBaseline?: boolean | 'p1Only' } = {},
 ): { roundId: string; detector: DetectorSpec | null } {
   const at = opts.at ?? 4_000;
   h.room.handle(h.p1, { t: 'ready', ready: true }, 100);
   h.room.handle(h.p2, { t: 'ready', ready: true }, 100);
   if (opts.withBaseline !== false) {
     h.room.handle(h.p1, { t: 'frame', image: emptyRoomFrame(), seq: 1 }, 200);
-    h.room.handle(h.p2, { t: 'frame', image: emptyRoomFrame(), seq: 1 }, 200);
+    // 'p1Only' is the lopsided case: one camera was readable and the other was
+    // not, which is what makes a round fall back to judging half-decided.
+    if (opts.withBaseline !== 'p1Only') {
+      h.room.handle(h.p2, { t: 'frame', image: emptyRoomFrame(), seq: 1 }, 200);
+    }
   }
   h.room.tick(at);
 
@@ -308,6 +312,29 @@ describe('evidence handling', () => {
     expect(state.round?.outcome?.winnerId).toBeNull();
     expect(state.players[h.p1]?.score).toBe(0);
     expect(state.players[h.p2]?.score).toBe(0);
+  });
+
+  it('keeps the camera’s verdict when only one frame could be read', () => {
+    const h = seated();
+    const { roundId, detector } = intoChallenge(h, { withBaseline: 'p1Only' });
+    // p1 is readable and gets it wrong; p2 has no baseline, so the round falls
+    // back to judging with p1 already decided.
+    h.room.handle(h.p1, { t: 'submit', roundId, image: failingFrameFor(detector!) }, 5_000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+    expect(h.r1.state.phase).toBe('judging');
+    expect(h.r1.state.round?.submissions[h.p1]?.needsVerdict).toBe(false);
+    expect(h.r1.state.round?.submissions[h.p2]?.needsVerdict).toBe(true);
+
+    // p2 cannot vote p1's failed answer back into the round, and p1 approving
+    // p2 leaves p2 the only valid answer.
+    h.room.handle(h.p2, { t: 'vote', roundId, targetId: h.p1, approve: true }, 6_000);
+    expect(h.r2.ofType('error').at(-1)?.message).toMatch(/camera already settled/i);
+    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_100);
+
+    const state = h.r1.state;
+    expect(state.phase).toBe('roundResult');
+    expect(state.round?.outcome?.perPlayer[h.p1]?.valid).toBe(false);
+    expect(state.round?.outcome?.winnerId).toBe(h.p2);
   });
 
   it('refuses a vote on your own answer', () => {
