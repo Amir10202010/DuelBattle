@@ -1,27 +1,53 @@
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 
 // React requires this flag before it will let `act` drive updates.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+export interface HookHandle<T> {
+  current: T;
+  /** Runs an imperative call from the hook and settles everything it triggers. */
+  run(fn: () => void): Promise<void>;
+  /** Settles pending effects and microtasks without doing anything else. */
+  flush(): Promise<void>;
+  unmount(): void;
+}
 
 /**
  * The smallest possible hook harness: renders a hook into a detached root and
  * exposes its latest return value. Enough for hooks that have no UI of their
  * own, without pulling in a testing library.
  */
-export function renderHook<T>(hook: () => T): { current: T } {
-  const result = { current: undefined as T };
+export function renderHook<T>(hook: () => T): HookHandle<T> {
+  const handle = { current: undefined as T } as HookHandle<T>;
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const root = createRoot(container);
+  let root: Root;
 
   function Probe() {
-    result.current = hook();
+    handle.current = hook();
     return null;
   }
 
   act(() => {
+    root = createRoot(container);
     root.render(<Probe />);
   });
-  return result;
+
+  const settle = async (fn?: () => void) => {
+    await act(async () => {
+      fn?.();
+      // Two turns: one for the promise the call made, one for the state update
+      // its resolution schedules.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+  handle.run = (fn: () => void) => settle(fn);
+  handle.flush = () => settle();
+  handle.unmount = () => {
+    act(() => root.unmount());
+    container.remove();
+  };
+  return handle;
 }
