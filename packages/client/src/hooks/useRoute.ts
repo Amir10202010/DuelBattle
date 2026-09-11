@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { isValidRoomCode, normalizeRoomCode } from '@battle/shared';
+import { extractRoomCode } from '@battle/shared';
 
 export interface Route {
   /** Room code from the URL, if this is a shareable room link. */
@@ -9,8 +9,13 @@ export interface Route {
 function parse(pathname: string): Route {
   const match = /^\/r\/([^/]+)\/?$/.exec(pathname);
   if (!match) return { code: null };
-  const code = normalizeRoomCode(decodeURIComponent(match[1] ?? ''));
-  return { code: isValidRoomCode(code) ? code : null };
+  let segment: string;
+  try {
+    segment = decodeURIComponent(match[1] ?? '');
+  } catch {
+    return { code: null };
+  }
+  return { code: extractRoomCode(segment) };
 }
 
 /**

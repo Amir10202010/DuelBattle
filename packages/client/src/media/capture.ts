@@ -13,24 +13,45 @@ export const EVIDENCE_HEIGHT = 360;
 export const LIVE_FRAME_QUALITY = 0.6;
 export const EVIDENCE_QUALITY = 0.78;
 
-/** Draws the largest centred 4:3 crop of the source into the whole canvas. */
+export interface Crop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The largest centred crop of a source frame that matches the target aspect
+ * ratio. Shared by all three capture sizes, which is what guarantees the
+ * detector, the opponent's view and the stored evidence all show the same thing.
+ */
+export function coverCrop(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+): Crop {
+  const targetAspect = targetWidth / targetHeight;
+  const sourceAspect = sourceWidth / sourceHeight;
+
+  const width = sourceAspect > targetAspect ? sourceHeight * targetAspect : sourceWidth;
+  const height = sourceAspect > targetAspect ? sourceHeight : sourceWidth / targetAspect;
+  return {
+    x: (sourceWidth - width) / 2,
+    y: (sourceHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
 function drawCover(
   ctx: CanvasRenderingContext2D,
   video: HTMLVideoElement,
   width: number,
   height: number,
 ): void {
-  const sw = video.videoWidth;
-  const sh = video.videoHeight;
-  const targetAspect = width / height;
-  const sourceAspect = sw / sh;
-
-  let cropW = sw;
-  let cropH = sh;
-  if (sourceAspect > targetAspect) cropW = sh * targetAspect;
-  else cropH = sw / targetAspect;
-
-  ctx.drawImage(video, (sw - cropW) / 2, (sh - cropH) / 2, cropW, cropH, 0, 0, width, height);
+  const crop = coverCrop(video.videoWidth, video.videoHeight, width, height);
+  ctx.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, width, height);
 }
 
 export function isVideoReady(video: HTMLVideoElement | null): video is HTMLVideoElement {

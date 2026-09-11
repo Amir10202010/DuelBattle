@@ -2,6 +2,19 @@ import type { ClientMessage, ServerMessage } from '@battle/shared';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'offline';
 
+/**
+ * The surface the store depends on. Narrow on purpose: it lets the store be
+ * driven by a scripted server in tests without a socket anywhere in sight.
+ */
+export interface GameConnection {
+  on<K extends keyof ConnectionEvents>(event: K, handler: ConnectionEvents[K]): void;
+  connect(): void;
+  close(): void;
+  send(message: ClientMessage): void;
+  readonly latencyMs: number | null;
+  serverNow(): number;
+}
+
 export interface ConnectionEvents {
   message(message: ServerMessage): void;
   status(status: ConnectionStatus): void;
@@ -28,7 +41,7 @@ function socketUrl(): string {
  * running estimate of the offset between this browser's clock and the server's,
  * so every countdown on screen is drawn against server time.
  */
-export class Connection {
+export class Connection implements GameConnection {
   private socket: WebSocket | null = null;
   private status: ConnectionStatus = 'connecting';
   private attempts = 0;

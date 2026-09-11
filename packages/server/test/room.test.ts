@@ -19,6 +19,14 @@ function hexToRgb(hex: string): Rgb {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/**
+ * Round one draws a random colour, so "hold up the wrong thing" has to be
+ * derived from the colour that was actually asked for.
+ */
+function wrongColourFor(target: ColorKey): Rgb {
+  return target === 'blue' || target === 'black' ? [206, 32, 32] : BLUE;
+}
+
 class Recorder {
   readonly messages: ServerMessage[] = [];
   readonly send = (m: ServerMessage) => {
@@ -190,10 +198,12 @@ describe('auto-judged rounds', () => {
   it('rejects the wrong colour even though the client cannot claim otherwise', () => {
     const h = seated();
     const { roundId, target } = intoChallenge(h);
-    // Deliberately pick a colour the round did not ask for.
-    const wrong: Rgb = target === 'blue' ? [206, 32, 32] : BLUE;
 
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(wrong) }, 5_500);
+    h.room.handle(
+      h.p1,
+      { t: 'submit', roundId, image: heldObjectFrame(wrongColourFor(target)) },
+      5_500,
+    );
     const state = h.r1.state;
     expect(state.phase).toBe('challenge');
     expect(state.players[h.p1]?.submitted).toBe(true);
@@ -202,8 +212,12 @@ describe('auto-judged rounds', () => {
 
   it('does not reveal a verdict while the round is still live', () => {
     const h = seated();
-    const { roundId } = intoChallenge(h);
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_500);
+    const { roundId, target } = intoChallenge(h);
+    h.room.handle(
+      h.p1,
+      { t: 'submit', roundId, image: heldObjectFrame(wrongColourFor(target)) },
+      5_500,
+    );
     const seenByOpponent = h.r2.state;
     expect(seenByOpponent.phase).toBe('challenge');
     expect(seenByOpponent.round?.submissions).toEqual({});

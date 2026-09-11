@@ -29,6 +29,10 @@ export function generateRoomCode(random: RandomSource = defaultRandom): string {
 /**
  * Folds user input onto the canonical alphabet: upper-cases, drops separators
  * (spaces, dashes) and applies the Crockford substitutions.
+ *
+ * Deliberately does not truncate. A code of the wrong length is wrong, and
+ * trimming it would quietly turn a mistyped link into a valid one for somebody
+ * else's room.
  */
 export function normalizeRoomCode(input: string): string {
   return input
@@ -36,8 +40,18 @@ export function normalizeRoomCode(input: string): string {
     .replace(/[^0-9A-Z]/g, '')
     .replace(/[IL]/g, '1')
     .replace(/O/g, '0')
-    .replace(/U/g, 'V')
-    .slice(0, ROOM_CODE_LENGTH);
+    .replace(/U/g, 'V');
+}
+
+/**
+ * Pulls a room code out of whatever the player has to hand: the code itself, or
+ * a full invite link they pasted. Returns null unless the result is a code that
+ * could actually exist.
+ */
+export function extractRoomCode(input: string): string | null {
+  const fromLink = /\/r\/([^/?#\s]+)/i.exec(input);
+  const candidate = normalizeRoomCode(fromLink?.[1] ?? input);
+  return isValidRoomCode(candidate) ? candidate : null;
 }
 
 export function isValidRoomCode(code: string): boolean {

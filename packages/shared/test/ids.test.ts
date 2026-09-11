@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ROOM_CODE_LENGTH,
+  extractRoomCode,
   generateRoomCode,
   isValidRoomCode,
   normalizeRoomCode,
@@ -33,7 +34,13 @@ describe('room codes', () => {
     expect(normalizeRoomCode('lo1ab')).toBe('101AB');
     expect(normalizeRoomCode('iIoO')).toBe('1100');
     expect(normalizeRoomCode('uu')).toBe('VV');
-    expect(normalizeRoomCode('abcdefgh')).toBe('ABCDE');
+  });
+
+  it('does not truncate a too-long code into a valid one', () => {
+    // 'ABCDEFGH' must not quietly become 'ABCDE' and drop someone into a room
+    // they were never invited to.
+    expect(normalizeRoomCode('abcdefgh')).toBe('ABCDEFGH');
+    expect(isValidRoomCode(normalizeRoomCode('abcdefgh'))).toBe(false);
   });
 
   it('rejects malformed codes', () => {
@@ -42,6 +49,26 @@ describe('room codes', () => {
     expect(isValidRoomCode('ABCDEF')).toBe(false);
     expect(isValidRoomCode('ABCDI')).toBe(false);
     expect(isValidRoomCode('abcde')).toBe(false);
+  });
+});
+
+describe('extractRoomCode', () => {
+  it('accepts a bare code however it was typed', () => {
+    expect(extractRoomCode('AB12C')).toBe('AB12C');
+    expect(extractRoomCode(' ab-12c ')).toBe('AB12C');
+  });
+
+  it('accepts a pasted invite link', () => {
+    expect(extractRoomCode('https://battle.example/r/AB12C')).toBe('AB12C');
+    expect(extractRoomCode('http://localhost:5173/r/ab12c')).toBe('AB12C');
+    expect(extractRoomCode('come play: https://battle.example/r/AB12C?utm=x')).toBe('AB12C');
+  });
+
+  it('returns null rather than guessing', () => {
+    expect(extractRoomCode('')).toBeNull();
+    expect(extractRoomCode('ABC')).toBeNull();
+    expect(extractRoomCode('ABCDEFGH')).toBeNull();
+    expect(extractRoomCode('https://battle.example/')).toBeNull();
   });
 });
 

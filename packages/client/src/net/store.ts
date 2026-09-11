@@ -3,7 +3,7 @@ import {
   type PublicMatchState,
   type ServerMessage,
 } from '@battle/shared';
-import { Connection, type ConnectionStatus } from './connection.js';
+import { Connection, type ConnectionStatus, type GameConnection } from './connection.js';
 
 export interface Toast {
   id: number;
@@ -160,12 +160,12 @@ export class MatchStore {
   private snapshot: StoreSnapshot = EMPTY;
   private readonly listeners = new Set<() => void>();
   private readonly frameListeners = new Set<(image: string, playerId: string) => void>();
-  private readonly connection: Connection;
+  private readonly connection: GameConnection;
   private intent: Intent | null = null;
   private nextToastId = 1;
   private toastTimers = new Set<number>();
 
-  constructor(connection = new Connection()) {
+  constructor(connection: GameConnection = new Connection()) {
     this.connection = connection;
     connection.on('status', (status) => {
       this.patch({ status, latencyMs: connection.latencyMs });

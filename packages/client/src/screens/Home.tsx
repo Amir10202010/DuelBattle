@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { MAX_NAME_LENGTH, ROOM_CODE_LENGTH, isValidRoomCode, normalizeRoomCode } from '@battle/shared';
+import {
+  MAX_NAME_LENGTH,
+  ROOM_CODE_LENGTH,
+  extractRoomCode,
+  isValidRoomCode,
+  normalizeRoomCode,
+} from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import { recoverableSession, rememberedName } from '../net/store.js';
 
@@ -151,11 +157,15 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
                   autoCapitalize="characters"
                   autoCorrect="off"
                   spellCheck={false}
-                  maxLength={ROOM_CODE_LENGTH}
                   placeholder="ABCDE"
                   enterKeyHint="go"
                   onChange={(e) => {
-                    setCode(normalizeRoomCode(e.target.value));
+                    // Pasting the whole invite link is at least as likely as
+                    // typing five characters, so accept either.
+                    const raw = e.target.value;
+                    setCode(
+                      extractRoomCode(raw) ?? normalizeRoomCode(raw).slice(0, ROOM_CODE_LENGTH),
+                    );
                     store.clearJoinError();
                   }}
                   onKeyDown={(e) => e.key === 'Enter' && submitJoin()}
