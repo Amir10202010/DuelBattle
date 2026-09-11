@@ -1,4 +1,4 @@
-import type { PublicMatchState, PublicPlayer } from '@battle/shared';
+import type { PublicMatchState, PublicPlayer, RoundOutcome } from '@battle/shared';
 
 export function player(overrides: Partial<PublicPlayer> & { id: string }): PublicPlayer {
   return {
@@ -48,6 +48,19 @@ export function publicMatch(overrides: Partial<PublicMatchState> = {}): PublicMa
     winnerId: null,
     endReason: null,
     version: 1,
+    ...overrides,
+  };
+}
+
+export function outcome(overrides: Partial<RoundOutcome> = {}): RoundOutcome {
+  return {
+    roundId: 'r1',
+    roundNumber: 1,
+    challengeId: 'color-red',
+    judging: 'auto',
+    winnerId: null,
+    reason: 'both-failed',
+    perPlayer: {},
     ...overrides,
   };
 }

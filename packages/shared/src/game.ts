@@ -88,6 +88,8 @@ export interface PlayerRoundResult {
 }
 
 export interface RoundOutcome {
+  /** Lets the recap find the snapshots that were taken for this round. */
+  roundId: string;
   roundNumber: number;
   challengeId: string;
   judging: JudgingMode;
@@ -712,6 +714,7 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
   }
 
   const outcome: RoundOutcome = {
+    roundId: round.id,
     roundNumber: round.number,
     challengeId: round.challengeId,
     judging: round.judging,

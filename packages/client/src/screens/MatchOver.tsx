@@ -6,10 +6,12 @@ interface MatchOverProps {
   store: MatchStore;
   match: PublicMatchState;
   youId: string;
+  /** `${roundId}:${playerId}` -> JPEG data URL, as collected during the match. */
+  evidence: Record<string, string>;
   onLeave: () => void;
 }
 
-export function MatchOver({ store, match, youId, onLeave }: MatchOverProps) {
+export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverProps) {
   const you = match.players[youId] ?? null;
   const opponentId = match.seats.find((id) => id && id !== youId) ?? null;
   const opponent = opponentId ? match.players[opponentId] ?? null : null;
@@ -58,6 +60,8 @@ export function MatchOver({ store, match, youId, onLeave }: MatchOverProps) {
           );
         })}
       </div>
+
+      <Filmstrip match={match} youId={youId} evidence={evidence} />
 
       {match.history.length > 0 && (
         <ol className="recap" aria-label="Round by round">
@@ -111,5 +115,55 @@ export function MatchOver({ store, match, youId, onLeave }: MatchOverProps) {
         </p>
       )}
     </main>
+  );
+}
+
+/**
+ * The story of the match, in the shots that won it.
+ *
+ * The server only keeps the round it is judging; these are the copies this
+ * client was sent as each round resolved. It is the one moment in the game
+ * worth looking back at, and a table of prompts is not it.
+ */
+function Filmstrip({
+  match,
+  youId,
+  evidence,
+}: {
+  match: PublicMatchState;
+  youId: string;
+  evidence: Record<string, string>;
+}) {
+  const shots = match.history
+    .filter((outcome) => outcome.winnerId !== null)
+    .map((outcome) => ({
+      outcome,
+      image: evidence[`${outcome.roundId}:${outcome.winnerId}`],
+      challenge: getChallenge(outcome.challengeId) ?? null,
+      custom: match.customChallenges.find((c) => c.id === outcome.challengeId) ?? null,
+    }))
+    .filter((shot) => Boolean(shot.image));
+
+  if (shots.length === 0) return null;
+
+  return (
+    <ol className="filmstrip" aria-label="Winning answers">
+      {shots.map(({ outcome, image, challenge, custom }) => {
+        const winner = outcome.winnerId ? match.players[outcome.winnerId] : undefined;
+        const prompt = challenge?.prompt ?? custom?.prompt ?? '';
+        return (
+          <li
+            key={outcome.roundId}
+            className={`filmstrip__shot ${outcome.winnerId === youId ? 'is-yours' : ''}`}
+          >
+            <img src={image} alt={`${winner?.name ?? 'Winner'}: ${prompt}`} loading="lazy" />
+            <span className="filmstrip__prompt">{prompt}</span>
+            <span className="filmstrip__winner">
+              {outcome.winnerId === youId ? 'You' : (winner?.name ?? 'Them')}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

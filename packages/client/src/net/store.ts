@@ -45,6 +45,14 @@ interface StoredSession {
 const SESSION_KEY = 'battle.sessions.v2';
 const NAME_KEY = 'battle.name.v1';
 const TOAST_MS = 4_000;
+/**
+ * Snapshots the client keeps, for the end-of-match recap.
+ *
+ * Two per round and nine rounds to a match, with room for a rematch or two
+ * before the oldest start falling off. The server keeps only the round being
+ * judged; this copy is what makes the recap possible at all.
+ */
+const MAX_EVIDENCE_KEPT = 40;
 /** Enough to walk back into a room you were in a moment ago, not a history. */
 const MAX_REMEMBERED_ROOMS = 4;
 
@@ -337,14 +345,19 @@ export class MatchStore {
           joining: false,
         });
         return;
-      case 'evidence':
-        this.patch({
-          evidence: {
-            ...this.snapshot.evidence,
-            [`${message.roundId}:${message.playerId}`]: message.image,
-          },
-        });
+      case 'evidence': {
+        const evidence = {
+          ...this.snapshot.evidence,
+          [`${message.roundId}:${message.playerId}`]: message.image,
+        };
+        const keys = Object.keys(evidence);
+        // Insertion order is round order, so the oldest go first.
+        for (const stale of keys.slice(0, Math.max(0, keys.length - MAX_EVIDENCE_KEPT))) {
+          delete evidence[stale];
+        }
+        this.patch({ evidence });
         return;
+      }
       case 'peerFrame':
         for (const listener of this.frameListeners) listener(message.image, message.playerId);
         return;

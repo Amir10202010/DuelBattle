@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHALLENGES, type RoundOutcome } from '@battle/shared';
 import { announcementFor } from '../src/components/Announcer.jsx';
-import { publicMatch } from './fixtures.js';
+import { outcome, publicMatch } from './fixtures.js';
 
 const AUTO = CHALLENGES.find((c) => c.judging === 'auto')!;
 const PEER = CHALLENGES.find((c) => c.judging === 'peer')!;
@@ -40,16 +40,14 @@ describe('match narration', () => {
   });
 
   it('never doubles the punctuation a reason already carries', () => {
-    const outcome: RoundOutcome = {
-      roundNumber: 1,
+    const won = outcome({
       challengeId: AUTO.id,
-      judging: 'auto',
       winnerId: 'p1',
       reason: 'only-valid',
       perPlayer: { p1: { valid: true, elapsedMs: 900, note: 'That is the whole screen. Counted.' } },
-    };
+    });
     const said = announcementFor(
-      publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }),
+      publicMatch({ phase: 'roundResult', round: round(AUTO.id, won) }),
       'p1',
     );
     expect(said).not.toMatch(/\.\./);
@@ -58,31 +56,17 @@ describe('match narration', () => {
   });
 
   it('names the winner from the listener’s point of view', () => {
-    const outcome: RoundOutcome = {
-      roundNumber: 1,
-      challengeId: AUTO.id,
-      judging: 'auto',
-      winnerId: 'p2',
-      reason: 'only-valid',
-      perPlayer: {},
-    };
-    const forLoser = announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p1');
-    const forWinner = announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p2');
+    const theirs = outcome({ challengeId: AUTO.id, winnerId: 'p2', reason: 'only-valid' });
+    const forLoser = announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, theirs) }), 'p1');
+    const forWinner = announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, theirs) }), 'p2');
     expect(forLoser).toContain('Grace won the round');
     expect(forWinner).toContain('You won the round');
   });
 
   it('calls a scoreless round a draw rather than silence', () => {
-    const outcome: RoundOutcome = {
-      roundNumber: 1,
-      challengeId: AUTO.id,
-      judging: 'auto',
-      winnerId: null,
-      reason: 'both-failed',
-      perPlayer: {},
-    };
+    const drawn = outcome({ challengeId: AUTO.id, reason: 'both-failed' });
     expect(
-      announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p1'),
+      announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, drawn) }), 'p1'),
     ).toContain('Nobody scored');
   });
 
