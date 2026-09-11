@@ -25,10 +25,10 @@ jobs:
 
       - run: npm ci
 
-      # The other three all consume the shared package's build output.
-      - name: Build shared
-        run: npm run build -w @battle/shared
-
+      # Nothing below needs a prior build: typecheck resolves the shared package
+      # through tsconfig paths, tests through a vitest alias, and `npm run build`
+      # builds it itself. A clean checkout is the only state CI ever sees, and it
+      # should be the state everything is verified in.
       - name: Typecheck
         run: npm run typecheck
 
