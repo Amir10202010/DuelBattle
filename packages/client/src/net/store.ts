@@ -376,7 +376,19 @@ export class MatchStore {
 
     if (joinFailure) {
       this.intent = null;
-      this.patch({ joining: false, joinError: message.message });
+      // Being refused while we believe we are seated means the seat is gone —
+      // the usual cause is the room outliving neither a restart nor a deploy.
+      // Leaving the stale lobby on screen would strand the player in a room
+      // that no longer exists.
+      const wasSeated = this.snapshot.screen === 'room';
+      if (wasSeated && this.snapshot.roomCode) writeSession(this.snapshot.roomCode, null);
+      this.patch({
+        joining: false,
+        joinError: message.message,
+        ...(wasSeated
+          ? { screen: 'home' as const, match: null, you: null, roomCode: null, evidence: {} }
+          : {}),
+      });
       return;
     }
 

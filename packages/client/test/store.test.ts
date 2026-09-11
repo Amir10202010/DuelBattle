@@ -192,6 +192,31 @@ describe('seat ownership', () => {
     expect(connection.sent.slice(before).map((m) => m.t)).toEqual(['hello']);
   });
 
+  it('does not strand a player in a room that no longer exists', () => {
+    const { connection, store } = setup();
+    store.createRoom('Ada');
+    connection.deliver({ t: 'joined', roomCode: 'AB12C', playerId: 'p1', token: 'tok-1' });
+    connection.deliver({ t: 'state', state: matchState(), serverTime: 0 });
+    expect(store.getSnapshot().screen).toBe('room');
+
+    // The server restarted; the room went with it.
+    connection.deliver({ t: 'error', code: 'room-not-found', message: 'That room has closed.' });
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.screen).toBe('home');
+    expect(snapshot.match).toBeNull();
+    expect(snapshot.joinError).toBe('That room has closed.');
+    expect(store.resumeSession('AB12C')).toBe(false);
+  });
+
+  it('leaves the home screen alone when a join is simply refused', () => {
+    const { connection, store } = setup();
+    store.joinRoom('AB12C', 'Ada');
+    connection.deliver({ t: 'error', code: 'room-full', message: 'That room is full.' });
+    expect(store.getSnapshot().screen).toBe('home');
+    expect(store.getSnapshot().joinError).toBe('That room is full.');
+  });
+
   it('drops the session when the player leaves on purpose', () => {
     const { connection, store } = setup();
     store.createRoom('Ada');

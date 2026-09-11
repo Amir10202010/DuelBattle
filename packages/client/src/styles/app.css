@@ -163,8 +163,8 @@
 }
 
 .room__leave {
-  min-height: 30px;
-  padding: 0 var(--space-3);
+  min-height: 34px;
+  padding: 0 var(--space-4);
   font-size: 12px;
 }
 
@@ -1144,11 +1144,51 @@
   }
 }
 
+/* The pointer cannot press a key, so stop advertising one. */
+@media (hover: none) {
+  .actions__key {
+    display: none;
+  }
+}
+
 @media (max-width: 760px) {
   .arena__stages,
   .lobby__stages {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    /* Your own camera is the one you are aiming; the opponent's is context.
+       Splitting a portrait screen evenly leaves both as unusable letterbox
+       slits, so the view you are actually composing into gets the room. */
+    grid-template-rows: 1.55fr 1fr;
+  }
+
+  /* Reclaim the vertical space the prompt band takes on a phone. */
+  .arena {
+    gap: var(--space-2);
+    padding: var(--space-2);
+  }
+
+  .prompt {
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .prompt__hint {
+    font-size: 12px;
+  }
+
+  .stage__bar {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .actions {
+    min-height: 0;
+    gap: var(--space-1);
+    padding: var(--space-2);
+  }
+
+  .actions__note {
+    font-size: 12px;
+    line-height: 1.3;
   }
 
   .scorestrip {

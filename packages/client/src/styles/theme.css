@@ -22,7 +22,10 @@
   /* Text, brightest first. */
   --text: #f2f2f0;
   --text-dim: #9e9ea8;
-  --text-faint: #62626d;
+  /* Light enough to clear 4.5:1 on every surface in this palette. The eyebrow
+     labels use it at 11px, which is exactly where a dimmer grey stops being
+     readable across a room. */
+  --text-faint: #80808c;
 
   /* Seat accents. Seat 0 is always warm, seat 1 always cool — never swapped. */
   --seat-a: #ff8a3d;
