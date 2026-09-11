@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { runDetector, type Challenge, type DetectionResult, type Frame } from '@battle/shared';
+import {
+  runDetector,
+  type Challenge,
+  type DetectionResult,
+  type Frame,
+  type Phase,
+} from '@battle/shared';
 import { createAnalysisCapture } from '../media/capture.js';
 
 /** How often the on-device preview runs. Fast enough to feel live, cheap enough to ignore. */
 const SAMPLE_INTERVAL_MS = 180;
-/** The baseline is retaken for a few frames in case the first one caught a blur. */
-const BASELINE_SETTLE_MS = 350;
 
 export interface LocalDetection {
   /** Null until the detector has something to say. */
@@ -18,7 +22,7 @@ export interface UseLocalDetectionOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   challenge: Challenge | null;
   roundId: string | null;
-  active: boolean;
+  phase: Phase;
 }
 
 /**
@@ -28,17 +32,28 @@ export interface UseLocalDetectionOptions {
  * It is the identical function the server runs on the submitted frame, but it
  * is never the verdict: the score comes from the server's run, over the frame
  * that was actually sent. This is a viewfinder, not a judge.
+ *
+ * The baseline is taken during the countdown, while the prompt is still hidden
+ * — the same rule the server uses. Sampling it after the reveal instead meant a
+ * fast player could have the object half-way into frame before the "before"
+ * picture was taken, and then watch the meter sit at zero while they held the
+ * right thing up.
  */
 export function useLocalDetection({
   videoRef,
   challenge,
   roundId,
-  active,
+  phase,
 }: UseLocalDetectionOptions): LocalDetection {
   const [result, setResult] = useState<DetectionResult | null>(null);
   const [armed, setArmed] = useState(false);
   const baselineRef = useRef<Frame | null>(null);
   const captureRef = useRef(createAnalysisCapture());
+
+  // Read inside the sampler so a phase change does not restart the round's
+  // baseline, which is the one thing that has to survive the countdown.
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   useEffect(() => {
     baselineRef.current = null;
@@ -46,20 +61,20 @@ export function useLocalDetection({
     setArmed(false);
 
     const detector = challenge?.detector;
-    if (!active || !roundId || !detector) return;
+    if (!roundId || !detector) return;
 
     const capture = captureRef.current;
-    const startedAt = Date.now();
     let cancelled = false;
 
     const sample = () => {
       if (cancelled) return;
+      const current = phaseRef.current;
+      if (current !== 'countdown' && current !== 'challenge') return;
+
       const frame = capture.toFrame(videoRef.current);
       if (!frame) return;
 
-      // The prompt has just appeared and the player has not moved yet, so the
-      // first frames of the round are the honest "before" picture.
-      if (!baselineRef.current || Date.now() - startedAt < BASELINE_SETTLE_MS) {
+      if (current === 'countdown' || !baselineRef.current) {
         baselineRef.current = frame;
         setArmed(true);
         return;
@@ -78,7 +93,7 @@ export function useLocalDetection({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [active, roundId, challenge, videoRef]);
+  }, [roundId, challenge, videoRef]);
 
   return { result, armed };
 }

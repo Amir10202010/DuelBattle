@@ -45,7 +45,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     videoRef: camera.videoRef,
     challenge,
     roundId: round?.id ?? null,
-    active: isChallenge && !locked,
+    phase: match.phase,
   });
 
   useEffect(() => {
@@ -89,7 +89,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
 
   return (
     <div className="arena">
-      <PromptBand match={match} now={now} detection={detection} />
+      <PromptBand match={match} now={now} detection={detection} showMeter={!locked} />
 
       <div className="arena__stages">
         <StageFrame
@@ -157,10 +157,13 @@ function PromptBand({
   match,
   now,
   detection,
+  showMeter,
 }: {
   match: PublicMatchState;
   now: number;
   detection: Detection;
+  /** Hidden once you have committed: the reading no longer changes anything. */
+  showMeter: boolean;
 }) {
   const round = match.round;
   const challenge = round ? getChallenge(round.challengeId) : null;
@@ -214,7 +217,7 @@ function PromptBand({
         />
       )}
 
-      {match.phase === 'challenge' && challenge?.detector && (
+      {match.phase === 'challenge' && showMeter && challenge?.detector && (
         <DetectionMeter detection={detection} detector={challenge.detector} />
       )}
     </header>
