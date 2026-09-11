@@ -1,0 +1,52 @@
+/** All tunables in one place, each with a safe default and a clear owner. */
+function int(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Environment variable ${name} must be an integer, got ${JSON.stringify(raw)}`);
+  }
+  return parsed;
+}
+
+function list(name: string): string[] {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export const config = {
+  port: int('PORT', 8787),
+  host: process.env.HOST ?? '0.0.0.0',
+  nodeEnv: process.env.NODE_ENV ?? 'development',
+  /**
+   * Origins allowed to open a WebSocket. Empty means "same origin only", which
+   * is what a single-service deployment wants; set it when the client is served
+   * from a different host.
+   */
+  allowedOrigins: list('ALLOWED_ORIGINS'),
+  /** Directory of built client assets to serve; unset in development. */
+  clientDir: process.env.CLIENT_DIR ?? '',
+  /** How often the engine advances deadline-driven transitions. */
+  tickMs: int('TICK_MS', 100),
+  /** Rooms with nobody connected are collected after this long. */
+  emptyRoomTtlMs: int('EMPTY_ROOM_TTL_MS', 5 * 60_000),
+  /** Absolute ceiling on a room's lifetime, regardless of activity. */
+  maxRoomAgeMs: int('MAX_ROOM_AGE_MS', 6 * 60 * 60_000),
+  maxRooms: int('MAX_ROOMS', 2_000),
+  /** Sustained client messages per second before we start dropping. */
+  messageRatePerSec: int('MESSAGE_RATE_PER_SEC', 25),
+  /** Image-bearing messages get their own, much tighter budget. */
+  imageRatePerSec: int('IMAGE_RATE_PER_SEC', 8),
+  /** Connections from one IP. Keeps a single browser from exhausting the box. */
+  maxConnectionsPerIp: int('MAX_CONNECTIONS_PER_IP', 12),
+  /** A socket that misses this many heartbeats is considered gone. */
+  heartbeatMs: int('HEARTBEAT_MS', 15_000),
+  /** Trust X-Forwarded-For. Only enable behind a proxy you control. */
+  trustProxy: process.env.TRUST_PROXY === '1',
+} as const;
+
+export type Config = typeof config;

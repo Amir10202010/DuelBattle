@@ -13,6 +13,8 @@ export const PROTOCOL_VERSION = 1;
 
 /** Hard ceiling on a single evidence image, enforced by the server. */
 export const MAX_IMAGE_BYTES = 220_000;
+/** Live thumbnails are small and frequent; they get their own tighter ceiling. */
+export const MAX_FRAME_BYTES = 60_000;
 export const MAX_NAME_LENGTH = 18;
 
 /**
@@ -21,6 +23,7 @@ export const MAX_NAME_LENGTH = 18;
  * render site.
  */
 const UNSAFE_NAME_CHARS = new RegExp(
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point
   '[\\u0000-\\u001F\\u007F-\\u009F\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069]',
 );
 
@@ -35,10 +38,25 @@ export const roomCodeSchema = z
   .string()
   .regex(new RegExp(`^[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}$`), 'That room code looks wrong');
 
-const imageSchema = z
+/**
+ * Evidence is JPEG-only because the server decodes it to re-run the detector
+ * itself. Allowing a format the verifier cannot read would mean silently
+ * trusting the client's own verdict.
+ */
+const evidenceImageSchema = z
   .string()
   .max(MAX_IMAGE_BYTES, 'Snapshot too large')
-  .regex(/^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/, 'Unsupported snapshot format');
+  .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, 'Unsupported snapshot format');
+
+/**
+ * Live camera frames. These are relayed to the opponent, and the last one that
+ * lands before a prompt is revealed becomes that round's baseline, so they are
+ * held to the same JPEG-only rule as evidence.
+ */
+const frameImageSchema = z
+  .string()
+  .max(MAX_FRAME_BYTES, 'Frame too large')
+  .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, 'Unsupported frame format');
 
 export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('hello'), protocol: z.number().int() }),
@@ -47,8 +65,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('rejoin'), code: roomCodeSchema, token: z.string().min(8).max(128) }),
   z.object({ t: z.literal('cameraReady'), ready: z.boolean() }),
   z.object({ t: z.literal('ready'), ready: z.boolean() }),
-  z.object({ t: z.literal('baseline'), roundId: z.string().min(1).max(64), image: imageSchema }),
-  z.object({ t: z.literal('submit'), roundId: z.string().min(1).max(64), image: imageSchema }),
+  z.object({ t: z.literal('submit'), roundId: z.string().min(1).max(64), image: evidenceImageSchema }),
   z.object({
     t: z.literal('vote'),
     roundId: z.string().min(1).max(64),
@@ -58,7 +75,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('rematch') }),
   z.object({ t: z.literal('leave') }),
   z.object({ t: z.literal('ping'), id: z.number().int() }),
-  z.object({ t: z.literal('peerFrame'), image: imageSchema, seq: z.number().int().nonnegative() }),
+  z.object({ t: z.literal('frame'), image: frameImageSchema, seq: z.number().int().nonnegative() }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;

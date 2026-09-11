@@ -1,0 +1,306 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
+import {
+  PROTOCOL_VERSION,
+  colorSwatch,
+  getChallenge,
+  type ClientMessage,
+  type PublicMatchState,
+  type ServerMessage,
+} from '@battle/shared';
+import { createApp, type App } from '../src/app.js';
+import { emptyRoomFrame, heldObjectFrame, type Rgb } from './helpers.js';
+
+function hexToRgb(hex: string): Rgb {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** A test client that speaks the real protocol over a real socket. */
+class Player {
+  readonly received: ServerMessage[] = [];
+  playerId = '';
+  token = '';
+  private readonly waiters: { match: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }[] = [];
+
+  private constructor(private readonly socket: WebSocket) {
+    socket.on('message', (data) => {
+      const message = JSON.parse(data.toString()) as ServerMessage;
+      this.received.push(message);
+      if (message.t === 'joined') {
+        this.playerId = message.playerId;
+        this.token = message.token;
+      }
+      for (let i = this.waiters.length - 1; i >= 0; i--) {
+        const waiter = this.waiters[i]!;
+        if (!waiter.match(message)) continue;
+        this.waiters.splice(i, 1);
+        waiter.resolve(message);
+      }
+    });
+  }
+
+  static async connect(port: number): Promise<Player> {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    const player = new Player(socket);
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', () => resolve());
+      socket.once('error', reject);
+    });
+    await player.waitFor((m) => m.t === 'welcome');
+    player.send({ t: 'hello', protocol: PROTOCOL_VERSION });
+    return player;
+  }
+
+  send(message: ClientMessage): void {
+    this.socket.send(JSON.stringify(message));
+  }
+
+  waitFor<T extends ServerMessage>(
+    match: (m: ServerMessage) => boolean,
+    timeoutMs = 4_000,
+  ): Promise<T> {
+    const existing = this.received.find(match);
+    if (existing) return Promise.resolve(existing as T);
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`timed out waiting for a message (${this.received.length} seen)`)),
+        timeoutMs,
+      );
+      this.waiters.push({
+        match,
+        resolve: (m) => {
+          clearTimeout(timer);
+          resolve(m as T);
+        },
+      });
+    });
+  }
+
+  waitForState(predicate: (s: PublicMatchState) => boolean, timeoutMs = 6_000) {
+    return this.waitFor<Extract<ServerMessage, { t: 'state' }>>(
+      (m) => m.t === 'state' && predicate(m.state),
+      timeoutMs,
+    ).then((m) => m.state);
+  }
+
+  get state(): PublicMatchState {
+    const last = [...this.received].reverse().find((m) => m.t === 'state');
+    if (!last || last.t !== 'state') throw new Error('no state yet');
+    return last.state;
+  }
+
+  onClose(handler: (code: number) => void): void {
+    this.socket.once('close', handler);
+  }
+
+  close(): void {
+    this.socket.close();
+  }
+}
+
+let app: App;
+let port: number;
+
+beforeAll(async () => {
+  app = createApp({ tickMs: 25 });
+  port = await app.listen(0, '127.0.0.1');
+});
+
+afterAll(async () => {
+  await app.close();
+});
+
+async function pair(): Promise<{ host: Player; guest: Player; code: string }> {
+  const host = await Player.connect(port);
+  host.send({ t: 'createRoom', name: 'Ada' });
+  const joined = await host.waitFor<Extract<ServerMessage, { t: 'joined' }>>((m) => m.t === 'joined');
+
+  const guest = await Player.connect(port);
+  guest.send({ t: 'joinRoom', code: joined.roomCode, name: 'Grace' });
+  await guest.waitFor((m) => m.t === 'joined');
+  await host.waitForState((s) => Object.keys(s.players).length === 2);
+
+  return { host, guest, code: joined.roomCode };
+}
+
+describe('http surface', () => {
+  it('reports health', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true });
+  });
+
+  it('answers room lookups so the join screen can fail fast', async () => {
+    const { code } = await pair();
+    const found = await fetch(`http://127.0.0.1:${port}/api/rooms/${code}`);
+    expect(await found.json()).toMatchObject({ exists: true, hasFreeSeat: false, players: 2 });
+
+    const missing = await fetch(`http://127.0.0.1:${port}/api/rooms/ZZZZZ`);
+    expect(missing.status).toBe(404);
+  });
+
+  it('rejects a malformed room code without touching the registry', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/%2e%2e%2fetc`);
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses writes', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/healthz`, { method: 'POST' });
+    expect(res.status).toBe(405);
+  });
+
+  it('refuses a WebSocket upgrade on any other path', async () => {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/nope`);
+    const error = await new Promise<Error>((resolve) => socket.once('error', resolve));
+    expect(error).toBeInstanceOf(Error);
+  });
+});
+
+describe('a full match over the wire', () => {
+  it('plays a colour round from lobby to a scored result', async () => {
+    const { host, guest } = await pair();
+
+    host.send({ t: 'cameraReady', ready: true });
+    guest.send({ t: 'cameraReady', ready: true });
+    await host.waitForState((s) => Object.values(s.players).every((p) => p.cameraReady));
+
+    // Live frames double as the opponent's view and as the detector's baseline.
+    host.send({ t: 'frame', image: emptyRoomFrame(), seq: 1 });
+    guest.send({ t: 'frame', image: emptyRoomFrame(), seq: 1 });
+    await guest.waitFor((m) => m.t === 'peerFrame');
+
+    host.send({ t: 'ready', ready: true });
+    guest.send({ t: 'ready', ready: true });
+    const countdown = await host.waitForState((s) => s.phase === 'countdown');
+    expect(countdown.round?.number).toBe(1);
+
+    // Keep the camera alive through the countdown, as the real client does.
+    const keepAlive = setInterval(() => {
+      host.send({ t: 'frame', image: emptyRoomFrame(), seq: 2 });
+      guest.send({ t: 'frame', image: emptyRoomFrame(), seq: 2 });
+    }, 120);
+
+    const live = await host.waitForState((s) => s.phase === 'challenge');
+    clearInterval(keepAlive);
+
+    const challenge = getChallenge(live.round!.challengeId)!;
+    expect(challenge.judging).toBe('auto');
+    if (challenge.detector?.kind !== 'color') throw new Error('expected a colour round');
+
+    host.send({
+      t: 'submit',
+      roundId: live.round!.id,
+      image: heldObjectFrame(hexToRgb(colorSwatch(challenge.detector.target))),
+    });
+
+    const result = await host.waitForState((s) => s.phase === 'roundResult');
+    expect(result.round?.outcome?.winnerId).toBe(host.playerId);
+    expect(result.players[host.playerId]?.score).toBe(1);
+
+    // Both players see the same authoritative outcome.
+    const guestView = await guest.waitForState((s) => s.phase === 'roundResult');
+    expect(guestView.round?.outcome?.winnerId).toBe(host.playerId);
+    expect(guestView.version).toBe(result.version);
+
+    host.close();
+    guest.close();
+  }, 20_000);
+
+  it('restores a player’s seat after a reload', async () => {
+    const { host, guest, code } = await pair();
+    host.send({ t: 'cameraReady', ready: true });
+    await guest.waitForState((s) => s.players[host.playerId]?.cameraReady === true);
+
+    const token = host.token;
+    const playerId = host.playerId;
+    host.close();
+    await guest.waitForState((s) => s.players[playerId]?.connected === false);
+
+    const returning = await Player.connect(port);
+    returning.send({ t: 'rejoin', code, token });
+    const rejoined = await returning.waitFor<Extract<ServerMessage, { t: 'joined' }>>(
+      (m) => m.t === 'joined',
+    );
+    expect(rejoined.playerId).toBe(playerId);
+
+    const state = await returning.waitForState((s) => s.players[playerId]?.connected === true);
+    // Camera consent and the seat both survive the reload.
+    expect(state.players[playerId]?.cameraReady).toBe(true);
+    expect(Object.keys(state.players)).toHaveLength(2);
+
+    returning.close();
+    guest.close();
+  }, 20_000);
+});
+
+describe('hostile clients', () => {
+  it('rejects a protocol version it does not speak', async () => {
+    const player = await Player.connect(port);
+    player.send({ t: 'hello', protocol: 999 } as ClientMessage);
+    const error = await player.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(error.code).toBe('protocol-mismatch');
+  });
+
+  it('rejects a malformed message without dropping the connection', async () => {
+    const player = await Player.connect(port);
+    player.send({ t: 'joinRoom', code: 'nope', name: '' } as unknown as ClientMessage);
+    const error = await player.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(error.code).toBe('bad-message');
+
+    player.send({ t: 'ping', id: 1 });
+    const pong = await player.waitFor((m) => m.t === 'pong');
+    expect(pong.t).toBe('pong');
+    player.close();
+  });
+
+  it('refuses to act on game messages before joining a room', async () => {
+    const player = await Player.connect(port);
+    player.send({ t: 'ready', ready: true });
+    const error = await player.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(error.code).toBe('not-in-room');
+    player.close();
+  });
+
+  it('refuses a third player', async () => {
+    const { host, guest, code } = await pair();
+    const gatecrasher = await Player.connect(port);
+    gatecrasher.send({ t: 'joinRoom', code, name: 'Alan' });
+    const error = await gatecrasher.waitFor<Extract<ServerMessage, { t: 'error' }>>(
+      (m) => m.t === 'error',
+    );
+    expect(error.code).toBe('room-full');
+    gatecrasher.close();
+    host.close();
+    guest.close();
+  });
+
+  it('rate limits a client that floods the socket', async () => {
+    const player = await Player.connect(port);
+    for (let i = 0; i < 200; i++) player.send({ t: 'ping', id: i });
+    const error = await player.waitFor<Extract<ServerMessage, { t: 'error' }>>(
+      (m) => m.t === 'error' && m.code === 'rate-limited',
+    );
+    expect(error.code).toBe('rate-limited');
+    player.close();
+  });
+
+  it('rejects an oversized snapshot before it reaches the decoder', async () => {
+    const { host, guest } = await pair();
+    // Over the schema's ceiling but inside the frame limit, so it reaches zod.
+    const oversized = `data:image/jpeg;base64,${'A'.repeat(250_000)}`;
+    host.send({ t: 'submit', roundId: 'x', image: oversized });
+    const error = await host.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(error.code).toBe('bad-message');
+    host.close();
+    guest.close();
+  });
+
+  it('drops a client that sends a frame larger than the transport allows', async () => {
+    const player = await Player.connect(port);
+    const closed = new Promise<number>((resolve) => player.onClose(resolve));
+    player.send({ t: 'submit', roundId: 'x', image: 'A'.repeat(400_000) } as ClientMessage);
+    // 1009 is "message too big"; the point is that it never reaches our parser.
+    expect(await closed).toBe(1009);
+  });
+});

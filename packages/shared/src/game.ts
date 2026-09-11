@@ -144,7 +144,14 @@ export type Action =
   | { type: 'setReady'; playerId: PlayerId; ready: boolean }
   | { type: 'submit'; playerId: PlayerId; roundId: string; evidenceId: string; auto?: AutoVerdict }
   | { type: 'vote'; playerId: PlayerId; roundId: string; targetId: PlayerId; approve: boolean }
-  | { type: 'rematch'; playerId: PlayerId };
+  | { type: 'rematch'; playerId: PlayerId }
+  /**
+   * Converts an auto-judged round to peer judging. Issued by the server when it
+   * has no usable baseline frame for a player and therefore cannot verify the
+   * answer itself. Handing the call to the opponent is honest; quietly failing
+   * the player for a dropped frame is not.
+   */
+  | { type: 'downgradeJudging'; roundId: string; reason: string };
 
 export type ActionError =
   | 'room-full'
@@ -237,7 +244,21 @@ export function reduce(state: MatchState, action: Action, ctx: EngineContext): R
       return vote(state, action, ctx);
     case 'rematch':
       return rematch(state, action.playerId, ctx);
+    case 'downgradeJudging':
+      return downgradeJudging(state, action.roundId);
   }
+}
+
+function downgradeJudging(state: MatchState, roundId: string): Result {
+  if (state.phase !== 'countdown' && state.phase !== 'challenge') {
+    return { ok: false, error: 'wrong-phase' };
+  }
+  if (!state.round || state.round.id !== roundId) return { ok: false, error: 'wrong-round' };
+  if (state.round.judging === 'peer') return { ok: true, state };
+  return {
+    ok: true,
+    state: bump({ ...state, round: { ...state.round, judging: 'peer' } }),
+  };
 }
 
 function patchPlayer(
