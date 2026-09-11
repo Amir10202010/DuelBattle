@@ -290,6 +290,92 @@ describe('auto rounds', () => {
   });
 });
 
+describe('a round that falls back to peer judging mid-way', () => {
+  // The server downgrades when it cannot read *a* frame. The frames it did
+  // read are already settled, and nothing about the fallback should re-open
+  // them.
+  const autoPool = [AUTO];
+
+  function downgraded(order: 'cameraFirst' | 'cameraSecond') {
+    let s = intoChallenge(seatedMatch(0, autoPool), autoPool);
+    const roundId = s.round!.id;
+    const started = s.round!.startedAt;
+    const read = { matched: false, confidence: 0.9, reason: 'Not detected' };
+
+    if (order === 'cameraFirst') {
+      s = apply(
+        s,
+        { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: read },
+        ctxAt(started + 1_000, autoPool),
+      );
+      s = apply(s, { type: 'downgradeJudging', roundId, reason: 'unreadable' }, ctxAt(started + 1_500, autoPool));
+      s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, autoPool));
+    } else {
+      s = apply(s, { type: 'downgradeJudging', roundId, reason: 'unreadable' }, ctxAt(started + 500, autoPool));
+      s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, autoPool));
+      s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 2_500, autoPool));
+    }
+    return { state: s, roundId, started };
+  }
+
+  it('does not let a vote overturn an answer the camera already rejected', () => {
+    const { state, roundId, started } = downgraded('cameraFirst');
+    // p1's answer was read and failed. p2 approving it must not resurrect it.
+    const s = apply(
+      state,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
+      ctxAt(started + 3_000, autoPool),
+    );
+
+    expect(s.round?.outcome?.perPlayer.p1?.valid).toBe(false);
+    expect(s.round?.outcome?.winnerId).toBe('p2');
+  });
+
+  it('refuses a verdict on an answer the camera already settled', () => {
+    const { state, roundId, started } = downgraded('cameraFirst');
+    expect(state.phase).toBe('judging');
+    expect(
+      expectError(
+        state,
+        { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
+        ctxAt(started + 3_000, autoPool),
+      ),
+    ).toBe('already-decided');
+  });
+
+  it('closes as soon as the one open answer has its verdict', () => {
+    // Only p2's frame is unread, so only p1 has anybody to judge.
+    const { state, roundId, started } = downgraded('cameraFirst');
+    const s = apply(
+      state,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
+      ctxAt(started + 3_000, autoPool),
+    );
+    expect(s.phase).toBe('roundResult');
+  });
+
+  it('judges both answers when the fallback happened before either was read', () => {
+    // Nothing was verified, so this is an ordinary peer round for both of them
+    // -- including the rule that a rejection counts for nobody.
+    const { state, roundId, started } = downgraded('cameraSecond');
+    expect(state.phase).toBe('judging');
+
+    let s = apply(
+      state,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false },
+      ctxAt(started + 3_000, autoPool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true },
+      ctxAt(started + 3_100, autoPool),
+    );
+
+    expect(s.round?.outcome?.reason).toBe('vetoed');
+    expect(s.round?.outcome?.winnerId).toBeNull();
+  });
+});
+
 describe('peer rounds', () => {
   const pool = [PEER];
 

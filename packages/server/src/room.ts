@@ -58,6 +58,7 @@ const ACTION_ERROR_COPY: Record<ActionError, string> = {
   'already-submitted': 'You have already locked in this round.',
   'already-passed': 'You have already passed on this round.',
   'already-voted': 'You have already judged that answer.',
+  'already-decided': 'The camera already settled that one.',
   'cannot-vote-for-self': 'You cannot judge your own answer.',
   'no-such-target': 'That player is not here.',
   'no-submission-to-judge': 'There is nothing to judge yet.',

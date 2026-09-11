@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { titleForTesting as titleFor } from '../src/hooks/useDocumentTitle.js';
-import { player, publicMatch } from './fixtures.js';
+import { player, publicMatch, submission } from './fixtures.js';
 
 const alone = publicMatch({ seats: ['p1', null], players: { p1: player({ id: 'p1', name: 'Ada' }) } });
 
@@ -46,7 +46,7 @@ describe('what the tab should say', () => {
         judging: 'peer',
         startedAt: 0,
         outcome: null,
-        submissions: { p2: { playerId: 'p2', elapsedMs: 1_000, evidenceId: 'e' } },
+        submissions: { p2: submission({ playerId: 'p2' }) },
       },
     });
     expect(titleFor(judging, 'p1')).toBe('Your verdict');
@@ -63,7 +63,11 @@ describe('what the tab should say', () => {
         startedAt: 0,
         outcome: null,
         submissions: {
-          p2: { playerId: 'p2', elapsedMs: 1_000, evidenceId: 'e', peer: { approve: true, voterId: 'p1' } },
+          p2: submission({
+            playerId: 'p2',
+            needsVerdict: false,
+            peer: { approve: true, voterId: 'p1' },
+          }),
         },
       },
     });

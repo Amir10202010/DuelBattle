@@ -22,7 +22,7 @@ function titleFor(match: PublicMatchState | null, youId: string | null): string 
 
   if (match.phase === 'judging') {
     const theirs = opponentId ? match.round?.submissions[opponentId] : undefined;
-    if (theirs && !theirs.peer) return 'Your verdict';
+    if (theirs?.needsVerdict) return 'Your verdict';
   }
 
   if (match.phase === 'matchResult' && opponent?.rematchVote) {

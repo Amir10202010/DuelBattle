@@ -228,6 +228,7 @@ export type ActionError =
   | 'cannot-vote-for-self'
   | 'no-such-target'
   | 'no-submission-to-judge'
+  | 'already-decided'
   | 'camera-required'
   | 'match-paused'
   | 'deck-full'
@@ -666,6 +667,9 @@ function vote(
   const target = state.round.submissions[action.targetId];
   if (!target) return { ok: false, error: 'no-submission-to-judge' };
   if (target.peer) return { ok: false, error: 'already-voted' };
+  // The camera already read this one. A vote cannot overturn it, so it is not
+  // accepted rather than quietly recorded and ignored.
+  if (target.auto) return { ok: false, error: 'already-decided' };
 
   const round: RoundState = {
     ...state.round,
@@ -794,7 +798,7 @@ function awaitingVerdict(state: MatchState, round: RoundState): PlayerId[] {
   return playersInSeatOrder(state)
     .filter((player) => {
       const submission = round.submissions[player.id];
-      if (!submission || submission.peer) return false;
+      if (!submission || submission.peer || submission.auto) return false;
       const judge = opponentIdOf(state, player.id);
       return judge !== null && round.submissions[judge] !== undefined;
     })
@@ -835,12 +839,17 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
       };
       continue;
     }
-    const isValid =
-      round.judging === 'auto'
-        ? Boolean(submission.auto?.matched)
-        : // No vote by the deadline counts as approval: abstaining should never
+    // Where the camera reached a verdict, that verdict is the answer. A round
+    // downgrades to peer judging because *a* frame could not be read, not
+    // because the ones that could should be re-tried by hand — and an opponent
+    // must not be able to overturn a server-side reading in either direction.
+    const isValid = submission.auto
+      ? submission.auto.matched
+      : round.judging === 'peer'
+        ? // No vote by the deadline counts as approval: abstaining should never
           // be a cheaper way to deny a point than actually judging.
-          submission.peer?.approve ?? true;
+          submission.peer?.approve ?? true
+        : false;
     const rejectedByThem = Object.values(round.submissions).some(
       (s) => s.peer?.approve === false && s.peer.voterId === player.id,
     );

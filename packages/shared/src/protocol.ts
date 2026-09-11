@@ -1,3 +1,4 @@
+import type { JudgingMode } from './challenges.js';
 import type {
   CustomChallenge,
   MatchEndReason,
@@ -77,6 +78,15 @@ export interface PublicSubmission {
   evidenceId: string;
   auto?: { matched: boolean; confidence: number; reason: string };
   peer?: { approve: boolean; voterId: PlayerId };
+  /**
+   * Whether this answer is still waiting on the opponent's verdict.
+   *
+   * A round that downgrades to peer judging does so because *a* frame could
+   * not be read; the frames that were read are already settled, and nobody is
+   * asked to vote on those. Saying which ones are still open reveals that the
+   * camera reached a verdict, never which way it went.
+   */
+  needsVerdict: boolean;
 }
 
 export interface PublicRound {
@@ -124,11 +134,16 @@ export interface PublicMatchState {
   version: number;
 }
 
-function publicSubmission(s: Submission, revealVerdicts: boolean): PublicSubmission {
+function publicSubmission(
+  s: Submission,
+  revealVerdicts: boolean,
+  judging: JudgingMode,
+): PublicSubmission {
   return {
     playerId: s.playerId,
     elapsedMs: s.elapsedMs,
     evidenceId: s.evidenceId,
+    needsVerdict: judging === 'peer' && !s.auto && !s.peer,
     ...(revealVerdicts && s.auto ? { auto: s.auto } : {}),
     ...(revealVerdicts && s.peer ? { peer: { approve: s.peer.approve, voterId: s.peer.voterId } } : {}),
   };
@@ -179,7 +194,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
             ? Object.fromEntries(
                 Object.entries(round.submissions).map(([id, s]) => [
                   id,
-                  publicSubmission(s, revealVerdicts),
+                  publicSubmission(s, revealVerdicts, round.judging),
                 ]),
               )
             : {},

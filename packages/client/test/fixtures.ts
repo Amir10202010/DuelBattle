@@ -1,4 +1,20 @@
-import type { PublicMatchState, PublicPlayer, RoundOutcome } from '@battle/shared';
+import type {
+  PublicMatchState,
+  PublicPlayer,
+  PublicSubmission,
+  RoundOutcome,
+} from '@battle/shared';
+
+export function submission(
+  overrides: Partial<PublicSubmission> & { playerId: string },
+): PublicSubmission {
+  return {
+    elapsedMs: 1_000,
+    evidenceId: `ev-${overrides.playerId}`,
+    needsVerdict: true,
+    ...overrides,
+  };
+}
 
 export function player(overrides: Partial<PublicPlayer> & { id: string }): PublicPlayer {
   return {
