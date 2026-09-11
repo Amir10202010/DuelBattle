@@ -1151,17 +1151,26 @@
   }
 }
 
-@media (max-width: 760px) {
+/*
+ * Which way the two cameras sit is a question about the shape of the window,
+ * not its width. Side by side in a portrait window gives each feed a narrow
+ * vertical strip of a 4:3 camera; stacked in a landscape one gives each a
+ * letterbox slit. The switch is therefore on aspect ratio, with a width rule
+ * alongside it for the phones that are narrow in any orientation.
+ */
+@media (max-width: 760px), (max-aspect-ratio: 4/5) {
   .arena__stages,
   .lobby__stages {
     grid-template-columns: 1fr;
     /* Your own camera is the one you are aiming; the opponent's is context.
-       Splitting a portrait screen evenly leaves both as unusable letterbox
-       slits, so the view you are actually composing into gets the room. */
+       Splitting the space evenly leaves both too small to compose into, so the
+       view you are actually aiming gets the larger share. */
     grid-template-rows: 1.55fr 1fr;
   }
+}
 
-  /* Reclaim the vertical space the prompt band takes on a phone. */
+/* Density, as opposed to layout: only actually small screens need this. */
+@media (max-width: 760px) {
   .arena {
     gap: var(--space-2);
     padding: var(--space-2);
