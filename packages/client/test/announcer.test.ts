@@ -1,33 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { CHALLENGES, type PublicMatchState, type RoundOutcome } from '@battle/shared';
+import { CHALLENGES, type RoundOutcome } from '@battle/shared';
 import { announcementFor } from '../src/components/Announcer.jsx';
+import { publicMatch } from './fixtures.js';
 
 const AUTO = CHALLENGES.find((c) => c.judging === 'auto')!;
 const PEER = CHALLENGES.find((c) => c.judging === 'peer')!;
-
-function state(overrides: Partial<PublicMatchState> = {}): PublicMatchState {
-  return {
-    roomCode: 'AB12C',
-    phase: 'lobby',
-    phaseEndsAt: null,
-    seats: ['p1', 'p2'],
-    players: {
-      p1: { id: 'p1', name: 'Ada', seat: 0, connected: true, cameraReady: true, ready: false, score: 0, validAnswers: 0, rematchVote: false, submitted: false },
-      p2: { id: 'p2', name: 'Grace', seat: 1, connected: true, cameraReady: true, ready: false, score: 0, validAnswers: 0, rematchVote: false, submitted: false },
-    },
-    round: null,
-    roundNumber: 0,
-    history: [],
-    series: {},
-    settings: { winTarget: 3, maxRounds: 9, countdownMs: 3200, judgingMs: 15000, roundResultMs: 5500 },
-    paused: null,
-    winnerId: null,
-    endReason: null,
-    version: 1,
-    ...overrides,
-  };
-}
 
 function round(challengeId: string, outcome: RoundOutcome | null = null) {
   const challenge = CHALLENGES.find((c) => c.id === challengeId)!;
@@ -44,20 +22,20 @@ function round(challengeId: string, outcome: RoundOutcome | null = null) {
 
 describe('match narration', () => {
   it('spells the room code out, so it is not read as a word', () => {
-    const said = announcementFor(state({ players: { p1: state().players.p1! } }), 'p1');
+    const said = announcementFor(publicMatch({ players: { p1: publicMatch().players.p1! } }), 'p1');
     expect(said).toContain('A B 1 2 C');
   });
 
   it('says when the opponent arrives', () => {
-    expect(announcementFor(state(), 'p1')).toContain('Grace is here');
+    expect(announcementFor(publicMatch(), 'p1')).toContain('Grace is here');
   });
 
   it('reads the prompt and who decides it', () => {
-    const auto = announcementFor(state({ phase: 'challenge', round: round(AUTO.id) }), 'p1');
+    const auto = announcementFor(publicMatch({ phase: 'challenge', round: round(AUTO.id) }), 'p1');
     expect(auto).toContain(AUTO.prompt);
     expect(auto).toContain('camera decides');
 
-    const peer = announcementFor(state({ phase: 'challenge', round: round(PEER.id) }), 'p1');
+    const peer = announcementFor(publicMatch({ phase: 'challenge', round: round(PEER.id) }), 'p1');
     expect(peer).toContain('opponent decides');
   });
 
@@ -71,7 +49,7 @@ describe('match narration', () => {
       perPlayer: { p1: { valid: true, elapsedMs: 900, note: 'That is the whole screen. Counted.' } },
     };
     const said = announcementFor(
-      state({ phase: 'roundResult', round: round(AUTO.id, outcome) }),
+      publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }),
       'p1',
     );
     expect(said).not.toMatch(/\.\./);
@@ -88,8 +66,8 @@ describe('match narration', () => {
       reason: 'only-valid',
       perPlayer: {},
     };
-    const forLoser = announcementFor(state({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p1');
-    const forWinner = announcementFor(state({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p2');
+    const forLoser = announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p1');
+    const forWinner = announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p2');
     expect(forLoser).toContain('Grace won the round');
     expect(forWinner).toContain('You won the round');
   });
@@ -104,16 +82,16 @@ describe('match narration', () => {
       perPlayer: {},
     };
     expect(
-      announcementFor(state({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p1'),
+      announcementFor(publicMatch({ phase: 'roundResult', round: round(AUTO.id, outcome) }), 'p1'),
     ).toContain('Nobody scored');
   });
 
   it('reports the end of the match, including an abandoned one', () => {
     expect(
-      announcementFor(state({ phase: 'matchResult', winnerId: 'p1', endReason: 'target-reached' }), 'p1'),
+      announcementFor(publicMatch({ phase: 'matchResult', winnerId: 'p1', endReason: 'target-reached' }), 'p1'),
     ).toContain('You win the match');
     expect(
-      announcementFor(state({ phase: 'matchResult', endReason: 'abandoned' }), 'p1'),
+      announcementFor(publicMatch({ phase: 'matchResult', endReason: 'abandoned' }), 'p1'),
     ).toContain('abandoned');
   });
 });

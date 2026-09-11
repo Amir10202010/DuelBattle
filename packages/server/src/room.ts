@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import {
+  challengeInRoom,
   createMatch,
-  getChallenge,
   randomId,
   reduce,
   tick,
   toPublicState,
+  validateCustomPrompt,
   type Action,
   type ActionError,
   type AutoVerdict,
@@ -69,6 +70,18 @@ const ACTION_ERROR_COPY: Record<ActionError, string> = {
   'no-submission-to-judge': 'There is nothing to judge yet.',
   'camera-required': 'Turn your camera on first.',
   'match-paused': 'Waiting for your opponent to reconnect.',
+  'deck-full': 'That is as many of your own as one room can hold.',
+  'duplicate-prompt': 'That one is already in the deck.',
+  'not-your-prompt': 'Only whoever wrote it can take it out.',
+  'no-such-prompt': 'That prompt is already gone.',
+};
+
+const PROMPT_ERROR_COPY: Record<string, string> = {
+  'too-short': 'A few more words than that.',
+  'too-long': 'Too long to read at a glance — keep it short.',
+  'unsupported-characters': 'Letters, numbers and ordinary punctuation only.',
+  duplicate: 'That one is already in the deck.',
+  'deck-full': 'That is as many of your own as one room can hold.',
 };
 
 /**
@@ -234,6 +247,15 @@ export class Room {
       case 'rematch':
         this.reportError(seat, this.dispatch({ type: 'rematch', playerId }, now));
         break;
+      case 'addChallenge':
+        this.onAddChallenge(playerId, seat, message.prompt, now);
+        break;
+      case 'removeChallenge':
+        this.reportError(
+          seat,
+          this.dispatch({ type: 'removeChallenge', playerId, id: message.id }, now),
+        );
+        break;
       case 'leave':
         this.remove(playerId, now);
         return;
@@ -241,6 +263,30 @@ export class Room {
         return;
     }
     this.broadcastIfChanged(now);
+  }
+
+  /**
+   * The prompt is normalised and checked here, on the server, so a client
+   * cannot put anything into the deck that the rules would not allow.
+   */
+  private onAddChallenge(playerId: PlayerId, seat: Seat, raw: string, now: number): void {
+    const state = toPublicState(this.state);
+    const check = validateCustomPrompt(raw, state.customChallenges);
+    if (!check.ok) {
+      seat.send?.({
+        t: 'error',
+        code: 'rejected',
+        message: PROMPT_ERROR_COPY[check.error] ?? 'That prompt cannot be used.',
+      });
+      return;
+    }
+    this.reportError(
+      seat,
+      this.dispatch(
+        { type: 'addChallenge', playerId, prompt: check.prompt, id: `c-${randomId(8)}` },
+        now,
+      ),
+    );
   }
 
   private reportError(seat: Seat, error: ActionError | null): void {
@@ -274,7 +320,7 @@ export class Room {
     let auto: AutoVerdict | undefined;
 
     if (round.judging === 'auto') {
-      const challenge = getChallenge(round.challengeId);
+      const challenge = challengeInRoom(this.state, round.challengeId);
       if (!challenge) {
         log.error('round references an unknown challenge', { roundId, challengeId: round.challengeId });
         this.reportError(seat, 'wrong-round');

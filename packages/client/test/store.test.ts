@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { ClientMessage, PublicMatchState, ServerMessage } from '@battle/shared';
+import type { ClientMessage, ServerMessage } from '@battle/shared';
 import type { ConnectionEvents, ConnectionStatus, GameConnection } from '../src/net/connection.js';
 import { MatchStore, recoverableSession } from '../src/net/store.js';
+import { publicMatch } from './fixtures.js';
 
 /** A scripted server: records what the client sends, replays what we choose. */
 class FakeConnection implements GameConnection {
@@ -51,26 +52,6 @@ class FakeConnection implements GameConnection {
   lastOfType<T extends ClientMessage['t']>(t: T): Extract<ClientMessage, { t: T }> | undefined {
     return [...this.sent].reverse().find((m): m is Extract<ClientMessage, { t: T }> => m.t === t);
   }
-}
-
-function matchState(overrides: Partial<PublicMatchState> = {}): PublicMatchState {
-  return {
-    roomCode: 'AB12C',
-    phase: 'lobby',
-    phaseEndsAt: null,
-    seats: ['p1', null],
-    players: {},
-    round: null,
-    roundNumber: 0,
-    history: [],
-    series: {},
-    settings: { winTarget: 3, maxRounds: 9, countdownMs: 3200, judgingMs: 15000, roundResultMs: 5500 },
-    paused: null,
-    winnerId: null,
-    endReason: null,
-    version: 1,
-    ...overrides,
-  };
 }
 
 function setup() {
@@ -197,7 +178,7 @@ describe('seat ownership', () => {
     const { connection, store } = setup();
     store.createRoom('Ada');
     connection.deliver({ t: 'joined', roomCode: 'AB12C', playerId: 'p1', token: 'tok-1' });
-    connection.deliver({ t: 'state', state: matchState(), serverTime: 0 });
+    connection.deliver({ t: 'state', state: publicMatch(), serverTime: 0 });
     expect(store.getSnapshot().screen).toBe('room');
 
     // The server restarted; the room went with it.
@@ -282,8 +263,8 @@ describe('errors', () => {
 describe('match traffic', () => {
   it('keeps the latest state', () => {
     const { connection, store } = setup();
-    connection.deliver({ t: 'state', state: matchState({ version: 4 }), serverTime: 0 });
-    connection.deliver({ t: 'state', state: matchState({ version: 5, phase: 'countdown' }), serverTime: 0 });
+    connection.deliver({ t: 'state', state: publicMatch({ version: 4 }), serverTime: 0 });
+    connection.deliver({ t: 'state', state: publicMatch({ version: 5, phase: 'countdown' }), serverTime: 0 });
     expect(store.getSnapshot().match?.version).toBe(5);
     expect(store.getSnapshot().match?.phase).toBe('countdown');
   });
@@ -317,7 +298,7 @@ describe('match traffic', () => {
     const { connection, store } = setup();
     let calls = 0;
     store.subscribe(() => calls++);
-    connection.deliver({ t: 'state', state: matchState(), serverTime: 0 });
+    connection.deliver({ t: 'state', state: publicMatch(), serverTime: 0 });
     expect(calls).toBe(1);
   });
 });

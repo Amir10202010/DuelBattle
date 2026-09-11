@@ -1390,3 +1390,117 @@
   flex: none;
   padding: 0 var(--space-1);
 }
+
+/* ==================================================================== */
+/* Deck: rounds the players write themselves                             */
+/* ==================================================================== */
+
+.deck {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0 var(--space-1);
+}
+
+.deck__label {
+  flex: none;
+}
+
+.deck__list {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.deck__list::-webkit-scrollbar {
+  display: none;
+}
+
+.deck__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2) 4px var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--ink-2);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+/* Yours are the ones you can take back out, so they read as yours. */
+.deck__chip--mine {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.deck__remove {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.deck__remove:hover {
+  background: var(--ink-3);
+  color: var(--bad);
+}
+
+.deck__add {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+  flex: none;
+}
+
+.deck__input {
+  width: clamp(160px, 24vw, 280px);
+  height: 34px;
+  font-size: 13px;
+}
+
+.deck__submit {
+  min-height: 34px;
+  padding: 0 var(--space-4);
+  font-size: 13px;
+}
+
+.deck__error {
+  flex: none;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .deck {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .deck__add {
+    margin-left: 0;
+    flex: 1;
+  }
+
+  .deck__input {
+    width: auto;
+    flex: 1;
+  }
+}

@@ -235,6 +235,70 @@ export function getChallenge(id: string): Challenge | undefined {
   return CHALLENGES_BY_ID.get(id);
 }
 
+/** How many prompts one room may add on top of the catalogue. */
+export const MAX_CUSTOM_CHALLENGES = 8;
+export const MAX_CUSTOM_PROMPT_LENGTH = 48;
+export const MIN_CUSTOM_PROMPT_LENGTH = 4;
+
+export type CustomPromptError =
+  | 'too-short'
+  | 'too-long'
+  | 'unsupported-characters'
+  | 'duplicate'
+  | 'deck-full';
+
+/**
+ * Turns whatever someone typed into a prompt the game can show, or says why it
+ * cannot. Upper-casing is not decoration: every prompt in the game is set in
+ * caps at 46px, and a lower-case one would read as a different kind of thing.
+ */
+export function normalizeCustomPrompt(input: string): string {
+  return input
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .slice(0, MAX_CUSTOM_PROMPT_LENGTH);
+}
+
+export function validateCustomPrompt(
+  input: string,
+  existing: readonly { prompt: string }[],
+): { ok: true; prompt: string } | { ok: false; error: CustomPromptError } {
+  if (existing.length >= MAX_CUSTOM_CHALLENGES) return { ok: false, error: 'deck-full' };
+
+  const prompt = normalizeCustomPrompt(input);
+  if (prompt.length < MIN_CUSTOM_PROMPT_LENGTH) return { ok: false, error: 'too-short' };
+  if (input.trim().length > MAX_CUSTOM_PROMPT_LENGTH) return { ok: false, error: 'too-long' };
+  // Letters, digits and ordinary sentence punctuation. Anything else is either
+  // a rendering problem at 46px or an attempt to be clever with the layout.
+  if (!/^[A-Z0-9 '’\-.,!?$&+:()]+$/.test(prompt)) {
+    return { ok: false, error: 'unsupported-characters' };
+  }
+  if (!/[A-Z]/.test(prompt)) return { ok: false, error: 'too-short' };
+  if (existing.some((c) => c.prompt === prompt)) return { ok: false, error: 'duplicate' };
+  if (CHALLENGES.some((c) => c.prompt === prompt)) return { ok: false, error: 'duplicate' };
+
+  return { ok: true, prompt };
+}
+
+/**
+ * A player-written round.
+ *
+ * Always peer-judged: no detector can decide an arbitrary sentence, and
+ * inventing one that pretends to would be worse than asking the opponent.
+ */
+export function customChallenge(id: string, prompt: string): Challenge {
+  return {
+    id,
+    prompt,
+    category: 'wildcard',
+    difficulty: 2,
+    durationMs: NORMAL,
+    judging: 'peer',
+    tags: ['custom'],
+  };
+}
+
 /** Structural invariants the catalogue must satisfy; asserted by the tests. */
 export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): string[] {
   const problems: string[] = [];

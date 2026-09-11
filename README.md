@@ -43,6 +43,18 @@ combination that cannot actually be decided:
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
 
+### Rounds you write yourself
+
+A room can hold up to eight prompts the players write. They are always
+peer-judged — no detector can decide an arbitrary sentence, and inventing one
+that pretends to would be worse than asking the opponent — and they can only be
+added between matches, so nobody adds a round they have already set themselves
+up to win.
+
+Prompts are normalised and checked on the server, live only in that room's
+memory, and are never shown to anyone but the two players. A prompt leaves with
+whoever wrote it.
+
 `runDetector` is the single place a spec becomes a verdict. The client calls it
 several times a second to drive the on-screen meter and the server calls it once
 on the submitted frame, so the preview cannot drift from the ruling.

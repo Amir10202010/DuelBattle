@@ -1,5 +1,11 @@
 import type { Challenge, JudgingMode } from './challenges.js';
-import { getChallenge, pickChallenge } from './challenges.js';
+import {
+  CHALLENGES,
+  MAX_CUSTOM_CHALLENGES,
+  customChallenge,
+  getChallenge,
+  pickChallenge,
+} from './challenges.js';
 import type { RandomSource } from './ids.js';
 
 export type PlayerId = string;
@@ -118,6 +124,8 @@ export interface MatchState {
   playedChallengeIds: string[];
   recentModes: JudgingMode[];
   history: RoundOutcome[];
+  /** Prompts the players wrote themselves, drawn alongside the catalogue. */
+  customChallenges: CustomChallenge[];
   /**
    * Matches won in this room, across rematches. It is what makes the rematch
    * button mean something: a match you lost 3-1 is still 1-1 on the night.
@@ -130,6 +138,13 @@ export interface MatchState {
   endReason: MatchEndReason | null;
   /** Bumped on every accepted transition so clients can drop stale snapshots. */
   version: number;
+}
+
+export interface CustomChallenge {
+  id: string;
+  prompt: string;
+  /** Who wrote it, so only they can take it back out. */
+  authorId: PlayerId;
 }
 
 export interface EngineContext {
@@ -153,6 +168,8 @@ export type Action =
   | { type: 'submit'; playerId: PlayerId; roundId: string; evidenceId: string; auto?: AutoVerdict }
   | { type: 'vote'; playerId: PlayerId; roundId: string; targetId: PlayerId; approve: boolean }
   | { type: 'rematch'; playerId: PlayerId }
+  | { type: 'addChallenge'; playerId: PlayerId; prompt: string; id: string }
+  | { type: 'removeChallenge'; playerId: PlayerId; id: string }
   /**
    * Converts an auto-judged round to peer judging. Issued by the server when it
    * has no usable baseline frame for a player and therefore cannot verify the
@@ -173,7 +190,11 @@ export type ActionError =
   | 'no-such-target'
   | 'no-submission-to-judge'
   | 'camera-required'
-  | 'match-paused';
+  | 'match-paused'
+  | 'deck-full'
+  | 'duplicate-prompt'
+  | 'not-your-prompt'
+  | 'no-such-prompt';
 
 export type Result =
   | { ok: true; state: MatchState }
@@ -197,6 +218,7 @@ export function createMatch(
     playedChallengeIds: [],
     recentModes: [],
     history: [],
+    customChallenges: [],
     series: {},
     pausedAt: null,
     pauseDeadline: null,
@@ -255,7 +277,62 @@ export function reduce(state: MatchState, action: Action, ctx: EngineContext): R
       return rematch(state, action.playerId, ctx);
     case 'downgradeJudging':
       return downgradeJudging(state, action.roundId);
+    case 'addChallenge':
+      return addChallenge(state, action);
+    case 'removeChallenge':
+      return removeChallenge(state, action);
   }
+}
+
+/**
+ * Prompts can only be added between matches. Changing the deck mid-match would
+ * let someone add a round they have already set themselves up to win.
+ */
+function addChallenge(
+  state: MatchState,
+  action: Extract<Action, { type: 'addChallenge' }>,
+): Result {
+  if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
+  if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
+  if (state.customChallenges.length >= MAX_CUSTOM_CHALLENGES) {
+    return { ok: false, error: 'deck-full' };
+  }
+  const prompt = action.prompt;
+  if (
+    state.customChallenges.some((c) => c.prompt === prompt) ||
+    CHALLENGES.some((c) => c.prompt === prompt)
+  ) {
+    return { ok: false, error: 'duplicate-prompt' };
+  }
+
+  return {
+    ok: true,
+    state: bump({
+      ...state,
+      customChallenges: [
+        ...state.customChallenges,
+        { id: action.id, prompt, authorId: action.playerId },
+      ],
+    }),
+  };
+}
+
+function removeChallenge(
+  state: MatchState,
+  action: Extract<Action, { type: 'removeChallenge' }>,
+): Result {
+  if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
+  const existing = state.customChallenges.find((c) => c.id === action.id);
+  if (!existing) return { ok: false, error: 'no-such-prompt' };
+  if (existing.authorId !== action.playerId) return { ok: false, error: 'not-your-prompt' };
+
+  return {
+    ok: true,
+    state: bump({
+      ...state,
+      customChallenges: state.customChallenges.filter((c) => c.id !== action.id),
+    }),
+  };
 }
 
 function downgradeJudging(state: MatchState, roundId: string): Result {
@@ -338,6 +415,9 @@ function leave(state: MatchState, playerId: PlayerId, ctx: EngineContext): Resul
     players,
     seats,
     series: {},
+    // Their prompts go with them; the next person did not write them and should
+    // not have to play them.
+    customChallenges: state.customChallenges.filter((c) => c.authorId !== playerId),
     pausedAt: null,
     pauseDeadline: null,
   };
@@ -515,7 +595,7 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
     roundNumber: state.roundNumber + 1,
     recentModes: state.recentModes,
     ...(ctx.random ? { random: ctx.random } : {}),
-    ...(ctx.pool ? { pool: ctx.pool } : {}),
+    pool: deckFor(state, ctx),
   });
 
   const roundNumber = state.roundNumber + 1;
@@ -544,9 +624,25 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
   };
 }
 
+/**
+ * Everything this room can draw from: the catalogue plus whatever the players
+ * wrote, or an explicit pool when one is supplied.
+ */
+function deckFor(state: MatchState, ctx: EngineContext): readonly Challenge[] {
+  const base = ctx.pool ?? CHALLENGES;
+  if (state.customChallenges.length === 0) return base;
+  return [...base, ...state.customChallenges.map((c) => customChallenge(c.id, c.prompt))];
+}
+
+/** Resolves a challenge by id, including the ones this room wrote itself. */
+export function challengeInRoom(state: MatchState, id: string): Challenge | undefined {
+  const own = state.customChallenges.find((c) => c.id === id);
+  return own ? customChallenge(own.id, own.prompt) : getChallenge(id);
+}
+
 function beginChallenge(state: MatchState, ctx: EngineContext): MatchState {
   if (!state.round) return state;
-  const challenge = getChallenge(state.round.challengeId);
+  const challenge = challengeInRoom(state, state.round.challengeId);
   const duration = challenge?.durationMs ?? 25_000;
   return {
     ...state,

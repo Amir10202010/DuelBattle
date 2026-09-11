@@ -243,6 +243,51 @@ describe('a full match over the wire', () => {
   }, 20_000);
 });
 
+describe('rounds the players write themselves', () => {
+  it('adds a prompt, shows it to both, and lets only its author remove it', async () => {
+    const { host, guest } = await pair();
+
+    host.send({ t: 'addChallenge', prompt: '  show me the worst gift you ever got ' });
+    const added = await guest.waitForState((s) => s.customChallenges.length === 1);
+    const entry = added.customChallenges[0]!;
+    // Normalised on the server, not trusted from the client.
+    expect(entry.prompt).toBe('SHOW ME THE WORST GIFT YOU EVER GOT');
+    expect(entry.authorId).toBe(host.playerId);
+
+    // The opponent cannot take out a prompt they did not write.
+    guest.send({ t: 'removeChallenge', id: entry.id });
+    const refusal = await guest.waitFor<Extract<ServerMessage, { t: 'error' }>>(
+      (m) => m.t === 'error',
+    );
+    expect(refusal.message).toMatch(/whoever wrote it/i);
+    expect(guest.state.customChallenges).toHaveLength(1);
+
+    host.send({ t: 'removeChallenge', id: entry.id });
+    await guest.waitForState((s) => s.customChallenges.length === 0);
+
+    host.close();
+    guest.close();
+  });
+
+  it('refuses a prompt the rules do not allow, whatever the client sends', async () => {
+    const { host, guest } = await pair();
+
+    for (const prompt of ['go', 'X'.repeat(120), 'SHOW <b>THIS</b>']) {
+      host.send({ t: 'addChallenge', prompt });
+      const error = await host.waitFor<Extract<ServerMessage, { t: 'error' }>>(
+        (m) => m.t === 'error',
+        3_000,
+      );
+      expect(error.code).toBe('rejected');
+      host.received.length = 0;
+    }
+    expect(guest.state.customChallenges).toHaveLength(0);
+
+    host.close();
+    guest.close();
+  });
+});
+
 describe('hostile clients', () => {
   it('rejects a protocol version it does not speak', async () => {
     const player = await Player.connect(port);

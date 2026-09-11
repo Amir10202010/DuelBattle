@@ -261,6 +261,14 @@ export class MatchStore {
     this.connection.send({ t: 'rematch' });
   }
 
+  addChallenge(prompt: string): void {
+    this.connection.send({ t: 'addChallenge', prompt });
+  }
+
+  removeChallenge(id: string): void {
+    this.connection.send({ t: 'removeChallenge', id });
+  }
+
   leave(): void {
     this.connection.send({ t: 'leave' });
     const code = this.snapshot.roomCode;

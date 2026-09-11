@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Challenge } from '../src/challenges.js';
 import {
   DEFAULT_SETTINGS,
+  challengeInRoom,
   createMatch,
   opponentOf,
   playersInSeatOrder,
@@ -576,5 +577,109 @@ describe('the series', () => {
     // played, in either direction.
     s = apply(s, { type: 'leave', playerId: 'p2' }, ctxAt(900_000));
     expect(s.series).toEqual({});
+  });
+});
+
+
+describe('prompts the players write themselves', () => {
+  function add(state: MatchState, playerId: string, prompt: string, id: string): MatchState {
+    return apply(state, { type: 'addChallenge', playerId, prompt, id }, ctxAt(100));
+  }
+
+  it('starts with an empty deck', () => {
+    expect(seatedMatch(0).customChallenges).toEqual([]);
+  });
+
+  it('accepts a prompt in the lobby and records who wrote it', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = add(s, 'p1', 'SHOW YOUR OLDEST MUG', 'c1');
+    expect(s.customChallenges).toEqual([
+      { id: 'c1', prompt: 'SHOW YOUR OLDEST MUG', authorId: 'p1' },
+    ]);
+  });
+
+  it('refuses one mid-match, so nobody adds a round they are set up to win', () => {
+    const s = intoChallenge(seatedMatch(0));
+    expect(
+      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c1' }, ctxAt(5_000)),
+    ).toBe('wrong-phase');
+  });
+
+  it('refuses a duplicate and a full deck', () => {
+    let s = createMatch('ABCDE', 0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctxAt(0));
+    s = add(s, 'p1', 'SHOW A CAT', 'c1');
+    expect(
+      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c2' }, ctxAt(0)),
+    ).toBe('duplicate-prompt');
+
+    for (let i = 1; i < 8; i++) s = add(s, 'p1', `PROMPT NUMBER ${i}`, `c${i + 1}`);
+    expect(
+      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'ONE TOO MANY', id: 'cx' }, ctxAt(0)),
+    ).toBe('deck-full');
+  });
+
+  it('lets only the author take one back out', () => {
+    let s = seatedMatch(0, [AUTO, AUTO_2]);
+    // Back to the lobby so the deck can be edited.
+    s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    s = add(s, 'p1', 'SHOW A CAT', 'c1');
+
+    expect(expectError(s, { type: 'removeChallenge', playerId: 'p2', id: 'c1' }, ctx)).toBe(
+      'not-your-prompt',
+    );
+    expect(expectError(s, { type: 'removeChallenge', playerId: 'p1', id: 'nope' }, ctx)).toBe(
+      'no-such-prompt',
+    );
+    s = apply(s, { type: 'removeChallenge', playerId: 'p1', id: 'c1' }, ctx);
+    expect(s.customChallenges).toEqual([]);
+  });
+
+  it('actually draws them into rounds', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0, [AUTO]);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    s = add(s, 'p1', 'SHOW YOUR OLDEST MUG', 'c1');
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctx);
+
+    // Round one is always auto-judged, so the written prompt cannot be first.
+    expect(s.round?.challengeId).toBe(AUTO.id);
+
+    // Play on: with only one built-in in the pool, round two must be the
+    // player's own, and it must be judged by the opponent.
+    const pool = [AUTO];
+    const seen: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      seen.push(s.round!.challengeId);
+      s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      if (s.phase === 'judging') s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      s = tick(s, ctxAt(s.phaseEndsAt, pool));
+    }
+    expect(seen).toContain('c1');
+    expect(challengeInRoom(s, 'c1')?.judging).toBe('peer');
+    expect(challengeInRoom(s, 'c1')?.prompt).toBe('SHOW YOUR OLDEST MUG');
+  });
+
+  it('takes a player’s prompts with them when they leave', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    s = add(s, 'p1', 'ADA WROTE THIS', 'c1');
+    s = add(s, 'p2', 'GRACE WROTE THIS', 'c2');
+
+    s = apply(s, { type: 'leave', playerId: 'p1' }, ctx);
+    // Whoever takes the seat next did not write it and should not have to play it.
+    expect(s.customChallenges.map((c) => c.id)).toEqual(['c2']);
   });
 });

@@ -1,4 +1,5 @@
 import type {
+  CustomChallenge,
   MatchEndReason,
   MatchState,
   Phase,
@@ -30,6 +31,8 @@ export type ClientMessage =
   | { t: 'submit'; roundId: string; image: string }
   | { t: 'vote'; roundId: string; targetId: PlayerId; approve: boolean }
   | { t: 'rematch' }
+  | { t: 'addChallenge'; prompt: string }
+  | { t: 'removeChallenge'; id: string }
   | { t: 'leave' }
   | { t: 'ping'; id: number }
   | { t: 'frame'; image: string; seq: number };
@@ -96,6 +99,8 @@ export interface PublicMatchState {
   history: RoundOutcome[];
   /** Matches won in this room so far, by player id. */
   series: Record<PlayerId, number>;
+  /** Prompts the players wrote themselves. */
+  customChallenges: CustomChallenge[];
   /**
    * Everything the client needs to draw the match without guessing. The phase
    * durations are here because a timer bar has to know what a full bar means,
@@ -178,6 +183,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
     roundNumber: state.roundNumber,
     history: state.history,
     series: state.series,
+    customChallenges: state.customChallenges,
     settings: {
       winTarget: state.settings.winTarget,
       maxRounds: state.settings.maxRounds,

@@ -66,6 +66,13 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
     approve: z.boolean(),
   }),
   z.object({ t: z.literal('rematch') }),
+  z.object({
+    t: z.literal('addChallenge'),
+    // Generous here so the server can normalise and explain; the real rules
+    // live in validateCustomPrompt, which both sides share.
+    prompt: z.string().min(1).max(200),
+  }),
+  z.object({ t: z.literal('removeChallenge'), id: z.string().min(1).max(64) }),
   z.object({ t: z.literal('leave') }),
   z.object({ t: z.literal('ping'), id: z.number().int() }),
   z.object({ t: z.literal('frame'), image: frameImageSchema, seq: z.number().int().nonnegative() }),

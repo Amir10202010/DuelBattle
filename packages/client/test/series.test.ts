@@ -1,28 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import type { PublicMatchState } from '@battle/shared';
 import { seriesLine } from '../src/components/Series.jsx';
+import { publicMatch } from './fixtures.js';
 
-function state(series: Record<string, number>, seats: [string | null, string | null] = ['p1', 'p2']): PublicMatchState {
-  return {
-    roomCode: 'AB12C',
-    phase: 'matchResult',
-    phaseEndsAt: null,
-    seats,
-    players: {
-      p1: { id: 'p1', name: 'Ada', seat: 0, connected: true, cameraReady: true, ready: false, score: 0, validAnswers: 0, rematchVote: false, submitted: false },
-      p2: { id: 'p2', name: 'Grace', seat: 1, connected: true, cameraReady: true, ready: false, score: 0, validAnswers: 0, rematchVote: false, submitted: false },
-    },
-    round: null,
-    roundNumber: 0,
-    history: [],
-    series,
-    settings: { winTarget: 3, maxRounds: 9, countdownMs: 3200, judgingMs: 15000, roundResultMs: 5500 },
-    paused: null,
-    winnerId: null,
-    endReason: null,
-    version: 1,
-  };
+function state(
+  series: Record<string, number>,
+  seats: [string | null, string | null] = ['p1', 'p2'],
+) {
+  return publicMatch({ phase: 'matchResult', seats, series });
 }
 
 describe('series line', () => {
