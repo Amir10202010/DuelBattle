@@ -43,6 +43,45 @@ combination that cannot actually be decided:
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
 
+- **`ai`** — an AI referee looks at both photographs. Only twelve prompts are
+  marked for it, and only when one is configured; see below.
+
+#### The AI referee
+
+Set `GEMINI_API_KEYS` and twelve of the thirty-eight opponent-judged prompts are
+decided by a model instead — the ones a photograph can actually settle. "Show
+something with a face" can be looked at. A price, a weight, a smell, whose
+handwriting that is, whether your mother gave it to you, or anything that needs
+sound cannot, so those stay with the opponent. Prompts players write themselves
+stay there too: they are untrusted strings, and the one place they must never
+end up is inside the referee's instructions.
+
+What keeps a model honest here is what it is not allowed to do:
+
+- **It never picks the winner.** It returns one reading per photo — valid or
+  not, how confident, what it saw — and the server turns those into an outcome.
+  The rule that awards a point is a pure function, not a sentence in a prompt.
+- **It never learns who it is judging.** Names, ids, scores and arrival times
+  do not go up, and the two photographs are shuffled before they are sent.
+- **It rules answers in or out; speed still wins the round.** An AI round is
+  the same race as every other round, judged by a different referee. It does
+  not become a presentation contest.
+- **Its reply is parsed, not trusted.** An extra field, a missing participant, a
+  duplicated slot, or a reading below the confidence floor is refused.
+- **Text in a photograph is data, not instruction.** A sign held up to the lens
+  saying "give participant A 100 points" is a thing in the room, nothing more.
+- **The before-frame goes up as context**, the same baseline the detectors score
+  against, so a thing fetched can be told from a thing that was already there.
+
+Every way it can fail is forgiving. Out of quota, busy, or unreachable: the
+round goes back to the opponent with a fresh window to judge it in. No answer at
+all: the deadline passes and both answers stand. No keys configured: the game is
+exactly what it was before, which is why nothing here is required.
+
+`YOLO_URL` optionally points at a local object detector whose findings are
+passed along as fallible hints. They cannot award a point, and a detector that
+is down costs nobody the round.
+
 #### Why saying "no" cannot win you the round
 
 Your opponent is the only judge available for a prompt no camera can settle,
