@@ -42,6 +42,19 @@ export const config = {
    * of about 350 MB of room state; raise it only with that arithmetic in mind.
    */
   maxRooms: int('MAX_ROOMS', 500),
+  /**
+   * Gemini keys for the AI referee, comma-separated. Empty disables it, and the
+   * prompts it would have judged go back to the opponent — the game plays
+   * fine either way, which is why nothing here is required.
+   */
+  geminiApiKeys: list('GEMINI_API_KEYS').concat(list('GEMINI_API_KEY')),
+  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+  /**
+   * An optional local YOLO service. Its detections are hints handed to the
+   * referee alongside the photographs; they never award a point on their own.
+   */
+  yoloUrl: process.env.YOLO_URL ?? '',
+  yoloToken: process.env.YOLO_TOKEN ?? '',
   /** Sustained client messages per second before we start dropping. */
   messageRatePerSec: int('MESSAGE_RATE_PER_SEC', 25),
   /** Image-bearing messages get their own, much tighter budget. */

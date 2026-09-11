@@ -1,5 +1,36 @@
 import type { Server } from 'node:http';
 import { config } from './config.js';
+import { GeminiPhotoJudge, type AiJudge } from './ai/judge.js';
+import { YoloObjectDetector } from './ai/detector.js';
+
+/**
+ * Builds the AI referee, if this deployment has one.
+ *
+ * No keys is a supported way to run the game, not a misconfiguration: the
+ * prompts a referee would have taken simply stay with the opponent. A bad key
+ * list is a misconfiguration, and says so rather than starting up pretending
+ * the referee exists.
+ */
+function buildJudge(): AiJudge | undefined {
+  if (config.geminiApiKeys.length === 0) {
+    log.info('ai judge disabled', { reason: 'no GEMINI_API_KEYS configured' });
+    return undefined;
+  }
+  const detector = config.yoloUrl
+    ? new YoloObjectDetector(config.yoloUrl, config.yoloToken)
+    : undefined;
+  const judge = new GeminiPhotoJudge({
+    apiKeys: config.geminiApiKeys,
+    model: config.geminiModel,
+    ...(detector ? { detector } : {}),
+  });
+  log.info('ai judge enabled', {
+    model: config.geminiModel,
+    keys: config.geminiApiKeys.length,
+    detector: detector ? 'yolo' : 'none',
+  });
+  return judge;
+}
 import { Gateway } from './gateway.js';
 import { createHttpServer } from './http.js';
 import { RoomManager } from './rooms.js';
@@ -16,6 +47,8 @@ export interface AppOptions {
    * client shares one address, is not fighting a limit meant for the internet.
    */
   roomCreateLimit?: LimiterOptions;
+  /** Injected by tests; production builds one from the environment. */
+  judge?: AiJudge;
 }
 
 export interface App {
@@ -31,10 +64,12 @@ export interface App {
  * ephemeral port rather than mocking the transport.
  */
 export function createApp(options: AppOptions = {}): App {
+  const judge = options.judge ?? buildJudge();
   const rooms = new RoomManager({
     maxRooms: config.maxRooms,
     emptyRoomTtlMs: config.emptyRoomTtlMs,
     maxRoomAgeMs: config.maxRoomAgeMs,
+    ...(judge ? { judge } : {}),
   });
 
   const server = createHttpServer({ clientDir: options.clientDir ?? config.clientDir, rooms });

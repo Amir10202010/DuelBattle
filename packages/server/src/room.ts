@@ -11,6 +11,7 @@ import {
   type ActionError,
   type AutoVerdict,
   type ClientMessage,
+  type Challenge,
   type EngineContext,
   type ErrorCode,
   type Frame,
@@ -20,9 +21,21 @@ import {
   type ServerMessage,
 } from '@battle/shared';
 import { DecodeError, decodeEvidence, verifySubmission } from './verify.js';
+import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
 import { log } from './log.js';
 
 export type Send = (message: ServerMessage) => void;
+
+export interface RoomOptions {
+  /** The AI referee, when this deployment has one. Shared across rooms. */
+  judge?: AiJudge;
+  /**
+   * Restricts the deck this room draws from. The engine has always supported
+   * it; a room passes it through for a themed deck, or for a test that needs
+   * to know which prompt is coming.
+   */
+  pool?: readonly Challenge[];
+}
 
 /** A live frame is only usable as a baseline while it still reflects the room. */
 const BASELINE_MAX_AGE_MS = 4_000;
@@ -38,6 +51,14 @@ interface Seat {
   lastRelayAt: number;
   /** Decoded baseline for the round named by `baselineRoundId`. */
   baseline: Frame | null;
+  /**
+   * The same baseline, still encoded.
+   *
+   * A detector wants pixels; an AI referee wants the picture. Keeping the one
+   * frame in both forms is what lets "before and after" mean the same thing to
+   * either of them.
+   */
+  baselineImage: string | null;
   baselineRoundId: string | null;
 }
 
@@ -105,10 +126,15 @@ export class Room {
   private lastRoundId: string | null = null;
   emptySince: number | null;
 
-  constructor(code: string, now: number) {
+  private readonly judge: AiJudge | undefined;
+  private readonly pool: readonly Challenge[] | undefined;
+
+  constructor(code: string, now: number, options: RoomOptions = {}) {
     this.code = code;
     this.state = createMatch(code, now);
     this.emptySince = now;
+    this.judge = options.judge;
+    this.pool = options.pool;
   }
 
   get createdAt(): number {
@@ -132,7 +158,12 @@ export class Room {
   }
 
   private ctx(now: number): EngineContext {
-    return { now, newId: () => randomId(10) };
+    return {
+      now,
+      newId: () => randomId(10),
+      aiAvailable: Boolean(this.judge),
+      ...(this.pool ? { pool: this.pool } : {}),
+    };
   }
 
   private dispatch(action: Action, now: number): ActionError | null {
@@ -163,6 +194,7 @@ export class Room {
       lastFrame: null,
       lastRelayAt: 0,
       baseline: null,
+      baselineImage: null,
       baselineRoundId: null,
     });
     this.tokens.set(token, playerId);
@@ -432,6 +464,7 @@ export class Room {
     }
     if (phase === 'judging' && this.lastPhase !== 'judging' && round) {
       this.deliverEvidence(round.id, 'judging');
+      if (round.aiPending) this.askReferee(round.id, now);
     }
     if (phase === 'roundResult' && this.lastPhase !== 'roundResult' && round) {
       this.deliverEvidence(round.id, 'result');
@@ -443,6 +476,76 @@ export class Room {
   }
 
   /**
+   * Sends the round to an AI referee, and lets the engine know either way.
+   *
+   * Deliberately fire-and-forget: nothing upstream waits on this. The round has
+   * a judging deadline of its own, so the worst a referee that never answers
+   * can do is let that deadline pass, which the engine already treats as an
+   * unjudged round rather than a lost one.
+   */
+  private askReferee(roundId: string, now: number): void {
+    const judge = this.judge;
+    const round = this.state.round;
+    if (!judge || !round || round.id !== roundId) return;
+
+    const challenge = challengeInRoom(this.state, round.challengeId);
+    const images = this.evidence.get(roundId);
+    if (!challenge || !images) {
+      this.dispatch({ type: 'aiFinished', roundId, verdicts: null }, now);
+      this.broadcastIfChanged(now);
+      return;
+    }
+
+    const photos: JudgePhoto[] = [];
+    for (const [playerId, image] of images) {
+      const seat = this.seats.get(playerId);
+      const before =
+        seat && seat.baselineRoundId === roundId && seat.baselineImage ? [seat.baselineImage] : [];
+      photos.push({ playerId, image, contextImages: before });
+    }
+    if (photos.length === 0) {
+      this.dispatch({ type: 'aiFinished', roundId, verdicts: null }, now);
+      this.broadcastIfChanged(now);
+      return;
+    }
+
+    // Leave a margin inside the judging window, so a slow referee still leaves
+    // the players time to judge it themselves.
+    const budget = Math.max(1_000, this.state.settings.judgingMs - 3_000);
+
+    void judge
+      .judge({ challenge, photos, signal: AbortSignal.timeout(budget) })
+      .then((assessments) => {
+        const verdicts: Record<PlayerId, AutoVerdict> = {};
+        for (const assessment of assessments) {
+          verdicts[assessment.playerId] = {
+            matched: assessment.score > 0,
+            confidence: assessment.confidence,
+            reason: assessment.reason,
+          };
+        }
+        return verdicts;
+      })
+      .catch((err: unknown) => {
+        if (err instanceof JudgeUnavailable) {
+          log.info('ai judge unavailable', { room: this.code, reason: err.publicReason });
+        } else {
+          // Never the upstream body: it carries key material and a photograph.
+          log.warn('ai judge failed', {
+            room: this.code,
+            error: err instanceof Error ? err.message : 'unknown',
+          });
+        }
+        return null;
+      })
+      .then((verdicts) => {
+        const at = Date.now();
+        this.dispatch({ type: 'aiFinished', roundId, verdicts }, at);
+        this.broadcastIfChanged(at);
+      });
+  }
+
+  /**
    * Freezes each player's "before" frame at the instant the prompt is revealed.
    * Everything the detector scores is measured against this, which is what
    * stops a challenge being answered by furniture that never moved.
@@ -450,6 +553,7 @@ export class Room {
   private captureBaselines(roundId: string, now: number): void {
     for (const [playerId, seat] of this.seats) {
       seat.baseline = null;
+      seat.baselineImage = null;
       seat.baselineRoundId = null;
       const frame = seat.lastFrame;
       if (!frame || now - frame.at > BASELINE_MAX_AGE_MS) {
@@ -458,6 +562,7 @@ export class Room {
       }
       try {
         seat.baseline = decodeEvidence(frame.image);
+        seat.baselineImage = frame.image;
         seat.baselineRoundId = roundId;
       } catch (err) {
         log.warn('baseline decode failed', {

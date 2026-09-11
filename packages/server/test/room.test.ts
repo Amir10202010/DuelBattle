@@ -6,6 +6,7 @@ import {
   type ServerMessage,
 } from '@battle/shared';
 import { Room } from '../src/room.js';
+import { JudgeUnavailable, type AiJudge, type JudgePhoto } from '../src/ai/judge.js';
 import {
   BLUE,
   emptyRoomFrame,
@@ -416,5 +417,165 @@ describe('collection', () => {
     const a = room.join('Ada', 0);
     room.attach(a.playerId!, new Recorder().send, 0);
     expect(room.isCollectable(2_000_000, 5_000, 1_000_000)).toBe(true);
+  });
+});
+
+describe('a round the AI referee takes', () => {
+  const AI_PROMPT = getChallenge('obj-face')!;
+
+  /** Two seated players in a room whose deck is one AI-verifiable prompt. */
+  function seatedWithJudge(judge: AiJudge): Harness {
+    const room = new Room('AIRM1', 0, { judge, pool: [AI_PROMPT] });
+    const a = room.join('Ada', 0);
+    const b = room.join('Grace', 0);
+    const p1 = a.playerId!;
+    const p2 = b.playerId!;
+    const r1 = new Recorder();
+    const r2 = new Recorder();
+    room.attach(p1, r1.send, 0);
+    room.attach(p2, r2.send, 0);
+    room.handle(p1, { t: 'cameraReady', ready: true }, 0);
+    room.handle(p2, { t: 'cameraReady', ready: true }, 0);
+    return { room, p1, p2, r1, r2 };
+  }
+
+  function intoAiRound(h: Harness): string {
+    h.room.handle(h.p1, { t: 'ready', ready: true }, 100);
+    h.room.handle(h.p2, { t: 'ready', ready: true }, 100);
+    h.room.handle(h.p1, { t: 'frame', image: emptyRoomFrame(), seq: 1 }, 200);
+    h.room.handle(h.p2, { t: 'frame', image: emptyRoomFrame(), seq: 1 }, 200);
+    h.room.tick(4_000);
+    const state = h.r1.state;
+    expect(state.phase).toBe('challenge');
+    expect(state.round?.judging).toBe('ai');
+    return state.round!.id;
+  }
+
+  /** Lets the referee's promise chain finish. */
+  const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it('sends both photos to the referee and settles the round on the reply', async () => {
+    let seen: JudgePhoto[] = [];
+    const judge: AiJudge = {
+      judge: ({ photos }) => {
+        seen = [...photos];
+        return Promise.resolve(
+          photos.map((p, i) => ({
+            playerId: p.playerId,
+            valid: true,
+            confidence: 0.9,
+            fulfillment: 50,
+            presentation: 20,
+            objects: ['mug'],
+            reason: `Slot ${i}: a mug with a face.`,
+            score: 70,
+          })),
+        );
+      },
+    };
+    const h = seatedWithJudge(judge);
+    const roundId = intoAiRound(h);
+
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+
+    // Both answered, so the referee has it and nobody is offered a vote.
+    expect(h.r1.state.phase).toBe('judging');
+    expect(h.r1.state.round?.aiPending).toBe(true);
+
+    await settle();
+
+    const state = h.r1.state;
+    expect(state.phase).toBe('roundResult');
+    expect(state.round?.aiPending).toBe(false);
+    // Both answers stood, so the faster one takes it.
+    expect(state.round?.outcome?.winnerId).toBe(h.p1);
+    expect(state.players[h.p1]?.score).toBe(1);
+
+    // The "before" frame goes up as context, so the referee can tell a thing
+    // fetched from a thing that was already there.
+    expect(seen).toHaveLength(2);
+    expect(seen.every((p) => p.contextImages.length === 1)).toBe(true);
+  });
+
+  it('lets the referee rule an answer out', async () => {
+    const judge: AiJudge = {
+      judge: ({ photos }) =>
+        Promise.resolve(
+          photos.map((p, i) => ({
+            playerId: p.playerId,
+            valid: i === 1,
+            confidence: 0.9,
+            fulfillment: i === 1 ? 60 : 0,
+            presentation: i === 1 ? 20 : 0,
+            objects: [],
+            reason: i === 1 ? 'A poster of a face.' : 'Nothing with a face is visible.',
+            score: i === 1 ? 80 : 0,
+          })),
+        ),
+    };
+    const h = seatedWithJudge(judge);
+    const roundId = intoAiRound(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+    await settle();
+
+    const outcome = h.r1.state.round?.outcome;
+    // Whoever the referee ruled out does not win it by being faster.
+    expect(outcome?.winnerId).toBeDefined();
+    const invalid = Object.entries(outcome!.perPlayer).filter(([, r]) => !r.valid);
+    expect(invalid).toHaveLength(1);
+    expect(outcome?.winnerId).not.toBe(invalid[0]![0]);
+  });
+
+  it('hands the round back to the opponent when the referee cannot answer', async () => {
+    const judge: AiJudge = {
+      judge: () => Promise.reject(new JudgeUnavailable('out of quota')),
+    };
+    const h = seatedWithJudge(judge);
+    const roundId = intoAiRound(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+    await settle();
+
+    const state = h.r1.state;
+    expect(state.phase).toBe('judging');
+    expect(state.round?.judging).toBe('peer');
+    expect(state.round?.aiPending).toBe(false);
+    // And the players can now actually judge it.
+    expect(state.round?.submissions[h.p2]?.needsVerdict).toBe(true);
+
+    // A verdict during judging is deliberately not revealed, so the observable
+    // proof the vote landed is that the answer stops waiting for one.
+    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_000);
+    expect(h.r1.ofType('error')).toHaveLength(0);
+    expect(h.r1.state.round?.submissions[h.p2]?.needsVerdict).toBe(false);
+  });
+
+  it('does not crash the round when the referee throws something unexpected', async () => {
+    const judge: AiJudge = { judge: () => Promise.reject(new Error('socket hang up')) };
+    const h = seatedWithJudge(judge);
+    const roundId = intoAiRound(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+    await settle();
+
+    expect(h.r1.state.round?.judging).toBe('peer');
+    expect(h.r1.state.phase).toBe('judging');
+  });
+
+  it('leaves the prompt with the opponent when no referee is configured', () => {
+    const room = new Room('NOAI1', 0, { pool: [AI_PROMPT] });
+    const a = room.join('Ada', 0);
+    const b = room.join('Grace', 0);
+    const rec = new Recorder();
+    room.attach(a.playerId!, rec.send, 0);
+    room.handle(a.playerId!, { t: 'cameraReady', ready: true }, 0);
+    room.handle(b.playerId!, { t: 'cameraReady', ready: true }, 0);
+    room.handle(a.playerId!, { t: 'ready', ready: true }, 100);
+    room.handle(b.playerId!, { t: 'ready', ready: true }, 100);
+    room.tick(4_000);
+
+    expect(rec.state.round?.judging).toBe('peer');
   });
 });
