@@ -43,6 +43,13 @@ combination that cannot actually be decided:
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
 
+### How long a match is
+
+The lobby offers first to 2, 3 or 5, and either player can change it — it is a
+shared decision about how long you are both going to be doing this, not a host
+privilege. It can only change between matches, because moving the finish line
+mid-match is not a setting, it is a dispute.
+
 ### Rounds you write yourself
 
 A room can hold up to eight prompts the players write. They are always

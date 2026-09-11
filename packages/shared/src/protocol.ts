@@ -33,6 +33,7 @@ export type ClientMessage =
   | { t: 'rematch' }
   | { t: 'addChallenge'; prompt: string }
   | { t: 'removeChallenge'; id: string }
+  | { t: 'setWinTarget'; winTarget: number }
   | { t: 'leave' }
   | { t: 'ping'; id: number }
   | { t: 'frame'; image: string; seq: number };

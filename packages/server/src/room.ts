@@ -66,6 +66,7 @@ const ACTION_ERROR_COPY: Record<ActionError, string> = {
   'duplicate-prompt': 'That one is already in the deck.',
   'not-your-prompt': 'Only whoever wrote it can take it out.',
   'no-such-prompt': 'That prompt is already gone.',
+  'bad-setting': 'That is not one of the match lengths.',
 };
 
 const PROMPT_ERROR_COPY: Record<string, string> = {
@@ -251,6 +252,12 @@ export class Room {
         this.reportError(
           seat,
           this.dispatch({ type: 'removeChallenge', playerId, id: message.id }, now),
+        );
+        break;
+      case 'setWinTarget':
+        this.reportError(
+          seat,
+          this.dispatch({ type: 'setWinTarget', playerId, winTarget: message.winTarget }, now),
         );
         break;
       case 'leave':

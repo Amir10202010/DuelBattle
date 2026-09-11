@@ -277,6 +277,10 @@ export class MatchStore {
     this.connection.send({ t: 'removeChallenge', id });
   }
 
+  setWinTarget(winTarget: number): void {
+    this.connection.send({ t: 'setWinTarget', winTarget });
+  }
+
   leave(): void {
     this.connection.send({ t: 'leave' });
     const code = this.snapshot.roomCode;

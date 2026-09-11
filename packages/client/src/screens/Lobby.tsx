@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { samplePrompts, type PublicMatchState } from '@battle/shared';
+import { MATCH_LENGTHS, samplePrompts, type PublicMatchState } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
@@ -42,6 +42,7 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
       <Deck store={store} match={match} youId={youId} />
 
       <div className="lobby__controls">
+        <MatchLength store={store} match={match} />
         <ReadyBar store={store} match={match} youId={youId} hasOpponent={Boolean(opponent)} />
         {camera.devices.length > 1 && (
           <select
@@ -58,6 +59,29 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
           </select>
         )}
       </div>
+    </div>
+  );
+}
+
+/** How long you are both signing up for. Either player can change it. */
+function MatchLength({ store, match }: { store: MatchStore; match: PublicMatchState }) {
+  return (
+    <div className="length" role="group" aria-label="Match length">
+      {MATCH_LENGTHS.map((length) => {
+        const active = match.settings.winTarget === length.winTarget;
+        return (
+          <button
+            key={length.winTarget}
+            type="button"
+            className={`length__option ${active ? 'is-active' : ''}`}
+            aria-pressed={active}
+            onClick={() => store.setWinTarget(length.winTarget)}
+          >
+            <span className="length__label">{length.label}</span>
+            <span className="length__detail">first to {length.winTarget}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -37,6 +37,23 @@ export interface MatchSettings {
  */
 export const PHOTO_FINISH_MS = 500;
 
+/**
+ * Match lengths the lobby offers, with the round cap each implies.
+ *
+ * The cap is three times the target so a match can go the distance without
+ * running forever: at first-to-three that is nine rounds, which is about as
+ * long as two people will hold something up to a camera in one sitting.
+ */
+export const MATCH_LENGTHS = [
+  { winTarget: 2, maxRounds: 6, label: 'Quick' },
+  { winTarget: 3, maxRounds: 9, label: 'Standard' },
+  { winTarget: 5, maxRounds: 15, label: 'Long' },
+] as const;
+
+export function isMatchLength(winTarget: number): boolean {
+  return MATCH_LENGTHS.some((length) => length.winTarget === winTarget);
+}
+
 export const DEFAULT_SETTINGS: MatchSettings = {
   winTarget: 3,
   maxRounds: 9,
@@ -183,6 +200,7 @@ export type Action =
   | { type: 'rematch'; playerId: PlayerId }
   | { type: 'addChallenge'; playerId: PlayerId; prompt: string; id: string }
   | { type: 'removeChallenge'; playerId: PlayerId; id: string }
+  | { type: 'setWinTarget'; playerId: PlayerId; winTarget: number }
   /**
    * Converts an auto-judged round to peer judging. Issued by the server when it
    * has no usable baseline frame for a player and therefore cannot verify the
@@ -207,7 +225,8 @@ export type ActionError =
   | 'deck-full'
   | 'duplicate-prompt'
   | 'not-your-prompt'
-  | 'no-such-prompt';
+  | 'no-such-prompt'
+  | 'bad-setting';
 
 export type Result =
   | { ok: true; state: MatchState }
@@ -294,7 +313,37 @@ export function reduce(state: MatchState, action: Action, ctx: EngineContext): R
       return addChallenge(state, action);
     case 'removeChallenge':
       return removeChallenge(state, action);
+    case 'setWinTarget':
+      return setWinTarget(state, action);
   }
+}
+
+/**
+ * Either player may set the length, and only between matches. It is a shared
+ * decision about how long you are both going to be doing this, not a host
+ * privilege, and changing it mid-match would move the finish line.
+ */
+function setWinTarget(
+  state: MatchState,
+  action: Extract<Action, { type: 'setWinTarget' }>,
+): Result {
+  if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
+  if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
+  const length = MATCH_LENGTHS.find((l) => l.winTarget === action.winTarget);
+  if (!length) return { ok: false, error: 'bad-setting' };
+  if (state.settings.winTarget === length.winTarget) return { ok: true, state };
+
+  return {
+    ok: true,
+    state: bump({
+      ...state,
+      settings: {
+        ...state.settings,
+        winTarget: length.winTarget,
+        maxRounds: length.maxRounds,
+      },
+    }),
+  };
 }
 
 /**

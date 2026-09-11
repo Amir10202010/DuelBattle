@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Challenge } from '../src/challenges.js';
 import {
   DEFAULT_SETTINGS,
+  MATCH_LENGTHS,
   PHOTO_FINISH_MS,
   challengeInRoom,
   createMatch,
@@ -725,5 +726,89 @@ describe('prompts the players write themselves', () => {
     s = apply(s, { type: 'leave', playerId: 'p1' }, ctx);
     // Whoever takes the seat next did not write it and should not have to play it.
     expect(s.customChallenges.map((c) => c.id)).toEqual(['c2']);
+  });
+});
+
+
+describe('match length', () => {
+  function lobby(): MatchState {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    return apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+  }
+
+  it('offers lengths whose round cap leaves room to go the distance', () => {
+    for (const length of MATCH_LENGTHS) {
+      // Both players could win every round bar one and still finish.
+      expect(length.maxRounds).toBeGreaterThanOrEqual(length.winTarget * 2 - 1);
+    }
+  });
+
+  it('lets either player set it in the lobby', () => {
+    let s = lobby();
+    s = apply(s, { type: 'setWinTarget', playerId: 'p2', winTarget: 5 }, ctxAt(0));
+    expect(s.settings.winTarget).toBe(5);
+    expect(s.settings.maxRounds).toBe(15);
+  });
+
+  it('refuses a length that is not on offer', () => {
+    const s = lobby();
+    expect(expectError(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 4 }, ctxAt(0))).toBe(
+      'bad-setting',
+    );
+    expect(expectError(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 99 }, ctxAt(0))).toBe(
+      'bad-setting',
+    );
+  });
+
+  it('refuses to move the finish line mid-match', () => {
+    const s = intoChallenge(seatedMatch(0));
+    expect(expectError(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 5 }, ctxAt(5_000))).toBe(
+      'wrong-phase',
+    );
+  });
+
+  it('actually decides the match at the chosen length', () => {
+    let s = lobby();
+    s = apply(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 2 }, ctxAt(0));
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctx);
+
+    for (let i = 0; i < 2; i++) {
+      const live = s.phase === 'countdown' ? tick(s, ctxAt(s.phaseEndsAt)) : s;
+      s = apply(
+        live,
+        {
+          type: 'submit',
+          playerId: 'p1',
+          roundId: live.round!.id,
+          evidenceId: `e${i}`,
+          auto: { matched: true, confidence: 1, reason: 'ok' },
+        },
+        ctxAt(live.round!.startedAt + 900),
+      );
+      s = tick(s, ctxAt(s.phaseEndsAt));
+      s = tick(s, ctxAt(s.phaseEndsAt));
+    }
+    expect(s.phase).toBe('matchResult');
+    expect(s.winnerId).toBe('p1');
+    expect(s.players.p1?.score).toBe(2);
+  });
+
+  it('survives a rematch, so you do not have to set it every time', () => {
+    let s = lobby();
+    s = apply(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 5 }, ctxAt(0));
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctx);
+    s = apply(s, { type: 'leave', playerId: 'p2' }, ctxAt(1_000));
+    expect(s.phase).toBe('matchResult');
+    expect(s.settings.winTarget).toBe(5);
   });
 });
