@@ -177,7 +177,12 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
                   onKeyDown={(e) => e.key === 'Enter' && submitJoin()}
                 />
               </div>
-              {lookupNote && (
+              {/* A specific answer beats live validation guessing at one. When a
+                  match dies because the room closed, "No room with that code —
+                  check the letters?" is advice for a problem the player does
+                  not have; the code came from their own invite link. Editing
+                  the field clears the error and the hint comes back. */}
+              {lookupNote && !error && (
                 <p
                   className={`lookup lookup--${lookup.state}`}
                   role="status"
