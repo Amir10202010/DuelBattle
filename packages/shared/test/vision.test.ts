@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { createFrame, resizeFrame, type Frame } from '../src/vision/frame.js';
 import { classifyColor, matchesColor, rgbToHsv } from '../src/vision/color.js';
-import { detectChange, detectColorObject, roiWeight } from '../src/vision/detect.js';
+import {
+  detectChange,
+  detectColorObject,
+  detectColorPair,
+  detectCoverage,
+  detectDarkness,
+  detectLuminance,
+  roiWeight,
+} from '../src/vision/detect.js';
+import { runDetector, detectorColors } from '../src/vision/run.js';
 
 const W = 64;
 const H = 48;
@@ -158,5 +167,139 @@ describe('resizeFrame', () => {
 
   it('rejects a degenerate target size', () => {
     expect(() => resizeFrame(blank(), 0, 10)).toThrow(RangeError);
+  });
+});
+
+
+const WHITE: [number, number, number] = [246, 246, 242];
+const NEAR_BLACK: [number, number, number] = [10, 10, 12];
+
+function room(level: number): Frame {
+  return blank(level, level + 2, level + 4);
+}
+
+describe('detectCoverage', () => {
+  it('passes only when the new thing fills the view', () => {
+    const baseline = blank();
+    const small = paint(clone(baseline), 20, 12, 24, 24, RED);
+    const whole = paint(clone(baseline), 0, 0, W, H, RED);
+
+    expect(detectCoverage(baseline, small, { minChange: 0.82 }).matched).toBe(false);
+    expect(detectCoverage(baseline, whole, { minChange: 0.82 }).matched).toBe(true);
+  });
+
+  it('reports progress so the meter can climb towards it', () => {
+    const baseline = blank();
+    const half = paint(clone(baseline), 0, 0, W, H / 2, RED);
+    const result = detectCoverage(baseline, half, { minChange: 0.82 });
+    expect(result.matched).toBe(false);
+    expect(result.progress).toBeGreaterThan(0.2);
+    expect(result.progress).toBeLessThan(1);
+  });
+});
+
+describe('detectDarkness', () => {
+  it('passes when the lens is covered', () => {
+    const baseline = blank();
+    const covered = paint(clone(baseline), 0, 0, W, H, NEAR_BLACK);
+    expect(detectDarkness(baseline, covered, { maxLuminance: 0.05 }).matched).toBe(true);
+  });
+
+  it('does not pass for a merely dim room that nobody touched', () => {
+    // A player who simply sits in the dark has changed nothing.
+    const dim = room(24);
+    expect(detectDarkness(dim, clone(dim), { maxLuminance: 0.05 }).matched).toBe(false);
+  });
+
+  it('does not pass while light still gets in', () => {
+    const baseline = blank();
+    const partial = paint(clone(baseline), 0, 0, W, Math.floor(H * 0.7), NEAR_BLACK);
+    expect(detectDarkness(baseline, partial, { maxLuminance: 0.05 }).matched).toBe(false);
+  });
+});
+
+describe('detectLuminance', () => {
+  /**
+   * The reason this detector compares a ratio rather than a fixed offset: a
+   * gap big enough to mean something in a bright room does not exist at all in
+   * a dim one, and both rooms are ordinary.
+   */
+  it('judges "darker than your room" the same way in a dim room and a bright one', () => {
+    for (const level of [70, 140, 210]) {
+      const baseline = room(level);
+      const held = paint(clone(baseline), 16, 10, 32, 28, NEAR_BLACK);
+      const result = detectLuminance(baseline, held, { mode: 'darker', ratio: 0.45 });
+      expect(result.matched, `room level ${level}: ${result.reason}`).toBe(true);
+    }
+  });
+
+  it('judges "brighter than your room" the same way at any room brightness', () => {
+    for (const level of [30, 80, 130]) {
+      const baseline = room(level);
+      const held = paint(clone(baseline), 16, 10, 32, 28, WHITE);
+      const result = detectLuminance(baseline, held, { mode: 'brighter', ratio: 2.2 });
+      expect(result.matched, `room level ${level}: ${result.reason}`).toBe(true);
+    }
+  });
+
+  it('rejects something the same brightness as the room', () => {
+    const baseline = room(120);
+    const held = paint(clone(baseline), 16, 10, 32, 28, [124, 124, 126]);
+    expect(detectLuminance(baseline, held, { mode: 'darker', ratio: 0.45 }).matched).toBe(false);
+    expect(detectLuminance(baseline, held, { mode: 'brighter', ratio: 2.2 }).matched).toBe(false);
+  });
+
+  it('will not call noise in a near-black room a darker object', () => {
+    const baseline = room(6);
+    const held = paint(clone(baseline), 16, 10, 32, 28, [1, 1, 2]);
+    // The ratio is satisfied, but the absolute gap is meaningless.
+    expect(detectLuminance(baseline, held, { mode: 'darker', ratio: 0.45 }).matched).toBe(false);
+  });
+});
+
+describe('detectColorPair', () => {
+  const targets = ['red', 'white'] as const;
+
+  it('needs both colours in shot', () => {
+    const baseline = blank();
+    const both = paint(paint(clone(baseline), 16, 12, 24, 26, RED), 40, 12, 24, 26, WHITE);
+    const onlyRed = paint(clone(baseline), 16, 12, 48, 26, RED);
+
+    expect(detectColorPair(baseline, both, { targets }).matched).toBe(true);
+    expect(detectColorPair(baseline, onlyRed, { targets }).matched).toBe(false);
+  });
+
+  it('names the colour that is missing', () => {
+    const baseline = blank();
+    const onlyRed = paint(clone(baseline), 16, 12, 48, 26, RED);
+    expect(detectColorPair(baseline, onlyRed, { targets }).reason).toContain('white');
+  });
+});
+
+describe('runDetector', () => {
+  it('dispatches every kind the catalogue can declare', () => {
+    const baseline = blank();
+    const current = paint(clone(baseline), 20, 12, 24, 24, RED);
+    const specs = [
+      { kind: 'color', target: 'red' },
+      { kind: 'colorPair', targets: ['red', 'white'] },
+      { kind: 'coverage', minChange: 0.8 },
+      { kind: 'luminance', mode: 'darker', ratio: 0.45 },
+      { kind: 'darkness', maxLuminance: 0.05 },
+    ] as const;
+
+    for (const spec of specs) {
+      const result = runDetector(spec, baseline, current);
+      expect(typeof result.matched, spec.kind).toBe('boolean');
+      expect(result.progress).toBeGreaterThanOrEqual(0);
+      expect(result.progress).toBeLessThanOrEqual(1);
+      expect(result.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('reports which colours a round is about, for the swatches', () => {
+    expect(detectorColors({ kind: 'color', target: 'red' })).toEqual(['red']);
+    expect(detectorColors({ kind: 'colorPair', targets: ['red', 'white'] })).toEqual(['red', 'white']);
+    expect(detectorColors({ kind: 'coverage', minChange: 0.8 })).toEqual([]);
   });
 });

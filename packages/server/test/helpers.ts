@@ -1,4 +1,5 @@
 import jpeg from 'jpeg-js';
+import { colorSwatch, type DetectorSpec } from '@battle/shared';
 
 export const FRAME_W = 240;
 export const FRAME_H = 180;
@@ -74,4 +75,78 @@ export function heldObjectFrame(color: Rgb, quality = 75): string {
     ]),
     quality,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Frames that satisfy (or fail) any detector the catalogue can produce
+// ---------------------------------------------------------------------------
+
+const FURNITURE: Rect[] = [
+  // Something red that never moves: it must never answer a red challenge.
+  { x: 0, y: 120, w: 60, h: 60, color: RED },
+  { x: 190, y: 0, w: 50, h: 180, color: [140, 120, 100] },
+];
+
+export function hexToRgb(hex: string): Rgb {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Two colours side by side on one held object. */
+export function heldTwoToneFrame(a: Rgb, b: Rgb, quality = 75): string {
+  return jpegDataUrl(
+    scene(GREY, [
+      ...FURNITURE,
+      { x: 70, y: 45, w: 50, h: 90, color: a },
+      { x: 120, y: 45, w: 50, h: 90, color: b },
+    ]),
+    quality,
+  );
+}
+
+/** One thing pressed right up to the lens. */
+export function fullFrame(color: Rgb, quality = 75): string {
+  return jpegDataUrl(scene(color, []), quality);
+}
+
+/**
+ * A frame that should pass the given detector, held up against
+ * `emptyRoomFrame()` as the baseline.
+ */
+export function passingFrameFor(detector: DetectorSpec): string {
+  switch (detector.kind) {
+    case 'color':
+      return heldObjectFrame(hexToRgb(colorSwatch(detector.target)));
+    case 'colorPair':
+      return heldTwoToneFrame(
+        hexToRgb(colorSwatch(detector.targets[0])),
+        hexToRgb(colorSwatch(detector.targets[1])),
+      );
+    case 'coverage':
+      return fullFrame([210, 180, 90]);
+    case 'luminance':
+      return heldObjectFrame(detector.mode === 'darker' ? [12, 12, 14] : [248, 248, 244]);
+    case 'darkness':
+      return fullFrame([2, 2, 3]);
+  }
+}
+
+/** A frame that should fail the given detector. */
+export function failingFrameFor(detector: DetectorSpec): string {
+  switch (detector.kind) {
+    case 'color':
+      // Deliberately a colour the round did not ask for.
+      return heldObjectFrame(detector.target === 'blue' || detector.target === 'black' ? RED : BLUE);
+    case 'colorPair':
+      // Only one of the two colours is present.
+      return heldObjectFrame(hexToRgb(colorSwatch(detector.targets[0])));
+    case 'coverage':
+      // A small object, nowhere near filling the frame.
+      return heldObjectFrame(GREEN);
+    case 'luminance':
+      // Mid-grey against a mid-grey room: no meaningful difference either way.
+      return heldObjectFrame([96, 98, 102]);
+    case 'darkness':
+      return heldObjectFrame([12, 12, 14]);
+  }
 }

@@ -1,31 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   getChallenge,
-  type ColorKey,
+  type DetectorSpec,
   type PublicMatchState,
   type ServerMessage,
 } from '@battle/shared';
-import { colorSwatch } from '@battle/shared';
 import { Room } from '../src/room.js';
 import {
   BLUE,
   emptyRoomFrame,
+  failingFrameFor,
   heldObjectFrame,
-  type Rgb,
+  passingFrameFor,
 } from './helpers.js';
-
-function hexToRgb(hex: string): Rgb {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/**
- * Round one draws a random colour, so "hold up the wrong thing" has to be
- * derived from the colour that was actually asked for.
- */
-function wrongColourFor(target: ColorKey): Rgb {
-  return target === 'blue' || target === 'black' ? [206, 32, 32] : BLUE;
-}
 
 class Recorder {
   readonly messages: ServerMessage[] = [];
@@ -81,7 +68,7 @@ function seated(): Harness {
 function intoChallenge(
   h: Harness,
   opts: { at?: number; withBaseline?: boolean } = {},
-): { roundId: string; target: ColorKey } {
+): { roundId: string; detector: DetectorSpec | null } {
   const at = opts.at ?? 4_000;
   h.room.handle(h.p1, { t: 'ready', ready: true }, 100);
   h.room.handle(h.p2, { t: 'ready', ready: true }, 100);
@@ -94,9 +81,10 @@ function intoChallenge(
   const state = h.r1.state;
   expect(state.phase).toBe('challenge');
   const challenge = getChallenge(state.round!.challengeId)!;
+  // Round one is always auto-judged, but which detector it draws is random —
+  // the frames the test holds up are derived from whichever one turned up.
   expect(challenge.judging).toBe('auto');
-  if (challenge.detector?.kind !== 'color') throw new Error('round one should be a colour round');
-  return { roundId: state.round!.id, target: challenge.detector.target };
+  return { roundId: state.round!.id, detector: challenge.detector ?? null };
 }
 
 describe('room membership', () => {
@@ -181,10 +169,10 @@ describe('live frames', () => {
 });
 
 describe('auto-judged rounds', () => {
-  it('accepts the right colour held up after the prompt appears', () => {
+  it('accepts an answer that satisfies the round, whatever it asked for', () => {
     const h = seated();
-    const { roundId, target } = intoChallenge(h);
-    const image = heldObjectFrame(hexToRgb(colorSwatch(target)));
+    const { roundId, detector } = intoChallenge(h);
+    const image = passingFrameFor(detector!);
 
     h.room.handle(h.p1, { t: 'submit', roundId, image }, 5_500);
 
@@ -195,15 +183,11 @@ describe('auto-judged rounds', () => {
     expect(state.players[h.p1]?.score).toBe(1);
   });
 
-  it('rejects the wrong colour even though the client cannot claim otherwise', () => {
+  it('rejects a wrong answer even though the client cannot claim otherwise', () => {
     const h = seated();
-    const { roundId, target } = intoChallenge(h);
+    const { roundId, detector } = intoChallenge(h);
 
-    h.room.handle(
-      h.p1,
-      { t: 'submit', roundId, image: heldObjectFrame(wrongColourFor(target)) },
-      5_500,
-    );
+    h.room.handle(h.p1, { t: 'submit', roundId, image: failingFrameFor(detector!) }, 5_500);
     const state = h.r1.state;
     expect(state.phase).toBe('challenge');
     expect(state.players[h.p1]?.submitted).toBe(true);
@@ -212,12 +196,8 @@ describe('auto-judged rounds', () => {
 
   it('does not reveal a verdict while the round is still live', () => {
     const h = seated();
-    const { roundId, target } = intoChallenge(h);
-    h.room.handle(
-      h.p1,
-      { t: 'submit', roundId, image: heldObjectFrame(wrongColourFor(target)) },
-      5_500,
-    );
+    const { roundId, detector } = intoChallenge(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: failingFrameFor(detector!) }, 5_500);
     const seenByOpponent = h.r2.state;
     expect(seenByOpponent.phase).toBe('challenge');
     expect(seenByOpponent.round?.submissions).toEqual({});
@@ -225,11 +205,11 @@ describe('auto-judged rounds', () => {
 
   it('ignores a submission aimed at a round that has moved on', () => {
     const h = seated();
-    const { target } = intoChallenge(h);
+    const { detector } = intoChallenge(h);
     h.r1.clear();
     h.room.handle(
       h.p1,
-      { t: 'submit', roundId: 'stale-round', image: heldObjectFrame(hexToRgb(colorSwatch(target))) },
+      { t: 'submit', roundId: 'stale-round', image: passingFrameFor(detector!) },
       5_500,
     );
     expect(h.r1.ofType('error')[0]?.code).toBe('rejected');
@@ -312,8 +292,8 @@ describe('evidence handling', () => {
 
   it('shows both answers to both players once the round resolves', () => {
     const h = seated();
-    const { roundId, target } = intoChallenge(h);
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(hexToRgb(colorSwatch(target))) }, 5_000);
+    const { roundId, detector } = intoChallenge(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
     expect(h.r1.state.phase).toBe('roundResult');
     const owners = new Set(h.r2.ofType('evidence').map((e) => e.playerId));
     expect(owners.has(h.p1)).toBe(true);
@@ -321,8 +301,8 @@ describe('evidence handling', () => {
 
   it('replays the visible evidence to a player who reconnects mid-result', () => {
     const h = seated();
-    const { roundId, target } = intoChallenge(h);
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(hexToRgb(colorSwatch(target))) }, 5_000);
+    const { roundId, detector } = intoChallenge(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
     h.room.detach(h.p2, 5_200);
 
     const returning = new Recorder();

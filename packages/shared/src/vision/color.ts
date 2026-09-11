@@ -37,6 +37,19 @@ export function rgbToHsv(r: number, g: number, b: number): Hsv {
   return { h, s: max === 0 ? 0 : d / max, v: max };
 }
 
+/**
+ * WCAG relative luminance. Used wherever a detector has to reason about how
+ * bright something is, because HSV "value" is just the brightest channel and
+ * would call a saturated blue as light as white.
+ */
+export function relativeLuminance(r: number, g: number, b: number): number {
+  const channel = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
 interface ColorSpec {
   key: ColorKey;
   label: string;

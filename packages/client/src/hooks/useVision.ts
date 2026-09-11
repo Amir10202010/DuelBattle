@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  detectColorObject,
-  type Challenge,
-  type DetectionResult,
-  type Frame,
-} from '@battle/shared';
+import { runDetector, type Challenge, type DetectionResult, type Frame } from '@battle/shared';
 import { createAnalysisCapture } from '../media/capture.js';
 
 /** How often the on-device preview runs. Fast enough to feel live, cheap enough to ignore. */
@@ -51,7 +46,7 @@ export function useLocalDetection({
     setArmed(false);
 
     const detector = challenge?.detector;
-    if (!active || !roundId || detector?.kind !== 'color') return;
+    if (!active || !roundId || !detector) return;
 
     const capture = captureRef.current;
     const startedAt = Date.now();
@@ -70,13 +65,7 @@ export function useLocalDetection({
         return;
       }
       try {
-        setResult(
-          detectColorObject(baselineRef.current, frame, {
-            target: detector.target,
-            ...(detector.minShare !== undefined ? { minShare: detector.minShare } : {}),
-            ...(detector.minChange !== undefined ? { minChange: detector.minChange } : {}),
-          }),
-        );
+        setResult(runDetector(detector, baselineRef.current, frame));
       } catch {
         // A resolution change mid-round can invalidate the baseline; take a new one.
         baselineRef.current = null;

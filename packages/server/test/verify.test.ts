@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, getChallenge, type Challenge } from '@battle/shared';
 import { DecodeError, decodeEvidence, verifySubmission } from '../src/verify.js';
-import { BLUE, RED, emptyRoomFrame, heldObjectFrame, jpegDataUrl, scene, GREY } from './helpers.js';
+import {
+  BLUE,
+  GREY,
+  RED,
+  emptyRoomFrame,
+  failingFrameFor,
+  heldObjectFrame,
+  jpegDataUrl,
+  passingFrameFor,
+  scene,
+} from './helpers.js';
+import { CHALLENGES } from '@battle/shared';
 
 const redChallenge = getChallenge('color-red') as Challenge;
 
@@ -77,4 +88,50 @@ describe('verifySubmission', () => {
     const frame = decodeEvidence(emptyRoomFrame());
     expect(verifySubmission(peerChallenge, frame, frame).kind).toBe('undecidable');
   });
+});
+
+
+/**
+ * The catalogue is the contract: anything marked `auto` claims a camera can
+ * decide it. This walks every one of them through the real decode-and-verify
+ * path, so a new challenge with thresholds nothing can actually reach fails
+ * here rather than in a match.
+ */
+describe('every auto challenge in the catalogue', () => {
+  const autoChallenges = CHALLENGES.filter((c) => c.judging === 'auto');
+
+  it('has some to check', () => {
+    expect(autoChallenges.length).toBeGreaterThanOrEqual(15);
+  });
+
+  for (const challenge of autoChallenges) {
+    it(`accepts a good answer to "${challenge.prompt}"`, () => {
+      const baseline = decodeEvidence(emptyRoomFrame());
+      const submitted = decodeEvidence(passingFrameFor(challenge.detector!));
+      const outcome = verifySubmission(challenge, baseline, submitted);
+      expect(outcome.kind).toBe('verdict');
+      if (outcome.kind !== 'verdict') return;
+      expect(outcome.verdict.matched, outcome.verdict.reason).toBe(true);
+      expect(outcome.verdict.confidence).toBeGreaterThan(0.4);
+    });
+
+    it(`rejects a bad answer to "${challenge.prompt}"`, () => {
+      const baseline = decodeEvidence(emptyRoomFrame());
+      const submitted = decodeEvidence(failingFrameFor(challenge.detector!));
+      const outcome = verifySubmission(challenge, baseline, submitted);
+      expect(outcome.kind).toBe('verdict');
+      if (outcome.kind !== 'verdict') return;
+      expect(outcome.verdict.matched, outcome.verdict.reason).toBe(false);
+    });
+
+    it(`rejects a still room for "${challenge.prompt}"`, () => {
+      // Nothing moved: whatever was already in shot must never answer a round.
+      const baseline = decodeEvidence(emptyRoomFrame(60));
+      const submitted = decodeEvidence(emptyRoomFrame(78));
+      const outcome = verifySubmission(challenge, baseline, submitted);
+      expect(outcome.kind).toBe('verdict');
+      if (outcome.kind !== 'verdict') return;
+      expect(outcome.verdict.matched, outcome.verdict.reason).toBe(false);
+    });
+  }
 });

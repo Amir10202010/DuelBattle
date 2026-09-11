@@ -21,8 +21,15 @@ describe('catalogue', () => {
   it('offers both judging modes in useful quantities', () => {
     const auto = CHALLENGES.filter((c) => c.judging === 'auto');
     const peer = CHALLENGES.filter((c) => c.judging === 'peer');
-    expect(auto.length).toBeGreaterThanOrEqual(8);
+    expect(auto.length).toBeGreaterThanOrEqual(15);
     expect(peer.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('draws on more than one kind of detector, so auto rounds are not all colour', () => {
+    const kinds = new Set(
+      CHALLENGES.filter((c) => c.detector).map((c) => c.detector!.kind),
+    );
+    expect(kinds.size).toBeGreaterThanOrEqual(4);
   });
 
   it('only asks a detector for something it can actually decide', () => {
@@ -31,6 +38,12 @@ describe('catalogue', () => {
         expect(isColorKey(c.detector.target)).toBe(true);
         // The colour named in the prompt must be the colour we test for.
         expect(c.prompt.toLowerCase()).toContain(c.detector.target);
+      }
+      if (c.detector?.kind === 'colorPair') {
+        for (const target of c.detector.targets) {
+          expect(isColorKey(target)).toBe(true);
+          expect(c.prompt.toLowerCase()).toContain(target);
+        }
       }
     }
   });

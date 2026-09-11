@@ -1,4 +1,5 @@
 import type { ColorKey } from './vision/color.js';
+import type { DetectorSpec } from './vision/run.js';
 import type { RandomSource } from './ids.js';
 
 /**
@@ -13,19 +14,7 @@ export type JudgingMode = 'auto' | 'peer';
 
 export type ChallengeCategory = 'color' | 'object' | 'action' | 'story' | 'wildcard';
 
-export interface ColorDetectorSpec {
-  kind: 'color';
-  target: ColorKey;
-  minShare?: number;
-  minChange?: number;
-}
-
-export interface PresenceDetectorSpec {
-  kind: 'presence';
-  minChange: number;
-}
-
-export type DetectorSpec = ColorDetectorSpec | PresenceDetectorSpec;
+export type { DetectorSpec };
 
 export interface Challenge {
   readonly id: string;
@@ -88,6 +77,29 @@ function peer(
   };
 }
 
+function auto(
+  id: string,
+  prompt: string,
+  detector: DetectorSpec,
+  category: ChallengeCategory,
+  difficulty: 1 | 2 | 3,
+  durationMs: number,
+  tags: string[],
+  hint?: string,
+): Challenge {
+  return {
+    id,
+    prompt,
+    ...(hint ? { hint } : {}),
+    category,
+    difficulty,
+    durationMs,
+    judging: 'auto',
+    detector,
+    tags,
+  };
+}
+
 export const CHALLENGES: readonly Challenge[] = [
   // ---- Colour: objective, instant, and the backbone of the pacing. ----
   color('color-red', 'SHOW SOMETHING RED', 'red', 1, SHORT),
@@ -101,6 +113,76 @@ export const CHALLENGES: readonly Challenge[] = [
   color('color-pink', 'SHOW SOMETHING PINK', 'pink', 3, NORMAL),
   color('color-red-fill', 'FILL YOUR SCREEN WITH RED', 'red', 2, SHORT, 'Get it right up to the lens.'),
   color('color-blue-fill', 'FILL YOUR SCREEN WITH BLUE', 'blue', 2, SHORT, 'Get it right up to the lens.'),
+
+  // ---- Physical: no colour involved, still decided by the camera. ----
+  auto(
+    'cover-lens',
+    'BLACK OUT YOUR CAMERA',
+    { kind: 'darkness', maxLuminance: 0.05 },
+    'action',
+    1,
+    SHORT,
+    ['action', 'camera'],
+    'Anything over the lens. Total darkness.',
+  ),
+  auto(
+    'cover-frame',
+    'FILL THE WHOLE FRAME WITH ONE THING',
+    { kind: 'coverage', minChange: 0.82 },
+    'action',
+    2,
+    SHORT,
+    ['action', 'camera'],
+    'Push it right up until nothing else is visible.',
+  ),
+  auto(
+    'lum-dark',
+    'SHOW SOMETHING DARKER THAN YOUR ROOM',
+    { kind: 'luminance', mode: 'darker', ratio: 0.45 },
+    'object',
+    2,
+    NORMAL,
+    ['object', 'light'],
+  ),
+  auto(
+    'lum-bright',
+    'SHOW SOMETHING BRIGHTER THAN YOUR ROOM',
+    { kind: 'luminance', mode: 'brighter', ratio: 2.2 },
+    'object',
+    2,
+    NORMAL,
+    ['object', 'light'],
+  ),
+  auto(
+    'pair-red-white',
+    'SHOW SOMETHING RED AND WHITE',
+    { kind: 'colorPair', targets: ['red', 'white'] },
+    'object',
+    3,
+    NORMAL,
+    ['object', 'color'],
+    'Both colours, on one thing.',
+  ),
+  auto(
+    'pair-blue-white',
+    'SHOW SOMETHING BLUE AND WHITE',
+    { kind: 'colorPair', targets: ['blue', 'white'] },
+    'object',
+    3,
+    NORMAL,
+    ['object', 'color'],
+    'Both colours, on one thing.',
+  ),
+  auto(
+    'pair-black-white',
+    'SHOW SOMETHING BLACK AND WHITE',
+    { kind: 'colorPair', targets: ['black', 'white'] },
+    'object',
+    2,
+    NORMAL,
+    ['object', 'color'],
+    'Both colours, on one thing.',
+  ),
 
   // ---- Objects: quick scavenger hunts, judged by your opponent. ----
   peer('obj-face', 'SHOW SOMETHING WITH A FACE', 'object', 2, NORMAL, ['object', 'face'], 'A toy, a poster, a mug — not your own face.'),

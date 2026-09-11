@@ -2,19 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import {
   PROTOCOL_VERSION,
-  colorSwatch,
   getChallenge,
   type ClientMessage,
   type PublicMatchState,
   type ServerMessage,
 } from '@battle/shared';
 import { createApp, type App } from '../src/app.js';
-import { emptyRoomFrame, heldObjectFrame, type Rgb } from './helpers.js';
-
-function hexToRgb(hex: string): Rgb {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
+import { emptyRoomFrame, passingFrameFor } from './helpers.js';
 
 /** A test client that speaks the real protocol over a real socket. */
 class Player {
@@ -158,7 +152,7 @@ describe('http surface', () => {
 });
 
 describe('a full match over the wire', () => {
-  it('plays a colour round from lobby to a scored result', async () => {
+  it('plays a round from lobby to a scored result', async () => {
     const { host, guest } = await pair();
 
     host.send({ t: 'cameraReady', ready: true });
@@ -185,13 +179,13 @@ describe('a full match over the wire', () => {
     clearInterval(keepAlive);
 
     const challenge = getChallenge(live.round!.challengeId)!;
+    // Round one is always camera-judged; which detector it draws is random.
     expect(challenge.judging).toBe('auto');
-    if (challenge.detector?.kind !== 'color') throw new Error('expected a colour round');
 
     host.send({
       t: 'submit',
       roundId: live.round!.id,
-      image: heldObjectFrame(hexToRgb(colorSwatch(challenge.detector.target))),
+      image: passingFrameFor(challenge.detector!),
     });
 
     const result = await host.waitForState((s) => s.phase === 'roundResult');

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  colorLabel,
   colorSwatch,
+  detectorColors,
   getChallenge,
+  type DetectorSpec,
   type PublicMatchState,
   type PublicPlayer,
 } from '@battle/shared';
@@ -198,36 +199,42 @@ function PromptBand({
         />
       )}
 
-      {match.phase === 'challenge' && challenge?.detector?.kind === 'color' && (
-        <DetectionMeter detection={detection} target={challenge.detector.target} />
+      {match.phase === 'challenge' && challenge?.detector && (
+        <DetectionMeter detection={detection} detector={challenge.detector} />
       )}
     </header>
   );
 }
 
-function DetectionMeter({
-  detection,
-  target,
-}: {
-  detection: Detection;
-  target: Parameters<typeof colorSwatch>[0];
-}) {
-  const share = detection.result?.metrics.share ?? 0;
+/**
+ * How close the camera thinks you are. Every detector reports progress on the
+ * same 0..1 scale, so one meter renders a colour round, a "fill the frame"
+ * round and a "black out the lens" round without knowing which is which.
+ */
+function DetectionMeter({ detection, detector }: { detection: Detection; detector: DetectorSpec }) {
   const matched = detection.result?.matched ?? false;
-  const pct = Math.round(share * 100);
+  const progress = detection.result?.progress ?? 0;
+  const colors = detectorColors(detector);
+  // Colour rounds tint the bar with the colour being hunted; the rest stay neutral.
+  const tint = colors.length > 0 ? colorSwatch(colors[0]!) : 'var(--text)';
 
   return (
     <div className={`meter ${matched ? 'meter--hit' : ''}`}>
-      <span className="meter__swatch" style={{ background: colorSwatch(target) }} aria-hidden="true" />
+      {colors.map((key) => (
+        <span
+          key={key}
+          className="meter__swatch"
+          style={{ background: colorSwatch(key) }}
+          aria-hidden="true"
+        />
+      ))}
       <div className="meter__track">
         <div
           className="meter__fill"
-          style={{ width: `${Math.min(100, pct)}%`, background: colorSwatch(target) }}
+          style={{ width: `${Math.round(progress * 100)}%`, background: matched ? 'var(--good)' : tint }}
         />
       </div>
-      <span className="meter__label mono">
-        {matched ? `${colorLabel(target).toUpperCase()} LOCKED` : `${pct}%`}
-      </span>
+      <span className="meter__label mono">{matched ? 'LOCKED' : `${Math.round(progress * 100)}%`}</span>
     </div>
   );
 }
