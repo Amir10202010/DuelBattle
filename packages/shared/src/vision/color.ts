@@ -38,16 +38,33 @@ export function rgbToHsv(r: number, g: number, b: number): Hsv {
 }
 
 /**
+ * sRGB to linear light, for all 256 byte values.
+ *
+ * Channel values out of a decoded frame are always integers, so the transform
+ * has exactly 256 possible answers. Tabulating them turns three `Math.pow`
+ * calls per pixel into three array reads — and a detector touches every pixel
+ * of every frame, several times a second, on whatever phone the player has.
+ */
+const SRGB_TO_LINEAR = (() => {
+  const table = new Float64Array(256);
+  for (let c = 0; c < 256; c++) {
+    const s = c / 255;
+    table[c] = s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  }
+  return table;
+})();
+
+/**
  * WCAG relative luminance. Used wherever a detector has to reason about how
  * bright something is, because HSV "value" is just the brightest channel and
  * would call a saturated blue as light as white.
  */
 export function relativeLuminance(r: number, g: number, b: number): number {
-  const channel = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  return (
+    0.2126 * SRGB_TO_LINEAR[r & 255]! +
+    0.7152 * SRGB_TO_LINEAR[g & 255]! +
+    0.0722 * SRGB_TO_LINEAR[b & 255]!
+  );
 }
 
 interface ColorSpec {

@@ -33,6 +33,30 @@ export function roiWeight(x: number, y: number, width: number, height: number): 
 
 const EDGE_WEIGHT = 0.35;
 
+/**
+ * The weight map depends only on the frame size, which never changes at run
+ * time, so it is computed once instead of a sqrt and a pow per pixel per
+ * sample. On this machine that is most of the detector's cost; on a phone
+ * running it five times a second alongside JPEG encoding, it is worth more.
+ */
+const weightMaps = new Map<string, Float32Array>();
+
+function weightMapFor(width: number, height: number): Float32Array {
+  const key = `${width}x${height}`;
+  const cached = weightMaps.get(key);
+  if (cached) return cached;
+
+  const map = new Float32Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) map[y * width + x] = roiWeight(x, y, width, height);
+  }
+  // Only ever one size in practice; the bound is here so a resize storm cannot
+  // grow this without limit.
+  if (weightMaps.size > 4) weightMaps.clear();
+  weightMaps.set(key, map);
+  return map;
+}
+
 export const DEFAULT_CHANGE_THRESHOLD = 32;
 export const DEFAULT_MIN_SHARE = 0.32;
 export const DEFAULT_MIN_CHANGE = 0.035;
@@ -99,35 +123,33 @@ export function analyseChange(
   let darkWeight = 0;
   const darkBelow = opts.darkBelow ?? -1;
   const colorWeights = colors.map(() => 0);
+  const weights = weightMapFor(width, height);
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const w = roiWeight(x, y, width, height);
-      totalWeight += w;
+  for (let p = 0, i = 0; p < weights.length; p++, i += 4) {
+    const w = weights[p]!;
+    totalWeight += w;
 
-      const r = current.data[i]!;
-      const g = current.data[i + 1]!;
-      const b = current.data[i + 2]!;
-      const luma = relativeLuminance(r, g, b);
-      frameLuma += luma * w;
-      if (luma <= darkBelow) darkWeight += w;
+    const r = current.data[i]!;
+    const g = current.data[i + 1]!;
+    const b = current.data[i + 2]!;
+    const luma = relativeLuminance(r, g, b);
+    frameLuma += luma * w;
+    if (luma <= darkBelow) darkWeight += w;
 
-      const br = baseline.data[i]!;
-      const bg = baseline.data[i + 1]!;
-      const bb = baseline.data[i + 2]!;
-      const delta = (Math.abs(r - br) + Math.abs(g - bg) + Math.abs(b - bb)) / 3;
-      if (delta <= threshold) continue;
+    const br = baseline.data[i]!;
+    const bg = baseline.data[i + 1]!;
+    const bb = baseline.data[i + 2]!;
+    const delta = (Math.abs(r - br) + Math.abs(g - bg) + Math.abs(b - bb)) / 3;
+    if (delta <= threshold) continue;
 
-      changedWeight += w;
-      changedLuma += luma * w;
-      baselineLuma += relativeLuminance(br, bg, bb) * w;
+    changedWeight += w;
+    changedLuma += luma * w;
+    baselineLuma += relativeLuminance(br, bg, bb) * w;
 
-      if (colors.length > 0) {
-        const hsv = rgbToHsv(r, g, b);
-        for (let c = 0; c < colors.length; c++) {
-          if (matchesColor(colors[c]!, hsv)) colorWeights[c]! += w;
-        }
+    if (colors.length > 0) {
+      const hsv = rgbToHsv(r, g, b);
+      for (let c = 0; c < colors.length; c++) {
+        if (matchesColor(colors[c]!, hsv)) colorWeights[c]! += w;
       }
     }
   }

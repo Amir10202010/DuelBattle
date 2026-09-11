@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createFrame, resizeFrame, type Frame } from '../src/vision/frame.js';
-import { classifyColor, matchesColor, rgbToHsv } from '../src/vision/color.js';
+import { classifyColor, matchesColor, relativeLuminance, rgbToHsv } from '../src/vision/color.js';
 import {
   detectChange,
   detectColorObject,
@@ -54,6 +54,37 @@ describe('rgbToHsv', () => {
     expect(rgbToHsv(0, 0, 255).h).toBeCloseTo(240);
     expect(rgbToHsv(0, 0, 0)).toMatchObject({ h: 0, s: 0, v: 0 });
     expect(rgbToHsv(255, 255, 255)).toMatchObject({ s: 0, v: 1 });
+  });
+});
+
+describe('relativeLuminance', () => {
+  /**
+   * The transform is tabulated for all 256 byte values; this pins it to the
+   * definition it is meant to be a table of.
+   */
+  it('matches the sRGB formula exactly at every channel value', () => {
+    const reference = (c: number) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    for (let c = 0; c < 256; c++) {
+      const expected = 0.2126 * reference(c) + 0.7152 * reference(c) + 0.0722 * reference(c);
+      expect(relativeLuminance(c, c, c)).toBeCloseTo(expected, 12);
+    }
+  });
+
+  it('places the anchors where they belong', () => {
+    expect(relativeLuminance(0, 0, 0)).toBe(0);
+    expect(relativeLuminance(255, 255, 255)).toBeCloseTo(1, 10);
+    // Green carries most of perceived brightness, blue the least.
+    expect(relativeLuminance(0, 255, 0)).toBeGreaterThan(relativeLuminance(255, 0, 0));
+    expect(relativeLuminance(255, 0, 0)).toBeGreaterThan(relativeLuminance(0, 0, 255));
+  });
+
+  it('is not fooled into calling a saturated blue as light as white', () => {
+    // The reason luminance is used rather than HSV value, which calls both 1.0.
+    expect(relativeLuminance(0, 0, 255)).toBeLessThan(0.1);
+    expect(relativeLuminance(255, 255, 255)).toBeGreaterThan(0.9);
   });
 });
 
