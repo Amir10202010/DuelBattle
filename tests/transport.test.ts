@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { io as connect, type Socket } from 'socket.io-client';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../server/app';
-import type { Profile, Reply, RoomSnapshot } from '../shared/protocol';
+import { PROTOCOL_VERSION, type Profile, type Reply, type RoomSnapshot } from '../shared/protocol';
 
 describe('real HTTP and Socket.IO trust boundary', () => {
   let instance: Awaited<ReturnType<typeof createApp>>;
@@ -29,7 +29,7 @@ describe('real HTTP and Socket.IO trust boundary', () => {
       autoConnect: false,
       transports: ['websocket'],
       reconnection: false,
-      auth: { csrf },
+      auth: { csrf, protocol: PROTOCOL_VERSION },
       extraHeaders: { Cookie: cookie, Origin: requestOrigin },
     });
     sockets.push(socket);

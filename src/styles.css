@@ -1358,3 +1358,47 @@ dialog::backdrop {
     transform: none;
   }
 }
+
+/* Joining from a code someone read out, rather than from a link. */
+.join-code {
+  margin-top: 30px;
+  max-width: 430px;
+}
+.join-code label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.join-code > div {
+  display: flex;
+  gap: 9px;
+}
+.join-code input {
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  padding: 11px 14px;
+}
+.join-code input::placeholder {
+  color: #a8afa0;
+  letter-spacing: 3px;
+}
+.join-code button {
+  flex: none;
+}
+.join-code p {
+  margin-top: 9px;
+  font-size: 13px;
+  color: #96341f;
+}
+@media (max-width: 370px) {
+  .scene-challenge > span:last-of-type {
+    font-size: 25px;
+  }
+  .scene-challenge > svg {
+    display: none;
+  }
+}

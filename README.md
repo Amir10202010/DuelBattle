@@ -26,14 +26,14 @@ Stop the development process before starting production on the same port. SQLite
 
 ## What works
 
-- Private create/join/invite flow with validated names and secure guest identity.
+- Private create/join/invite flow with validated names, joining by a pasted code or link, and secure guest identity.
 - Real Socket.IO state synchronization and peer-to-peer WebRTC camera/audio transport.
 - User-initiated camera permission, optional microphone, muted/off controls and friendly recovery states.
 - Server-authoritative ready/countdown/race/review/result/next-round/match-result state machine.
-- Twenty reviewed challenges spanning all eleven categories; first to three wins, with bounded tie rounds.
+- Forty-two reviewed challenges spanning all eleven categories, paced by round number; first to three wins, with bounded tie rounds.
 - Intentional JPEG snapshot submission, opponent confirmation, server receipt ordering, duplicate/replay guards and review expiry.
-- Actual on-device temporal color guidance in a central presentation zone. It never awards a point or claims to identify a player or held object.
-- Best-of-five scoring, simultaneous-attempt arbitration, rematches, invite copying, native share and clipboard fallback.
+- Actual baseline-differenced colour assistance, run on-device for live feedback and re-run server-side as an observation for the reviewer. It never awards a point and never claims to identify a player or a held object.
+- Best-of-five scoring, simultaneous-attempt arbitration, per-round times in the play-by-play, a space-bar capture shortcut, rematches, invite copying, native share and clipboard fallback.
 - Refresh/reconnect recovery, pause when a player disconnects or disables their camera, 30-second grace period and stale-room cleanup.
 - Three free started battles per participant per UTC day, atomic two-player usage charges and server-owned Premium entitlements.
 - Responsive landing/lobby/arena/results, keyboard focus, semantic dialogs, accessible labels, reduced motion and clear error states.
@@ -42,9 +42,9 @@ Stop the development process before starting production on the same port. SQLite
 
 ## Verification: honest limits
 
-The shipping verifier is **opponent review**, including for objects, actions and personal/subjective prompts. A client cannot declare a win. It submits a snapshot; the other authenticated player judges it, and the server determines the result. An earlier pending snapshot blocks a later accepted one until reviewed or expired. Each review lasts eight seconds; each player may submit three snapshots per round. A race lasts 30 seconds; a final pending review may extend adjudication by up to eight seconds.
+The shipping verifier is **opponent review**, including for objects, actions and personal/subjective prompts. A client cannot declare a win. It submits a snapshot; the other authenticated player judges it, and the server determines the result. An earlier pending snapshot blocks a later accepted one until reviewed or expired. Each review lasts eight seconds; each player may submit three snapshots per round. A race lasts 20 to 40 seconds depending on the challenge, and neither the prompt nor its length is sent before the countdown ends; a final pending review may extend adjudication by up to eight seconds.
 
-The color guide runs locally at four samples per second, sampling a small central crop and requiring three stable detections. This is a real pixel heuristic, not AI object recognition. It cannot prove possession or reject every background object; opponent review is always required. Arbitrary actions, poses and personal claims are not automatically recognized. There are no fake model responses or continuous uploads.
+Colour assistance runs locally at four samples per second and requires three stable detections. It is scored against a **baseline** — the last frame your camera sends before the prompt appears — so an object already in the room earns nothing, and only something you bring into view counts. The server re-runs the same pure function over the frames you submit and hands the result to your opponent as an observation. This is a real pixel heuristic, not AI object recognition: it cannot prove possession, and opponent review is always required. Arbitrary actions, poses and personal claims are not automatically recognised. There are no fake model responses and no continuous uploads.
 
 There is no prize, ranked ladder or fraud-proof adjudication. Friends can intentionally approve incorrect answers; the MVP is an honor-based social game. Server receipt time favors lower-latency connections. It is not tournament timing.
 
@@ -61,12 +61,12 @@ There is no prize, ranked ladder or fraud-proof adjudication. Friends can intent
 | Tests                       | Vitest, Playwright, axe-core                      | Domain, real transport, actual browser/media pipeline, accessibility |
 | Packaging                   | Docker, Compose, GitHub Actions                   | Reproducible installation, CI and a persistent-host deployment path  |
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for state, privacy, security and scaling decisions. The Sites runtime was inspected during stack selection; this app needs a persistent Node process and was not published as a static or incomplete Site.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for state, privacy, security and scaling decisions, and [docs/RECONCILIATION.md](docs/RECONCILIATION.md) for how this single implementation was chosen from two competing ones. This app needs a persistent Node process; it cannot be published as a static site.
 
 ## Intentional extension points
 
 - `VerificationProvider` in `server/verification.ts`: isolated evidence evaluation; provider outages fall back to human review.
-- `ChallengeGenerator` / `generateProposal` in `shared/challenges.ts`: schema and rule validation; all generated/custom proposals are quarantined as `PENDING_REVIEW`. Only the reviewed catalog enters matches.
+- `ChallengeGenerator` / `generateProposal` in `server/challenges.ts`: schema and rule validation; all generated/custom proposals are quarantined as `PENDING_REVIEW`. Only the reviewed catalogue in `shared/challenges.ts` enters matches, and `validateCatalog` holds it to its invariants.
 - `SubscriptionProvider` and `Store.grantPremium`: server-owned entitlement boundary. No client Premium flag and no checkout/payment simulation. A real billing integration must authenticate customers and verify signed webhooks before writing entitlements.
 - `RoundSummary` and persisted match summaries: metadata groundwork for result/replay composition. Actual recording, clips, spectators, matchmaking, rankings and advanced vision are future work.
 
@@ -89,7 +89,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run check` runs typecheck, lint, domain/transport tests and production build. Run browser tests separately after building. They start a separate **production** server at `http://localhost:3100`, use an isolated in-memory database, and never consume your normal development quota.
+`npm run check` runs typecheck, lint, domain/transport tests and the production build. The browser suite builds the app itself before starting a separate **production** server at `http://localhost:3100`, so it can never run against a stale `dist`. It uses an isolated in-memory database and never consumes your normal development quota.
 
 If the Playwright download is unavailable, use an installed Chrome browser. PowerShell:
 

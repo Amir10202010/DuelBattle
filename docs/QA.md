@@ -1,46 +1,93 @@
 # Verification record
 
-Environment: Windows, Node.js 24.16.0, installed Google Chrome controlled by Playwright. Checks run against the built production server, with a separate in-memory database for browser tests. The normal development server runs at http://localhost:3000.
+Recorded after the reconciliation of `main` and [PR #1](https://github.com/Amir10202010/DuelBattle/pull/1).
+Environment: Windows 11, Node.js 24, an installed Google Chrome driven by Playwright
+(`PLAYWRIGHT_CHANNEL=chrome`; the bundled Chromium download was unavailable on this network).
+Browser checks run against the **built production server** on port 3100 with a separate
+in-memory database.
 
-## Automated domain and transport checks
+## Automated checks
 
-**38 tests passed** across four suites:
+**78 tests passed** across seven suites.
 
-- Room creation, joining, same-socket idempotency, duplicate tab protection, foreign membership, full/invalid rooms and bounded socket concurrency.
-- Explicit state transitions, both-ready gating, server countdown and deadlines, camera requirement, challenge selection and no repeats before catalog exhaustion.
-- First valid server-received attempt, simultaneous submissions, earlier pending attempts, accept/reject/expiry, three-attempt cap, stale round IDs, duplicate nonces, malformed evidence and self-review rejection.
-- First-to-three scoring, close five-round matches, timeout rounds, a bounded draw, rematch consent and score reset.
-- Disconnect/reconnect, replacement socket identity, fresh round tokens after interrupted races, camera-off pause, cancellation, stale-room expiry and membership release.
-- Atomic per-participant free usage, UTC reset, server-owned Premium, hourly throttling across midnight, expiry and persistence after database reopen.
-- Challenge schema, category metadata, safety-rule rejections, incompatible verification, untrusted generator outputs and quarantine pending human review.
-- Real temporal color detection on controlled pixel data, neutral/dark rejection and stale detection reset.
-- Real HTTP/Socket.IO integration: cookies, CSP, CSRF, origin rejection, forged Premium/score, unauthorized signaling, session recovery and ICE endpoint authentication.
+| Suite                | Tests | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `game.test.ts`       | 24    | Room creation and joining, same-socket idempotency, duplicate-tab refusal, foreign membership, full rooms, legal transitions, both-ready gating, the server countdown, the withheld prompt _and_ withheld round length, the pre-reveal baseline window, receipt ordering, simultaneous submissions, accept/reject/expiry, the three-attempt cap, stale round ids, duplicate nonces, malformed evidence, self-review refusal, first-to-three scoring, a close five-round match, timed-out rounds, a bounded draw, rematch consent and score reset, disconnect/reconnect with a fresh round token, camera-off pause and resume, cancellation, stale-room expiry, membership release, provider outage fallback, a provider that cannot award a point, and colour assistance that stays silent for an object already in the room. |
+| `vision.test.ts`     | 16    | HSV conversion, colour membership at the wrap-around of the hue wheel, a grey wall matching no chromatic colour, centre weighting that still counts the edges, an object brought into frame, a matching object already in the room, a static wall failing to rescue a wrong answer, the right colour in the wrong round, a colour pressed to the lens, sensor noise, a stray pixel, mismatched frame sizes, and box-filtered resizing.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `client.test.ts`     | 10    | Joining from a bare code, a full invite link or a path; refusing to truncate an over-long code into a real room; agreement with the pattern the server validates; the shared name rule; and one crop geometry — the detector, the opponent's view and the stored evidence resolve to the same field of view.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `validation.test.ts` | 9     | Every catalogue entry against the schema, the catalogue's structural invariants, no repeats before exhaustion, an opening colour-assisted round, no three consecutive opponent-judged rounds over 40 seeds, difficulty ramping as a weighting rather than a filter, unsafe/private/impossible proposals, quarantine of plausible generated text, refusal of client-supplied winner/premium/markup, and rate-limit windows.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `media.test.ts`      | 7     | The camera lifecycle in jsdom with a real React render: a camera that arrives after `stop()` is stopped, one that arrives after unmount is stopped, unmount releases every track, switching camera keeps the microphone, a refused permission leaves no half-open state, and a non-secure context is refused before `getUserMedia` is called.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `store.test.ts`      | 7     | Hashed session secrets, expiry, forged tokens, three free starts per UTC day, midnight reset, server-owned Premium, hourly throttling and persistence across a database reopen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `transport.test.ts`  | 5     | Real HTTP and Socket.IO: cache headers, HttpOnly/SameSite/Secure cookies, CSP, protocol-version and CSRF rejection, foreign origins, forged premium and score fields, unauthorised review and signalling, a full room, a duplicate tab, disconnect and reseat over real sockets, ICE endpoint authentication, and the per-identity socket cap.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-TypeScript typecheck, ESLint, production build and npm dependency audit passed. npm audit reported zero known vulnerabilities in the installed tree. Docker Compose configuration validated successfully. Docker image execution was not tested because the Docker Desktop daemon was not running.
+TypeScript typecheck, ESLint, Prettier and the production build pass; `npm run check` and CI
+now gate formatting too. Client bundle: **333.91 kB JS (105.80 kB gzip)** and 44.99 kB CSS
+(9.87 kB gzip) — down from 405.63 kB / 125.95 kB on `main`, because the validation layer no
+longer reaches the browser.
 
 ## Browser coverage
 
-**All four end-to-end browser scenarios passed in the final run** (approximately 1 minute 20 seconds). The production test server shut down after the suite; the user-facing development server remains available.
+**All four end-to-end scenarios passed**, approximately 1 minute 30 seconds, against the
+built production server.
 
-The browser suite exercises two independent authenticated contexts and Chromium-provided test cameras. Actual `getUserMedia`, live media tracks, WebRTC negotiation, remote video decoding, Socket.IO messages and server state are used. Synthetic camera content is only a test device; the application contains no fake camera mode or mocked game server.
+Two independent authenticated browser contexts and Chromium's synthetic camera devices are
+used. Actual `getUserMedia`, live media tracks, WebRTC negotiation, remote video decoding,
+Socket.IO traffic and server state are exercised. The synthetic camera is a test _device_
+only: there is no fake-camera mode and no mocked game server in the application.
 
-The complete flow includes create, copy invite, join, enable both cameras, enable microphone, both ready, synchronized countdown/challenge, deliberate snapshots, opponent confirmation, three rounds, synchronized winner and score, final result, clipboard sharing, rematch, refresh/rejoin, camera reacquisition, peer video recovery and leave. Media tracks are asserted ended on both sides after leaving/cancellation. Browser console errors and uncaught exceptions are collected and asserted absent in this full flow.
+The full journey covers create, copy invite, join, enable both cameras, enable the
+microphone, both ready, a synchronised countdown, an identical prompt on both sides,
+deliberate snapshot submission by mouse **and** by the space bar, the evidence frames
+rendering at the right aspect ratio, opponent confirmation, three rounds, a synchronised
+winner and score, the play-by-play with per-round times, clipboard sharing, rematch, refresh
+and rejoin, camera reacquisition, peer video recovery, and leaving. Media tracks are asserted
+ended on both sides after leaving. Console errors and uncaught exceptions are collected and
+asserted absent.
 
-Additional browser checks cover invalid rooms/routes, permission denial with a friendly message and disabled readiness, mobile and tablet layouts, offline/online transport recovery, opponent review brought into the viewport, and 200% zoom-equivalent reflow (640×450 CSS viewport at device scale 2, representing a 1280×900 display). This last check is viewport emulation, not physical browser zoom or an assistive-technology audit.
+The other scenarios cover the landing page, joining by a pasted code or link including the
+rejection message for a non-code, invalid rooms and routes, permission denial with a friendly
+message and a disabled ready button, mobile and tablet layouts, offline/online transport
+recovery, the review panel brought fully into the viewport, and 200% zoom-equivalent reflow
+(a 640×450 CSS viewport at device scale 2, representing a 1280×900 display). That last one is
+viewport emulation, not physical browser zoom.
 
-axe-core checks cover WCAG A/AA rules on the landing page, lobby and match results. The audit checks semantic controls, labels and contrast; automated tools do not replace a manual screen-reader audit. Keyboard Escape dismisses the information dialog; focus styles and reduced-motion media rules are implemented.
+axe-core runs WCAG 2.0/2.1 A and AA rules on the landing page, the lobby and the match
+result: zero violations. Automated rules do not replace a manual screen-reader audit.
+
+Playwright's web server now runs `npm run build && npm run start`. During this work a browser
+run against a stale `dist` reported a passing suite while the fix under test was not in the
+bundle; building in the harness removes that failure mode.
 
 ## Visual review
 
-Screenshots were inspected for desktop/mobile landing, camera lobby, active arena, snapshot review, countdown, desktop/mobile match results, reconnecting tablet, cancelled state and denied camera. The audit found and corrected a dark-control CSS cascade issue, oversized camera layout at shorter heights, review content below the viewport, media cleanup after cancellation and a same-origin polling handshake rejection. The final suite also generates round-result and zoom-equivalent dialog screenshots.
+Screenshots were inspected for the desktop and mobile landing page, the camera lobby, the
+countdown, the active arena on desktop and mobile, snapshot review on desktop and mobile,
+desktop and mobile match results, the reconnecting tablet, the cancelled state, the denied
+camera and the zoom-equivalent dialog. Three defects were found and fixed in this pass:
 
-Test output is in ignored `test-results/` and `playwright-report/`; traces and failure screenshots are retained automatically on failures. The repository contains no captured personal webcam footage. The marketing image is original illustrative artwork.
+- The review panel's evidence CSS still targeted the old markup, so on mobile the snapshot
+  and the earlier frames rendered as unproportioned slivers. Re-laid out, with an explicit
+  "The snapshot" / "A moment before" hierarchy.
+- The play-by-play ran the winner's name and time together (`Alex0.3s`).
+- Two landing-page rules had been left stranded in the arena stylesheet.
 
-## Not verified or deliberately external
+`test-results/` and `playwright-report/` are git-ignored; traces and failure screenshots are
+retained automatically on failure. The repository contains no captured webcam footage. The
+landing illustration is original artwork, labelled as an illustrative scene.
 
-- Physical cameras/microphones, physical phones, Safari/Firefox and peers in different geographic locations.
-- TURN relay service, NAT traversal through restrictive corporate networks, a public HTTPS host or reverse proxy, Docker runtime and GitHub-hosted CI execution.
-- Load or tournament fairness benchmarks, automatic object/pose recognition, liveness, model accuracy or fraud-resistant human judgments.
-- Payments, customer accounts, signed billing webhooks, arbitrary challenge moderation, recording and clips.
+## Not verified
 
-The MVP is playable with honest opponent verification. Advanced AI and billing are provider boundaries, not simulated services. Deploy one Node instance with persistent SQLite storage; server restarts end active rooms. Browser guest quotas are not strong account identity and can be evaded by clearing cookies.
+- Physical cameras and microphones, physical phones, Safari, Firefox, and peers on different
+  networks or in different countries.
+- A TURN relay, NAT traversal through restrictive corporate networks, a public HTTPS host or
+  reverse proxy, the Docker runtime (the daemon was not running here) and GitHub-hosted CI.
+- Load, capacity or tournament-fairness benchmarks.
+- Automatic object or pose recognition, liveness, and any claim of fraud-resistant judging —
+  these are deliberately absent rather than untested.
+- Payments, customer accounts, signed billing webhooks, moderation of arbitrary prompts,
+  recording and clips.
+
+The game is playable end to end with honest opponent verification. Advanced AI and billing
+are provider boundaries, not simulated services. Deploy one Node instance with persistent
+SQLite; a restart ends active rooms. Guest quotas are not strong identity and can be evaded
+by clearing cookies.

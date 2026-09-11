@@ -24,18 +24,30 @@ async function enableCamera(page: Page) {
     4,
   );
 }
-async function winRound(a: Page, b: Page) {
+async function winRound(a: Page, b: Page, capture: 'click' | 'space' = 'click', shot?: string) {
   await expect(a.getByRole('button', { name: 'I’ve got it! Send snapshot' })).toBeEnabled();
   await expect(b.getByRole('button', { name: 'I’ve got it! Send snapshot' })).toBeEnabled();
   expect(await a.locator('#challenge-heading').innerText()).toBe(
     await b.locator('#challenge-heading').innerText(),
   );
-  await a.getByRole('button', { name: 'I’ve got it! Send snapshot' }).click();
+  if (capture === 'space') {
+    // Both hands are on the object: the shortcut has to work without focus on the button.
+    await a.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await a.keyboard.press('Space');
+  } else await a.getByRole('button', { name: 'I’ve got it! Send snapshot' }).click();
   await expect(b.getByRole('heading', { name: 'Did they do it?' })).toBeVisible();
+  await expect(b.getByText('The snapshot', { exact: true })).toBeVisible();
   await expect(b.getByAltText('Your opponent’s submitted challenge evidence')).toHaveJSProperty(
     'complete',
     true,
   );
+  // The earlier frames are what makes an action reviewable; they must actually render.
+  for (const frame of await b.getByAltText(/Earlier evidence frame/).all()) {
+    await expect(frame).toHaveJSProperty('complete', true);
+    const box = (await frame.boundingBox())!;
+    expect(box.width / box.height).toBeCloseTo(4 / 3, 1);
+  }
+  if (shot) await b.screenshot({ path: shot, fullPage: true });
   await b.getByRole('button', { name: 'Yes, that counts' }).click();
   await expect(a.getByRole('heading', { name: 'You win the round.' })).toBeVisible();
   await expect(b.getByRole('heading', { name: 'Alex wins the round.' })).toBeVisible();
@@ -91,16 +103,18 @@ test('two real browser contexts: invite, WebRTC cameras, review, match, share, r
   await expect(a.getByText('GET READY', { exact: true })).toBeVisible();
   await expect(b.getByText('GET READY', { exact: true })).toBeVisible();
   await a.screenshot({ path: 'test-results/countdown-desktop.png', fullPage: true });
-  await winRound(a, b);
+  await winRound(a, b, 'click', 'test-results/review-desktop.png');
   await a.screenshot({ path: 'test-results/round-result.png', fullPage: true });
   await expect(a.getByRole('progressbar', { name: 'Round time remaining' })).toBeVisible();
   await a.screenshot({ path: 'test-results/arena-desktop.png', fullPage: true });
-  await winRound(a, b);
+  await winRound(a, b, 'space');
   await winRound(a, b);
   await expect(a.getByRole('heading', { name: 'You took the arena.' })).toBeVisible();
   await expect(b.getByRole('heading', { name: 'Alex takes the arena.' })).toBeVisible();
   await expect(a.locator('.final-score strong').first()).toHaveText('3');
   await expect(b.locator('.final-score strong').last()).toHaveText('3');
+  // Every round the winner actually won carries the time it took.
+  await expect(a.locator('.round-recap .recap-time')).toHaveCount(3);
   await a.screenshot({ path: 'test-results/match-result.png', fullPage: true });
   await accessible(a);
   await a.setViewportSize({ width: 390, height: 844 });
@@ -155,7 +169,15 @@ test('landing, narrow layout, dialogs and invalid routes', async ({ page }) => {
   await page.goto('/');
   await page.screenshot({ path: 'test-results/landing-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.goto('/battle/FFFFFFFFFF');
+  // Joining from a code someone read out, rather than from a link.
+  await page.goto('/');
+  const codeField = page.getByRole('textbox', { name: /Paste the code or link/ });
+  await codeField.fill('not-a-code');
+  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(page.getByText('That is not a battle code.')).toBeVisible();
+  await codeField.fill('https://example.invalid/battle/ffffffffff');
+  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(page).toHaveURL('http://localhost:3100/battle/FFFFFFFFFF');
   await page.getByRole('textbox', { name: 'Your player name' }).fill('Mobile');
   await page.getByRole('button', { name: 'Join Battle' }).click();
   await expect(page.getByText('This battle no longer exists. Start a new one.')).toBeVisible();

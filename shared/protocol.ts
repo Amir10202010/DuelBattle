@@ -1,13 +1,9 @@
-import { z } from 'zod';
+import type { z } from 'zod';
+import type { actionSchemas } from './validation';
 import type { Challenge } from './challenges';
 
-export const roomCodeSchema = z.string().regex(/^[A-F0-9]{10}$/);
-export const nameSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(20)
-  .regex(/^[\p{L}\p{N} _.-]+$/u, 'Use letters, numbers, spaces, or a dash.');
+export const PROTOCOL_VERSION = 2;
+
 export const states = [
   'WAITING_FOR_PLAYER',
   'READY',
@@ -58,13 +54,16 @@ export interface Attempt {
   playerId: string;
   receivedAt: number;
   expiresAt: number;
-  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'checking' | 'pending' | 'accepted' | 'rejected' | 'expired';
   image: string;
+  contextImages: string[];
+  observation?: string;
 }
 export interface Round {
   id: string;
   number: number;
-  challenge: Challenge;
+  /** Withheld by the server until the countdown finishes. */
+  challenge: Challenge | null;
   startsAt: number;
   endsAt: number;
   attempts: Attempt[];
@@ -76,6 +75,7 @@ export interface RoundSummary {
   prompt: string;
   winnerId: string | null;
   reason: string;
+  elapsedMs: Record<string, number | null>;
 }
 export interface RoomSnapshot {
   code: string;
@@ -102,41 +102,6 @@ export interface Profile {
 }
 export type Reply<T = void> = { ok: true; data: T } | { ok: false; error: string; code: string };
 export type Ack<T = void> = (reply: Reply<T>) => void;
-export const baseAction = z.object({ roomCode: roomCodeSchema }).strict();
-export const actionSchemas = {
-  create: z.object({ name: nameSchema }).strict(),
-  join: z.object({ roomCode: roomCodeSchema, name: nameSchema }).strict(),
-  ready: baseAction.extend({ ready: z.boolean() }),
-  media: baseAction.extend({ camera: z.boolean(), microphone: z.boolean() }),
-  submit: baseAction.extend({
-    roundId: z.uuid(),
-    nonce: z.uuid(),
-    image: z
-      .string()
-      .max(110_000)
-      .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/),
-  }),
-  review: baseAction.extend({ roundId: z.uuid(), attemptId: z.uuid(), accept: z.boolean() }),
-  rematch: baseAction,
-  leave: baseAction,
-  signal: baseAction
-    .extend({
-      description: z
-        .object({ type: z.enum(['offer', 'answer']), sdp: z.string().max(24_000) })
-        .strict()
-        .optional(),
-      candidate: z
-        .object({
-          candidate: z.string().max(2000),
-          sdpMid: z.string().max(64).nullable().optional(),
-          sdpMLineIndex: z.number().int().min(0).max(20).nullable().optional(),
-          usernameFragment: z.string().max(256).nullable().optional(),
-        })
-        .strict()
-        .optional(),
-    })
-    .refine((v) => !!v.description !== !!v.candidate),
-};
 export type Signal = z.infer<typeof actionSchemas.signal>;
 export interface ServerEvents {
   snapshot: (room: RoomSnapshot) => void;
@@ -148,6 +113,7 @@ export interface ClientEvents {
   join: (data: z.infer<typeof actionSchemas.join>, ack: Ack<RoomSnapshot>) => void;
   ready: (data: z.infer<typeof actionSchemas.ready>, ack: Ack) => void;
   media: (data: z.infer<typeof actionSchemas.media>, ack: Ack) => void;
+  baseline: (data: z.infer<typeof actionSchemas.baseline>, ack: Ack) => void;
   submit: (data: z.infer<typeof actionSchemas.submit>, ack: Ack) => void;
   review: (data: z.infer<typeof actionSchemas.review>, ack: Ack) => void;
   rematch: (data: z.infer<typeof actionSchemas.rematch>, ack: Ack) => void;

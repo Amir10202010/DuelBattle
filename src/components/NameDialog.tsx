@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, X } from 'lucide-react';
-import { nameSchema } from '../../shared/protocol';
+import { parsePlayerName } from '../../shared/identity';
 import { getName } from '../lib/client';
 
 export function NameDialog({
@@ -58,7 +58,7 @@ export function NameDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          const parsed = nameSchema.safeParse(name);
+          const parsed = parsePlayerName(name);
           if (!parsed.success) setInvalid('Use 1–20 letters, numbers, spaces, or a dash.');
           else {
             setInvalid(null);

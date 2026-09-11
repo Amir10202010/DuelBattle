@@ -10,7 +10,9 @@ export function ChallengeStage({
   userId: string;
 }) {
   const round = room.round;
+  const challenge = round?.challenge;
   if (!round) return null;
+  const limit = challenge?.timeLimit ?? 30;
   const seconds = Math.max(0, Math.ceil((round.endsAt - now) / 1000));
   const countdown = Math.max(1, Math.ceil(((room.deadline ?? now) - now) / 1000));
   const winner = room.players.find((p) => p.id === round.winnerId);
@@ -50,7 +52,9 @@ export function ChallengeStage({
               : 'No points. Next round.'
             : isNext
               ? 'Keep that energy.'
-              : round.challenge.prompt + '.'}
+              : room.state === 'COUNTDOWN'
+                ? 'Get ready. Eyes on the arena.'
+                : (challenge?.prompt ?? 'Battle paused') + '.'}
         </h1>
         {room.state === 'COUNTDOWN' ? (
           <div
@@ -73,8 +77,8 @@ export function ChallengeStage({
           : isNext
             ? 'A new challenge is on the way. Stay in frame.'
             : room.state === 'COUNTDOWN'
-              ? 'Look at the challenge. Wait for the timer. Get ready to show it.'
-              : round.challenge.instructions}
+              ? 'Your next challenge is hidden until the countdown ends.'
+              : (challenge?.instructions ?? 'Turn your camera on to continue.')}
       </p>
       {room.state === 'CHALLENGE_ACTIVE' && (
         <div
@@ -82,12 +86,12 @@ export function ChallengeStage({
           role="progressbar"
           aria-label="Round time remaining"
           aria-valuemin={0}
-          aria-valuemax={round.challenge.timeLimit}
+          aria-valuemax={limit}
           aria-valuenow={seconds}
         >
           <div
             style={{
-              width: `${Math.min(100, Math.max(0, (round.endsAt - now) / (round.challenge.timeLimit * 10)))}%`,
+              width: `${Math.min(100, Math.max(0, (round.endsAt - now) / (limit * 10)))}%`,
             }}
           />
         </div>

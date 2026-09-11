@@ -13,7 +13,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { nameSchema } from '../../shared/protocol';
+import { parsePlayerName } from '../../shared/identity';
 import { navigate, request, saveName } from '../lib/client';
 import type { useConnection } from '../hooks/useConnection';
 import { useBattle } from '../hooks/useBattle';
@@ -70,6 +70,7 @@ export function Battle({
     matchState,
     myAttempts,
     pending,
+    canCapture,
   } = useBattle(code, connection);
   const header = (
     <header className="battle-header">
@@ -146,7 +147,7 @@ export function Battle({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const parsed = nameSchema.safeParse(draftName);
+                const parsed = parsePlayerName(draftName);
                 if (!parsed.success) setError('Use 1–20 letters, numbers, spaces, or a dash.');
                 else {
                   saveName(parsed.data);
@@ -336,6 +337,21 @@ export function Battle({
                   {media.camera ? <Camera size={20} /> : <CameraOff size={20} />}
                 </button>
                 <span>{media.microphone ? 'Mic on' : 'Mic off'}</span>
+                {media.devices.length > 1 && (
+                  <select
+                    className="camera-select"
+                    aria-label="Camera device"
+                    value={media.deviceId}
+                    disabled={media.status === 'requesting'}
+                    onChange={(e) => void media.selectDevice(e.target.value)}
+                  >
+                    {media.devices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               {!matchState ? (
                 <button
@@ -358,14 +374,7 @@ export function Battle({
               ) : active ? (
                 <button
                   className="button button-lime ready-button"
-                  disabled={
-                    busy ||
-                    !media.camera ||
-                    !connected ||
-                    pending ||
-                    myAttempts.length >= 3 ||
-                    now >= room.round!.endsAt
-                  }
+                  disabled={!canCapture || !connected}
                   onClick={() => void submit()}
                 >
                   <Camera size={20} />
@@ -376,6 +385,7 @@ export function Battle({
                       : now >= room.round!.endsAt
                         ? 'Time’s up'
                         : 'I’ve got it! Send snapshot'}
+                  <kbd aria-hidden="true">Space</kbd>
                 </button>
               ) : (
                 <span className="next-status" role="status">
@@ -400,8 +410,8 @@ export function Battle({
                     : 'Both players need to be ready. One battle is counted for each of you when the countdown begins.'
                 : active && color
                   ? detected
-                    ? `${color[0].toUpperCase() + color.slice(1)} is visible in the guide. Hold the object — your friend still confirms it.`
-                    : `Hold your ${color} object inside the guide. Color assistance stays on your device.`
+                    ? `New ${color} pixels are stable. Show the object and interaction — your friend still confirms it.`
+                    : `Bring your ${color} object into frame. Show yourself holding or using it.`
                   : active
                     ? 'Show it clearly. Send your snapshot. Confirm your friend’s answer fairly.'
                     : 'Keep it safe. Stay within reach. No running required.'}

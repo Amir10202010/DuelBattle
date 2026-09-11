@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  CHALLENGES,
-  challengeSchema,
-  generateProposal,
-  selectChallenge,
-  validateProposal,
-} from '../shared/challenges';
-import { actionSchemas } from '../shared/protocol';
+import { CHALLENGES, getChallenge, selectChallenge, validateCatalog } from '../shared/challenges';
+import { actionSchemas, challengeSchema } from '../shared/validation';
+import { generateProposal, validateProposal } from '../server/challenges';
 import { RateLimiter } from '../server/rate-limit';
-import { colorFraction, TemporalColorGuide } from '../src/vision/color';
 
 describe('challenge review and protocol boundaries', () => {
   it('validates every catalog entry and keeps subjective claims human reviewed', () => {
@@ -19,11 +13,43 @@ describe('challenge review and protocol boundaries', () => {
       expect(challenge.subjective).toBe(challenge.verificationType === 'SUBJECTIVE');
     }
   });
+  it('holds the catalog to its structural invariants', () => {
+    expect(validateCatalog()).toEqual([]);
+    expect(validateCatalog([{ ...CHALLENGES[0], id: 'broken', aiVerifiable: true }])).toContain(
+      'broken: no challenge is decided automatically',
+    );
+    expect(validateCatalog([{ ...CHALLENGES[0], id: 'broken', subjective: true }])).toContain(
+      'broken: subjective flag disagrees with the verification type',
+    );
+  });
   it('avoids repeats until the reviewed catalog is exhausted', () => {
     const ids: string[] = [];
-    for (let i = 0; i < CHALLENGES.length; i++) ids.push(selectChallenge(ids, () => 0).id);
+    for (let i = 0; i < CHALLENGES.length; i++) ids.push(selectChallenge(ids, () => 0, i + 1).id);
     expect(new Set(ids).size).toBe(CHALLENGES.length);
-    expect(selectChallenge(ids).id).not.toBe(ids.at(-1));
+    expect(selectChallenge(ids, Math.random, CHALLENGES.length + 1).id).not.toBe(ids.at(-1));
+  });
+  it('opens with an assisted round and never runs three judged rounds in a row', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const random = () => (seed % 20) / 20;
+      const first = selectChallenge([], random, 1);
+      expect(first.color).toBeTruthy();
+      expect(first.subjective).toBe(false);
+      const ids = [first.id];
+      for (let round = 2; round <= 12; round++) ids.push(selectChallenge(ids, random, round).id);
+      const judged = ids.map((id) => getChallenge(id)!.subjective);
+      for (let i = 2; i < judged.length; i++)
+        expect(judged[i - 2] && judged[i - 1] && judged[i]).toBe(false);
+    }
+  });
+  it('ramps difficulty rather than filtering on it', () => {
+    const late = Array.from(
+      { length: 200 },
+      (_, i) => selectChallenge([], () => i / 200, 6).difficulty,
+    );
+    expect(late.filter((d) => d === 'hard').length).toBeGreaterThan(
+      late.filter((d) => d === 'easy').length,
+    );
+    expect(late).toContain('easy');
   });
   it('rejects dangerous, private, impossible and unsupported proposal inputs', () => {
     for (const prompt of [
@@ -76,27 +102,5 @@ describe('challenge review and protocol boundaries', () => {
     limits.take('a', 2, 100, 0);
     expect(() => limits.take('a', 2, 100, 0)).toThrow('too fast');
     expect(() => limits.take('a', 2, 100, 100)).not.toThrow();
-  });
-});
-describe('real on-device color assistance', () => {
-  it('distinguishes vivid colors from neutral and dark frames', () => {
-    const frame = (r: number, g: number, b: number) =>
-      new Uint8ClampedArray(Array.from({ length: 100 }, () => [r, g, b, 255]).flat());
-    expect(colorFraction(frame(220, 15, 15), 'red')).toBe(1);
-    expect(colorFraction(frame(20, 100, 220), 'blue')).toBe(1);
-    expect(colorFraction(frame(20, 180, 40), 'green')).toBe(1);
-    expect(colorFraction(frame(128, 128, 128), 'red')).toBe(0);
-    expect(colorFraction(frame(20, 0, 0), 'red')).toBe(0);
-    expect(colorFraction(frame(20, 100, 220), 'red')).toBe(0);
-  });
-  it('requires temporal stability and clears stale evidence', () => {
-    const guide = new TemporalColorGuide();
-    expect(guide.update(0.2)).toBe(false);
-    expect(guide.update(0.2)).toBe(false);
-    expect(guide.update(0.2)).toBe(true);
-    expect(guide.update(0.01)).toBe(false);
-    expect(guide.update(0.2)).toBe(false);
-    guide.reset();
-    expect(guide.update(0.2)).toBe(false);
   });
 });

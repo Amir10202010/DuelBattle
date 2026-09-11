@@ -20,9 +20,11 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'npm run start',
+    // Build here as well as in CI: a browser run against a stale `dist` is worse
+    // than no browser run at all.
+    command: 'npm run build && npm run start',
     url: 'http://localhost:3100/api/health',
-    timeout: 30_000,
+    timeout: 180_000,
     reuseExistingServer: false,
     env: {
       PORT: '3100',

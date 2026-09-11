@@ -64,6 +64,7 @@ export function App() {
             setError(null);
             setCreating(true);
           }}
+          onJoin={(code) => navigate(`/battle/${code}`)}
           onInfo={setInfo}
         />
       ) : (

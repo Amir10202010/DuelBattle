@@ -6,11 +6,13 @@ import { resolve } from 'node:path';
 import { isIP } from 'node:net';
 import { Server } from 'socket.io';
 import type { ZodType } from 'zod';
-import { actionSchemas, type Ack, type ClientEvents, type ServerEvents } from '../shared/protocol';
+import type { Ack, ClientEvents, ServerEvents } from '../shared/protocol';
+import { actionSchemas } from '../shared/validation';
 import { Store, type Session } from './store';
 import { GameEngine, type GameConfig } from './game';
 import { GameError } from './errors';
 import { RateLimiter } from './rate-limit';
+import { PROTOCOL_VERSION } from '../shared/protocol';
 
 interface AppConfig {
   databasePath: string;
@@ -27,11 +29,10 @@ function cookieToken(cookie?: string) {
     ?.slice(13);
 }
 function equal(a: unknown, b: string) {
-  return (
-    typeof a === 'string' &&
-    a.length === b.length &&
-    timingSafeEqual(Buffer.from(a), Buffer.from(b))
-  );
+  if (typeof a !== 'string') return false;
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 export async function createApp(config: AppConfig) {
@@ -55,7 +56,7 @@ export async function createApp(config: AppConfig) {
     http,
     {
       serveClient: false,
-      maxHttpBufferSize: 140_000,
+      maxHttpBufferSize: 340_000,
       pingInterval: 10_000,
       pingTimeout: 8_000,
       cors: { origin: config.origin, credentials: true },
@@ -149,6 +150,10 @@ export async function createApp(config: AppConfig) {
     try {
       limits.take(`connect:${peerIp(socket)}`, 120, 60_000);
       const session = store.session(cookieToken(socket.handshake.headers.cookie));
+      if (socket.handshake.auth.protocol !== PROTOCOL_VERSION) {
+        next(new Error('This tab is running an old version. Reload to continue.'));
+        return;
+      }
       if (!session || !equal(socket.handshake.auth.csrf, session.csrf)) {
         next(new Error('Your session expired. Refresh to reconnect.'));
         return;
@@ -167,8 +172,8 @@ export async function createApp(config: AppConfig) {
     const userId = socket.data.session.id;
     socketsPerUser.set(userId, (socketsPerUser.get(userId) ?? 0) + 1);
     const handle =
-      <T, R = undefined>(schema: ZodType<T>, fn: (data: T) => R, limit = 80) =>
-      (input: unknown, ack?: Ack<R>) => {
+      <T, R = undefined>(schema: ZodType<T>, fn: (data: T) => R | Promise<R>, limit = 80) =>
+      async (input: unknown, ack?: Ack<R>) => {
         if (typeof ack !== 'function') return;
         try {
           if (Date.now() >= socket.data.session.expiresAt)
@@ -177,7 +182,7 @@ export async function createApp(config: AppConfig) {
           const parsed = schema.safeParse(input);
           if (!parsed.success)
             throw new GameError('INVALID_REQUEST', 'That request was not valid. Please try again.');
-          ack({ ok: true, data: fn(parsed.data) });
+          ack({ ok: true, data: await fn(parsed.data) });
         } catch (error) {
           if (!(error instanceof GameError))
             console.error(
@@ -194,12 +199,17 @@ export async function createApp(config: AppConfig) {
           });
         }
       };
+    const subscribe = (code: string) => {
+      for (const previous of socket.rooms)
+        if (previous !== socket.id && previous !== code) void socket.leave(previous);
+      void socket.join(code);
+    };
     socket.on(
       'create',
       handle(actionSchemas.create, (data) => {
         limits.take(`create:${peerIp(socket)}`, 20, 60 * 60_000);
         const result = engine.create(userId, data.name, socket.id);
-        void socket.join(result.code);
+        subscribe(result.code);
         socket.emit('snapshot', engine.snapshot(result.code));
         return result;
       }),
@@ -208,7 +218,7 @@ export async function createApp(config: AppConfig) {
       'join',
       handle(actionSchemas.join, (data) => {
         const snapshot = engine.join(data.roomCode, userId, data.name, socket.id);
-        void socket.join(data.roomCode);
+        subscribe(data.roomCode);
         socket.emit('snapshot', snapshot);
         return snapshot;
       }),
@@ -224,10 +234,26 @@ export async function createApp(config: AppConfig) {
       ),
     );
     socket.on(
+      'baseline',
+      handle(actionSchemas.baseline, (d) => {
+        limits.take(`images:${userId}`, 16, 10_000);
+        engine.baseline(d.roomCode, userId, socket.id, d.roundId, d.image);
+      }),
+    );
+    socket.on(
       'submit',
-      handle(actionSchemas.submit, (d) =>
-        engine.submit(d.roomCode, userId, socket.id, d.roundId, d.nonce, d.image),
-      ),
+      handle(actionSchemas.submit, (d) => {
+        limits.take(`images:${userId}`, 16, 10_000);
+        return engine.submit(
+          d.roomCode,
+          userId,
+          socket.id,
+          d.roundId,
+          d.nonce,
+          d.image,
+          d.contextImages,
+        );
+      }),
     );
     socket.on(
       'review',

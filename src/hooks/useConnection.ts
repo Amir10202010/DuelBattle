@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import type { Profile, RoomSnapshot } from '../../shared/protocol';
+import { PROTOCOL_VERSION, type Profile, type RoomSnapshot } from '../../shared/protocol';
 import { fetchProfile, type GameSocket } from '../lib/client';
 
 export function useConnection() {
@@ -39,7 +39,7 @@ export function useConnection() {
         setProfile(p);
         client = io({
           autoConnect: false,
-          auth: { csrf: p.csrf },
+          auth: { csrf: p.csrf, protocol: PROTOCOL_VERSION },
           reconnectionDelay: 500,
           reconnectionDelayMax: 3000,
         });

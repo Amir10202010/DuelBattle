@@ -1,11 +1,26 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { selectChallenge } from '../shared/challenges';
-import { canTransition, type GameState, type Player, type RoomSnapshot } from '../shared/protocol';
-import { requireRule, GameError } from './errors';
+import { selectChallenge, type Challenge } from '../shared/challenges';
+import { firstConfirmed } from '../shared/adjudication';
+import type { Frame } from '../shared/vision/frame';
+import {
+  canTransition,
+  type GameState,
+  type Player,
+  type Round,
+  type RoomSnapshot,
+} from '../shared/protocol';
+import { requireRule } from './errors';
 import { Store } from './store';
-import { OpponentVerificationProvider, type VerificationProvider } from './verification';
+import {
+  decodeEvidence,
+  evaluateEvidence,
+  OpponentVerificationProvider,
+  type VerificationProvider,
+} from './verification';
 
 interface InternalRoom extends RoomSnapshot {
+  round: (Round & { challenge: Challenge }) | null;
+  baselines: Map<string, { frame: Frame; at: number }>;
   createdAt: number;
   touchedAt: number;
   sockets: Map<string, string>;
@@ -67,7 +82,7 @@ export class GameEngine {
       players: r.players,
       bestOf: r.bestOf,
       matchId: r.matchId,
-      round: r.round,
+      round: r.round ? this.projectRound(r) : null,
       history: r.history,
       deadline: r.deadline,
       winnerId: r.winnerId,
@@ -75,6 +90,21 @@ export class GameEngine {
       revision: r.revision,
       serverNow: this.now(),
     });
+  }
+  /**
+   * Before the reveal the client learns that a round exists and when it starts,
+   * and nothing else. The prompt is withheld, and so is the race length — a 20
+   * second round and a 40 second round would otherwise narrow the catalogue down
+   * for anyone reading the socket. Both are reissued at reveal anyway.
+   */
+  private projectRound(room: InternalRoom): Round {
+    const round = room.round!;
+    const hidden =
+      room.state === 'COUNTDOWN' ||
+      (room.state === 'RECONNECTING' && room.resume?.state === 'COUNTDOWN');
+    return hidden
+      ? { ...round, challenge: null, endsAt: round.startsAt }
+      : { ...round, challenge: round.challenge };
   }
   private publish(room: InternalRoom) {
     room.revision++;
@@ -162,6 +192,7 @@ export class GameEngine {
       touchedAt: this.now(),
       sockets: new Map([[userId, socketId]]),
       nonces: new Set(),
+      baselines: new Map(),
       resume: null,
       selected: [],
     };
@@ -216,10 +247,17 @@ export class GameEngine {
   media(code: string, userId: string, socketId: string, camera: boolean, microphone: boolean) {
     const { room, player } = this.member(code, userId, socketId);
     requireRule(room.state !== 'CANCELLED', 'ROOM_CLOSED', 'This battle has ended.');
+    if (player.camera === camera && player.microphone === microphone) return;
     player.camera = camera;
     player.microphone = microphone;
-    if (!camera) player.ready = false;
-    if (!camera && ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'NEXT_ROUND'].includes(room.state))
+    if (!camera) {
+      player.ready = false;
+      player.rematch = false;
+    }
+    if (
+      !camera &&
+      ['COUNTDOWN', 'CHALLENGE_ACTIVE', 'ROUND_RESULT', 'NEXT_ROUND'].includes(room.state)
+    )
       this.pause(room, 'A camera is off. Turn it back on to resume.');
     this.tryResume(room);
     this.publish(room);
@@ -268,7 +306,8 @@ export class GameEngine {
     this.prepareRound(room);
   }
   private prepareRound(room: InternalRoom) {
-    const challenge = selectChallenge(room.selected, this.random);
+    const challenge = selectChallenge(room.selected, this.random, room.history.length + 1);
+    room.baselines.clear();
     room.selected.push(challenge.id);
     room.selected = room.selected.slice(-100);
     room.nonces.clear();
@@ -285,13 +324,26 @@ export class GameEngine {
     };
     this.change(room, 'COUNTDOWN', startsAt);
   }
-  submit(
+  baseline(code: string, userId: string, socketId: string, roundId: string, image: string) {
+    const { room, player } = this.member(code, userId, socketId);
+    requireRule(
+      room.state === 'COUNTDOWN' && room.round?.id === roundId && this.now() < room.round.startsAt,
+      'INVALID_ROUND',
+      'The baseline window has closed.',
+    );
+    requireRule(player.camera, 'CAMERA_REQUIRED', 'Turn on your camera first.');
+    // One pre-reveal image per player and round. Never accepted after the prompt.
+    if (!room.baselines.has(userId))
+      room.baselines.set(userId, { frame: decodeEvidence(image), at: this.now() });
+  }
+  async submit(
     code: string,
     userId: string,
     socketId: string,
     roundId: string,
     nonce: string,
     image: string,
+    contextImages: string[] = [],
   ) {
     const { room, player } = this.member(code, userId, socketId);
     const round = room.round;
@@ -313,7 +365,7 @@ export class GameEngine {
     );
     requireRule(
       !round.attempts.some(
-        (a) => a.playerId === userId && ['pending', 'accepted'].includes(a.status),
+        (a) => a.playerId === userId && ['checking', 'pending', 'accepted'].includes(a.status),
       ),
       'PENDING_REVIEW',
       'Your snapshot is already with your opponent.',
@@ -323,29 +375,52 @@ export class GameEngine {
       'ATTEMPT_LIMIT',
       'You have used all three snapshots this round.',
     );
-    let decision;
-    try {
-      decision = this.verifier.evaluate({ challenge: round.challenge, image });
-    } catch (error) {
-      if (error instanceof GameError) throw error;
-      // Provider outages fall back to explicit human review, never an invented success.
-      decision = new OpponentVerificationProvider().evaluate({ challenge: round.challenge, image });
-      room.message = 'Verification is unavailable. Your opponent will review your snapshot.';
-    }
-    requireRule(
-      decision.kind !== 'rejected',
-      'NOT_VERIFIED',
-      decision.kind === 'rejected' ? decision.reason : 'Try another snapshot.',
-    );
+    const receivedAt = this.now();
+    requireRule(contextImages.length <= 2, 'BAD_EVIDENCE', 'Too many evidence frames.');
+    const frames = [...contextImages, image].map(decodeEvidence);
     room.nonces.add(nonce);
-    round.attempts.push({
+    const attempt: Round['attempts'][number] = {
       id: randomUUID(),
       playerId: userId,
-      receivedAt: this.now(),
-      expiresAt: this.now() + (decision.kind === 'human-review' ? decision.reviewForMs : 0),
-      status: decision.kind === 'verified' ? 'accepted' : 'pending',
+      receivedAt,
+      expiresAt: receivedAt + 10_000,
+      status: 'checking',
       image,
+      contextImages,
+    };
+    round.attempts.push(attempt);
+    this.publish(room);
+    const baseline = room.baselines.get(userId);
+    const { decision, fallback } = await evaluateEvidence(this.verifier, {
+      challenge: round.challenge,
+      image,
+      frames,
+      baseline: baseline && round.startsAt - baseline.at <= 4_000 ? baseline.frame : undefined,
     });
+    // Async providers cannot write into a cancelled, restarted or reassigned round.
+    requireRule(
+      room.state === 'CHALLENGE_ACTIVE' &&
+        room.round === round &&
+        round.attempts.includes(attempt) &&
+        attempt.status === 'checking' &&
+        room.sockets.get(userId) === socketId &&
+        player.connected &&
+        player.camera,
+      'INVALID_ROUND',
+      'That round is no longer accepting snapshots.',
+    );
+    if (fallback)
+      room.message = 'Verification is unavailable. Your opponent will review your snapshot.';
+    if (decision.kind === 'rejected') {
+      attempt.status = 'rejected';
+      attempt.image = '';
+      attempt.contextImages = [];
+      attempt.observation = decision.reason;
+    } else {
+      attempt.status = 'pending';
+      attempt.expiresAt = Math.min(receivedAt + 10_000, this.now() + decision.reviewForMs);
+      attempt.observation = decision.observation;
+    }
     this.settle(room);
     this.publish(room);
   }
@@ -376,28 +451,37 @@ export class GameEngine {
     );
     attempt.status = accept ? 'accepted' : 'rejected';
     attempt.image = '';
+    attempt.contextImages = [];
     this.settle(room);
     this.publish(room);
   }
   private settle(room: InternalRoom) {
     const round = room.round!;
-    const eligible = round.attempts.filter(
-      (a) => a.status === 'pending' || a.status === 'accepted',
-    );
-    // Insertion order is the single-writer server's arrival order, even within the same millisecond.
-    if (eligible[0]?.status === 'accepted')
-      this.finishRound(
-        room,
-        eligible[0].playerId,
-        'First valid snapshot, confirmed by the opponent.',
-      );
+    const winner = firstConfirmed(round.attempts, this.now());
+    if (winner)
+      this.finishRound(room, winner.playerId, 'First valid snapshot, confirmed by the opponent.');
   }
   private finishRound(room: InternalRoom, winnerId: string | null, reason: string) {
     const round = room.round!;
     round.winnerId = winnerId;
     round.reason = reason;
     if (winnerId) room.players.find((p) => p.id === winnerId)!.score++;
-    room.history.push({ number: round.number, prompt: round.challenge.prompt, winnerId, reason });
+    const elapsedMs = Object.fromEntries(
+      room.players.map((player) => {
+        const confirmed = round.attempts.find(
+          (a) => a.playerId === player.id && a.status === 'accepted',
+        );
+        return [player.id, confirmed ? Math.max(0, confirmed.receivedAt - round.startsAt) : null];
+      }),
+    );
+    room.history.push({
+      number: round.number,
+      prompt: round.challenge.prompt,
+      winnerId,
+      reason,
+      elapsedMs,
+    });
+    room.baselines.clear();
     round.attempts = []; // Images are ephemeral and never leave this round.
     this.change(room, 'ROUND_RESULT', this.now() + this.config.resultMs);
   }
@@ -437,6 +521,10 @@ export class GameEngine {
     this.publish(room);
   }
   private pause(room: InternalRoom, message: string) {
+    if (room.round && ['COUNTDOWN', 'CHALLENGE_ACTIVE'].includes(room.state)) {
+      room.round.attempts = [];
+      room.baselines.clear();
+    }
     room.resume = {
       state: room.state,
       remaining: room.deadline === null ? null : Math.max(0, room.deadline - this.now()),
@@ -460,6 +548,7 @@ export class GameEngine {
       room.round!.id = randomUUID();
       room.round!.attempts = [];
       room.nonces.clear();
+      room.baselines.clear();
       room.round!.startsAt = this.now() + this.config.countdownMs;
       room.round!.endsAt = room.round!.startsAt + room.round!.challenge.timeLimit * 1000;
       this.change(room, 'COUNTDOWN', room.round!.startsAt);
@@ -478,6 +567,7 @@ export class GameEngine {
     this.change(room, 'CANCELLED');
     room.message = message;
     if (room.round) room.round.attempts = [];
+    room.baselines.clear();
     for (const p of room.players)
       if (this.memberships.get(p.id) === room.code) this.memberships.delete(p.id);
   }
@@ -499,16 +589,17 @@ export class GameEngine {
       if (room.state === 'CHALLENGE_ACTIVE') {
         let changed = false;
         for (const attempt of room.round!.attempts)
-          if (attempt.status === 'pending' && now >= attempt.expiresAt) {
+          if (['checking', 'pending'].includes(attempt.status) && now >= attempt.expiresAt) {
             attempt.status = 'expired';
             attempt.image = '';
+            attempt.contextImages = [];
             changed = true;
           }
         if (changed) this.settle(room);
         if (
           room.state === 'CHALLENGE_ACTIVE' &&
           now >= room.round!.endsAt &&
-          !room.round!.attempts.some((a) => a.status === 'pending')
+          !room.round!.attempts.some((a) => ['checking', 'pending'].includes(a.status))
         ) {
           this.finishRound(room, null, 'No confirmed snapshot in time. No points this round.');
           changed = true;
@@ -517,6 +608,13 @@ export class GameEngine {
       } else if (room.deadline !== null && now >= room.deadline) {
         switch (room.state) {
           case 'COUNTDOWN':
+            if (!room.players.every((p) => p.connected && p.camera)) {
+              this.pause(room, 'A camera is off. Turn it back on to resume.');
+              break;
+            }
+            // Reveal owns the race clock: a delayed tick must not steal playing time.
+            room.round!.startsAt = now;
+            room.round!.endsAt = now + room.round!.challenge.timeLimit * 1000;
             this.change(room, 'CHALLENGE_ACTIVE', room.round!.endsAt);
             break;
           case 'ROUND_RESULT': {

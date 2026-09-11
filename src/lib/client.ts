@@ -1,7 +1,7 @@
 import type { Socket } from 'socket.io-client';
 import type { z } from 'zod';
+import type { actionSchemas } from '../../shared/validation';
 import type {
-  actionSchemas,
   ClientEvents,
   Profile,
   Reply,

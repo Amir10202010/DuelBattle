@@ -11,18 +11,67 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
+import { useState } from 'react';
 import type { Profile } from '../../shared/protocol';
+import { CHALLENGES } from '../../shared/challenges';
+import { extractRoomCode } from '../../shared/identity';
 import { Brand } from './Brand';
+
+/**
+ * An invite link is the common path, but a code read out over a call has to work
+ * too — so this accepts either, and says plainly when it has neither.
+ */
+function JoinForm({ onJoin }: { onJoin: (code: string) => void }) {
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="join-code"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const code = extractRoomCode(value);
+        if (!code) setError('That is not a battle code. Paste the invite link instead.');
+        else onJoin(code);
+      }}
+    >
+      <label htmlFor="join-code-input">Got an invite? Paste the code or link</label>
+      <div>
+        <input
+          id="join-code-input"
+          value={value}
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="A1B2C3D4E5"
+          aria-describedby={error ? 'join-code-error' : undefined}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setError(null);
+          }}
+        />
+        <button className="button button-dark">
+          Join <ArrowRight size={17} />
+        </button>
+      </div>
+      {error && (
+        <p id="join-code-error" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
 
 export function Landing({
   profile,
   connected,
   onStart,
+  onJoin,
   onInfo,
 }: {
   profile: Profile | null;
   connected: boolean;
   onStart: () => void;
+  onJoin: (code: string) => void;
   onInfo: (kind: 'rules' | 'privacy') => void;
 }) {
   return (
@@ -64,6 +113,7 @@ export function Landing({
                 See how it works <ArrowDown size={17} />
               </a>
             </div>
+            <JoinForm onJoin={onJoin} />
             <div className="hero-fine">
               <Camera size={15} />
               <span>2 players</span>
@@ -173,7 +223,7 @@ export function Landing({
                 </h2>
               </div>
               <span className="challenge-count">
-                20 challenges.
+                {CHALLENGES.length} challenges.
                 <br />
                 Zero preparation required.
               </span>
@@ -189,7 +239,7 @@ export function Landing({
                   <em>red.</em>
                 </h3>
                 <div>
-                  <span>30 SECONDS</span>
+                  <span>20 SECONDS</span>
                   <ArrowUpRight />
                 </div>
               </article>
@@ -277,7 +327,7 @@ export function Landing({
                   <Check size={17} /> 3 battles per day
                 </li>
                 <li>
-                  <Check size={17} /> All 20 house challenges
+                  <Check size={17} /> All {CHALLENGES.length} house challenges
                 </li>
                 <li>
                   <Check size={17} /> Private invite links & rematches

@@ -3,7 +3,7 @@ import type { Attempt } from '../../shared/protocol';
 import { copyText, getName, navigate, request } from '../lib/client';
 import { useMedia } from './useMedia';
 import { usePeer } from './usePeer';
-import { useColorGuide } from './useColorGuide';
+import { useEvidence } from './useEvidence';
 import { useConnection, useServerNow } from './useConnection';
 
 export function useBattle(code: string, connection: ReturnType<typeof useConnection>) {
@@ -50,8 +50,16 @@ export function useBattle(code: string, connection: ReturnType<typeof useConnect
   });
   const now = useServerNow(connection.offset);
   const active = room?.state === 'CHALLENGE_ACTIVE';
-  const color = room?.round?.challenge.color;
-  const detected = useColorGuide(videoRef, color, !!active && media.camera);
+  const color = room?.round?.challenge?.color;
+  const evidence = useEvidence(videoRef, {
+    socket,
+    code,
+    roundId: room?.round?.id,
+    phase: room?.state,
+    camera: media.camera && joined && connected,
+    challenge: room?.round?.challenge,
+  });
+  const detected = evidence.detected;
   const inviteLink = `${window.location.origin}/battle/${code}`;
   useEffect(() => {
     if (!socket || !connected || !name) {
@@ -121,6 +129,9 @@ export function useBattle(code: string, connection: ReturnType<typeof useConnect
   }, []);
   const leave = async () => {
     if (joined && socket?.connected) await request(socket, 'leave', { roomCode: code });
+    controlRef.current.joined = false;
+    setJoined(false);
+    media.stop();
     connection.setRoom(null);
     navigate('/');
   };
@@ -138,18 +149,11 @@ export function useBattle(code: string, connection: ReturnType<typeof useConnect
       const v = videoRef.current;
       if (!v || v.readyState < 2 || !media.camera || !room?.round || !socket)
         throw new Error('Wait for your camera to load, then try again.');
-      const canvas = document.createElement('canvas');
-      const scale = 480 / Math.max(v.videoWidth, v.videoHeight);
-      canvas.width = Math.max(1, Math.round(v.videoWidth * scale));
-      canvas.height = Math.max(1, Math.round(v.videoHeight * scale));
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Snapshot capture is unavailable in this browser.');
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       await request(socket, 'submit', {
         roomCode: code,
         roundId: room.round.id,
         nonce: crypto.randomUUID(),
-        image: canvas.toDataURL('image/jpeg', 0.65),
+        ...evidence.snapshot(),
       });
     });
   const review = (attempt: Attempt, accept: boolean) => {
@@ -165,7 +169,30 @@ export function useBattle(code: string, connection: ReturnType<typeof useConnect
   };
   const matchState = room && !['WAITING_FOR_PLAYER', 'READY', 'CANCELLED'].includes(room.state);
   const myAttempts = room?.round?.attempts.filter((a) => a.playerId === profile?.id) ?? [];
-  const pending = myAttempts.some((a) => a.status === 'pending' || a.status === 'accepted');
+  const pending = myAttempts.some((a) => ['checking', 'pending', 'accepted'].includes(a.status));
+  const canCapture =
+    active &&
+    media.camera &&
+    !pending &&
+    !busy &&
+    myAttempts.length < 3 &&
+    now < (room?.round?.endsAt ?? 0);
+  // Both hands are usually busy holding the answer up: the space bar sends it.
+  const captureRef = useRef({ canCapture, submit });
+  captureRef.current = { canCapture, submit };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || event.metaKey || event.ctrlKey || event.altKey)
+        return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, button, a, [contenteditable]')) return;
+      if (!captureRef.current.canCapture) return;
+      event.preventDefault();
+      void captureRef.current.submit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   return {
     socket,
     profile,
@@ -204,5 +231,6 @@ export function useBattle(code: string, connection: ReturnType<typeof useConnect
     matchState,
     myAttempts,
     pending,
+    canCapture,
   };
 }

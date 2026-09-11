@@ -37,30 +37,52 @@ export function ReviewPanel({
     <div className="review-area">
       {mine && (
         <div className={`attempt-status attempt-${mine.status}`} role="status">
-          {mine.status === 'pending' || mine.status === 'accepted' ? (
+          {['checking', 'pending', 'accepted'].includes(mine.status) ? (
             <Hourglass size={18} />
           ) : (
             <X size={18} />
           )}
           <span>
-            {mine.status === 'pending'
-              ? 'Snapshot sent. Your friend is the judge.'
-              : mine.status === 'accepted'
-                ? 'Confirmed. Waiting for an earlier snapshot to be reviewed.'
-                : mine.status === 'expired'
-                  ? 'Your review timed out. Try another snapshot while there’s time.'
-                  : 'Not quite! Your friend rejected that snapshot. You can try again.'}
+            {mine.status === 'checking'
+              ? 'Checking your evidence…'
+              : mine.status === 'pending'
+                ? 'Snapshot sent. Your friend is the judge.'
+                : mine.status === 'accepted'
+                  ? 'Confirmed. Waiting for an earlier snapshot to be reviewed.'
+                  : mine.status === 'expired'
+                    ? 'Your review timed out. Try another snapshot while there’s time.'
+                    : 'Not quite! Your friend rejected that snapshot. You can try again.'}
           </span>
         </div>
       )}
       {pending && (
         <section ref={panelRef} className="review-panel" aria-labelledby="review-title">
-          <img
-            src={pending.image}
-            alt="Your opponent’s submitted challenge evidence"
-            width="240"
-            height="180"
-          />
+          <div className="review-evidence">
+            <figure className="evidence-now">
+              <img
+                src={pending.image}
+                alt="Your opponent’s submitted challenge evidence"
+                width="480"
+                height="360"
+              />
+              <figcaption>The snapshot</figcaption>
+            </figure>
+            {pending.contextImages.length > 0 && (
+              <div className="evidence-sequence" aria-label="Earlier moments, in capture order">
+                {pending.contextImages.map((image, index) => (
+                  <figure key={index}>
+                    <img
+                      src={image}
+                      alt={`Earlier evidence frame ${index + 1}`}
+                      width="240"
+                      height="180"
+                    />
+                    <figcaption>A moment before</figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="review-copy">
             <span className="eyebrow">
               YOUR FRIEND’S SNAPSHOT · {Math.max(0, Math.ceil((pending.expiresAt - now) / 1000))}s
@@ -68,10 +90,18 @@ export function ReviewPanel({
             </span>
             <h2 id="review-title">Did they do it?</h2>
             <p>
-              {round.challenge.subjective
+              {round.challenge?.subjective
                 ? 'This one needs your judgment. Be a good sport.'
                 : 'Check that they are holding or doing the thing. Background objects don’t count.'}
             </p>
+            {pending.observation && <p className="evidence-observation">{pending.observation}</p>}
+            {(round.challenge?.verificationType === 'ACTION' ||
+              round.challenge?.verificationType === 'OBJECT_ACTION') && (
+              <p>
+                Use the earlier frames and live camera to check the action. A still picture alone
+                cannot prove movement.
+              </p>
+            )}
             <div className="review-actions">
               <button
                 className="button button-lime button-small"

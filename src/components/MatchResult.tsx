@@ -144,7 +144,14 @@ export function MatchResult({
           <div key={r.number}>
             <span className="recap-round">{String(r.number).padStart(2, '0')}</span>
             <span>{r.prompt}</span>
-            <strong>{room.players.find((p) => p.id === r.winnerId)?.name ?? 'No points'}</strong>
+            <strong>
+              {room.players.find((p) => p.id === r.winnerId)?.name ?? 'No points'}
+              {r.winnerId && r.elapsedMs[r.winnerId] != null && (
+                <small className="recap-time">
+                  {(r.elapsedMs[r.winnerId]! / 1000).toFixed(1)}s
+                </small>
+              )}
+            </strong>
           </div>
         ))}
       </div>
