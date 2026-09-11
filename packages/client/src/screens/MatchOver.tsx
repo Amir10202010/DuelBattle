@@ -1,5 +1,6 @@
 import { getChallenge, type PublicMatchState } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
+import { SeriesLine } from '../components/Series.jsx';
 
 interface MatchOverProps {
   store: MatchStore;
@@ -40,6 +41,7 @@ export function MatchOver({ store, match, youId, onLeave }: MatchOverProps) {
           {headline}
         </h1>
         <p className="over__sub dim">{subline}</p>
+        <SeriesLine match={match} youId={youId} className="over__series" />
       </div>
 
       <div className="over__score">

@@ -118,6 +118,11 @@ export interface MatchState {
   playedChallengeIds: string[];
   recentModes: JudgingMode[];
   history: RoundOutcome[];
+  /**
+   * Matches won in this room, across rematches. It is what makes the rematch
+   * button mean something: a match you lost 3-1 is still 1-1 on the night.
+   */
+  series: Record<PlayerId, number>;
   /** Non-null while a player is disconnected mid-match; all timers are frozen. */
   pausedAt: number | null;
   pauseDeadline: number | null;
@@ -192,6 +197,7 @@ export function createMatch(
     playedChallengeIds: [],
     recentModes: [],
     history: [],
+    series: {},
     pausedAt: null,
     pauseDeadline: null,
     winnerId: null,
@@ -325,7 +331,16 @@ function leave(state: MatchState, playerId: PlayerId, ctx: EngineContext): Resul
   const seats: [PlayerId | null, PlayerId | null] = [...state.seats];
   seats[player.seat] = null;
 
-  let next: MatchState = { ...state, players, seats, pausedAt: null, pauseDeadline: null };
+  // A series is between two people. When one of them goes, it is over — the
+  // alternative hands whoever takes the seat next a deficit they never played.
+  let next: MatchState = {
+    ...state,
+    players,
+    seats,
+    series: {},
+    pausedAt: null,
+    pauseDeadline: null,
+  };
 
   if (isMatchActive(state.phase)) {
     next = endMatch(next, 'abandoned', ctx);
@@ -674,6 +689,11 @@ function endMatch(state: MatchState, reason: MatchEndReason, _ctx: EngineContext
     phaseEndsAt: Number.POSITIVE_INFINITY,
     winnerId,
     endReason: reason,
+    // An abandoned match is not a win; nobody outplayed anybody.
+    series:
+      winnerId && reason !== 'abandoned'
+        ? { ...state.series, [winnerId]: (state.series[winnerId] ?? 0) + 1 }
+        : state.series,
     pausedAt: null,
     pauseDeadline: null,
     players: clearRematchVotes(state.players),

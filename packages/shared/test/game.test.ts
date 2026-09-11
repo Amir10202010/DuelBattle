@@ -511,3 +511,70 @@ describe('invariants', () => {
     expect(opponentOf(s, 'ghost')).toBeNull();
   });
 });
+
+
+describe('the series', () => {
+  function playMatch(state: MatchState, winner: 'p1' | 'p2'): MatchState {
+    let s = state;
+    for (let i = 0; i < 3; i++) {
+      const live = s.phase === 'countdown' ? tick(s, ctxAt(s.phaseEndsAt)) : s;
+      s = apply(
+        live,
+        {
+          type: 'submit',
+          playerId: winner,
+          roundId: live.round!.id,
+          evidenceId: `e-${live.round!.number}`,
+          auto: { matched: true, confidence: 1, reason: 'ok' },
+        },
+        ctxAt(live.round!.startedAt + 1_000),
+      );
+      s = tick(s, ctxAt(s.phaseEndsAt));
+    }
+    return s;
+  }
+
+  function rematch(state: MatchState): MatchState {
+    let s = apply(state, { type: 'rematch', playerId: 'p1' }, ctxAt(900_000));
+    s = apply(s, { type: 'rematch', playerId: 'p2' }, ctxAt(900_001));
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctxAt(900_002));
+    return apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctxAt(900_003));
+  }
+
+  it('starts empty', () => {
+    expect(seatedMatch(0).series).toEqual({});
+  });
+
+  it('counts a match win', () => {
+    const s = playMatch(seatedMatch(0), 'p1');
+    expect(s.phase).toBe('matchResult');
+    expect(s.series).toEqual({ p1: 1 });
+  });
+
+  it('survives a rematch, which is the whole point', () => {
+    let s = playMatch(seatedMatch(0), 'p1');
+    s = rematch(s);
+    // The new match starts level.
+    expect(s.players.p1?.score).toBe(0);
+    expect(s.series).toEqual({ p1: 1 });
+
+    s = playMatch(s, 'p2');
+    expect(s.series).toEqual({ p1: 1, p2: 1 });
+  });
+
+  it('does not award a series point for an abandoned match', () => {
+    let s = intoChallenge(seatedMatch(0));
+    s = apply(s, { type: 'leave', playerId: 'p2' }, ctxAt(6_000));
+    expect(s.endReason).toBe('abandoned');
+    expect(s.series).toEqual({});
+  });
+
+  it('ends the series when either player leaves for good', () => {
+    let s = playMatch(seatedMatch(0), 'p1');
+    expect(s.series.p1).toBe(1);
+    // Whoever takes the empty seat must not inherit a scoreline they never
+    // played, in either direction.
+    s = apply(s, { type: 'leave', playerId: 'p2' }, ctxAt(900_000));
+    expect(s.series).toEqual({});
+  });
+});

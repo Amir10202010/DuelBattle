@@ -63,6 +63,7 @@ function matchState(overrides: Partial<PublicMatchState> = {}): PublicMatchState
     round: null,
     roundNumber: 0,
     history: [],
+    series: {},
     settings: { winTarget: 3, maxRounds: 9, countdownMs: 3200, judgingMs: 15000, roundResultMs: 5500 },
     paused: null,
     winnerId: null,

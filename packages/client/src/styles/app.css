@@ -1370,3 +1370,23 @@
     display: none;
   }
 }
+
+.series {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  color: var(--text-dim);
+}
+
+.over__series {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.lobby__series {
+  flex: none;
+  padding: 0 var(--space-1);
+}

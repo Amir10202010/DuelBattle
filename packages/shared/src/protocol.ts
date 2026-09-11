@@ -94,6 +94,8 @@ export interface PublicMatchState {
   roundNumber: number;
   /** Every resolved round, oldest first. Drives the end-of-match recap. */
   history: RoundOutcome[];
+  /** Matches won in this room so far, by player id. */
+  series: Record<PlayerId, number>;
   /**
    * Everything the client needs to draw the match without guessing. The phase
    * durations are here because a timer bar has to know what a full bar means,
@@ -175,6 +177,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
       : null,
     roundNumber: state.roundNumber,
     history: state.history,
+    series: state.series,
     settings: {
       winTarget: state.settings.winTarget,
       maxRounds: state.settings.maxRounds,

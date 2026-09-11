@@ -3,6 +3,7 @@ import { samplePrompts, type PublicMatchState } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
+import { SeriesLine } from '../components/Series.jsx';
 import { roomUrl } from '../hooks/useRoute.js';
 
 interface LobbyProps {
@@ -35,6 +36,7 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
         )}
       </div>
 
+      <SeriesLine match={match} youId={youId} className="lobby__series" />
       <Taster />
 
       <div className="lobby__controls">
