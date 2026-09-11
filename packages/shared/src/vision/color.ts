@@ -104,10 +104,6 @@ export function colorSwatch(key: ColorKey): string {
   return SPECS[key].swatch;
 }
 
-export function colorLabel(key: ColorKey): string {
-  return SPECS[key].label;
-}
-
 export function isColorKey(value: string): value is ColorKey {
   return Object.prototype.hasOwnProperty.call(SPECS, value);
 }
@@ -120,13 +116,4 @@ export function matchesColor(key: ColorKey, hsv: Hsv): boolean {
   if (spec.maxVal !== undefined && hsv.v > spec.maxVal) return false;
   if (!spec.hue) return true;
   return spec.hue.some(([lo, hi]) => hsv.h >= lo && hsv.h <= hi);
-}
-
-/** Best-effort naming of a single pixel, used for player-facing feedback. */
-export function classifyColor(r: number, g: number, b: number): ColorKey | null {
-  const hsv = rgbToHsv(r, g, b);
-  for (const key of COLOR_KEYS) {
-    if (matchesColor(key, hsv)) return key;
-  }
-  return null;
 }

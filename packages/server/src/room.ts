@@ -26,15 +26,7 @@ export type Send = (message: ServerMessage) => void;
 
 /** A live frame is only usable as a baseline while it still reflects the room. */
 const BASELINE_MAX_AGE_MS = 4_000;
-/**
- * Evidence snapshots are dropped once they are this many rounds old.
- *
- * One is enough: judging and the result screen both show the *current* round,
- * and pruning happens when the next round's countdown starts, by which point
- * the previous result is off screen. Holding two doubled the largest term in a
- * room's memory footprint for nothing.
- */
-const EVIDENCE_ROUND_RETENTION = 1;
+
 /** Live frames are relayed at most this often, regardless of what a client sends. */
 const FRAME_RELAY_INTERVAL_MS = 150;
 
@@ -96,9 +88,14 @@ export class Room {
   private state: MatchState;
   private readonly seats = new Map<PlayerId, Seat>();
   private readonly tokens = new Map<string, PlayerId>();
-  /** roundId -> playerId -> evidence image. */
+  /**
+   * roundId -> playerId -> evidence image.
+   *
+   * Only ever the round in play: judging and the result screen both show the
+   * current round, and a reconnecting player is re-sent that same round. It is
+   * the largest term in a room's memory, so it holds exactly what is used.
+   */
   private readonly evidence = new Map<string, Map<PlayerId, string>>();
-  private readonly evidenceOrder: string[] = [];
   private lastBroadcastVersion = -1;
   private lastPhase: Phase = 'lobby';
   private lastRoundId: string | null = null;
@@ -413,7 +410,7 @@ export class Room {
     if (phase === 'roundResult' && this.lastPhase !== 'roundResult' && round) {
       this.deliverEvidence(round.id, 'result');
     }
-    if (roundChanged && round) this.pruneEvidence(round.id);
+    if (roundChanged && round) this.pruneEvidenceExcept(round.id);
 
     this.lastPhase = phase;
     this.lastRoundId = round?.id ?? null;
@@ -451,17 +448,20 @@ export class Room {
     if (!round) {
       round = new Map();
       this.evidence.set(roundId, round);
-      this.evidenceOrder.push(roundId);
     }
     round.set(playerId, image);
   }
 
-  private pruneEvidence(currentRoundId: string): void {
-    if (!this.evidenceOrder.includes(currentRoundId)) this.evidenceOrder.push(currentRoundId);
-    while (this.evidenceOrder.length > EVIDENCE_ROUND_RETENTION) {
-      const stale = this.evidenceOrder.shift();
-      if (stale) this.evidence.delete(stale);
+  /** Everything but the round in play is dead weight. */
+  private pruneEvidenceExcept(roundId: string): void {
+    for (const key of [...this.evidence.keys()]) {
+      if (key !== roundId) this.evidence.delete(key);
     }
+  }
+
+  /** How many rounds of snapshots this room is holding. Asserted by the tests. */
+  get retainedEvidenceRounds(): number {
+    return this.evidence.size;
   }
 
   /**
@@ -496,10 +496,6 @@ export class Room {
 
   broadcast(message: ServerMessage): void {
     for (const seat of this.seats.values()) seat.send?.(message);
-  }
-
-  snapshotFor(now: number): ServerMessage {
-    return { t: 'state', state: toPublicState(this.state), serverTime: now };
   }
 
   isCollectable(now: number, emptyTtlMs: number, maxAgeMs: number): boolean {

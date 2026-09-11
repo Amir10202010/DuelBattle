@@ -78,6 +78,39 @@ describe('validateCatalog', () => {
     ).toContain('x: peer round must not carry a detector');
   });
 
+  it('flags a prompt that names a different colour than it tests for', () => {
+    // Unwinnable, and nothing about playing it would explain why.
+    const problems = validateCatalog([
+      { ...base, judging: 'auto', detector: { kind: 'color', target: 'blue' } },
+    ]);
+    expect(problems.join(' ')).toContain('does not name the colour it tests for');
+  });
+
+  it('flags a colour pair where only one colour is named', () => {
+    const problems = validateCatalog([
+      {
+        ...base,
+        prompt: 'SHOW SOMETHING RED',
+        judging: 'auto',
+        detector: { kind: 'colorPair', targets: ['red', 'white'] },
+      },
+    ]);
+    expect(problems.join(' ')).toContain('white');
+  });
+
+  it('accepts a detector whose colours the prompt does name', () => {
+    expect(
+      validateCatalog([
+        {
+          ...base,
+          prompt: 'SHOW SOMETHING RED AND WHITE',
+          judging: 'auto',
+          detector: { kind: 'colorPair', targets: ['red', 'white'] },
+        },
+      ]),
+    ).toEqual([]);
+  });
+
   it('flags duplicates, casing and implausible durations', () => {
     const problems = validateCatalog([base, { ...base, id: 'y' }, { ...base, id: 'z', prompt: 'lower case', durationMs: 5 }]);
     expect(problems).toContain('duplicate prompt: SHOW SOMETHING');

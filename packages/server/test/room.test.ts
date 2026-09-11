@@ -311,6 +311,35 @@ describe('evidence handling', () => {
   });
 });
 
+describe('memory', () => {
+  /**
+   * Snapshots are the largest thing a room holds, and a room can run for
+   * thirteen rounds. Holding one round of them is the difference between a
+   * server that survives a full table and one that does not.
+   */
+  it('never holds more than one round of snapshots', () => {
+    const h = seated();
+    const { roundId, detector } = intoChallenge(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
+    expect(h.r1.state.phase).toBe('roundResult');
+    expect(h.room.retainedEvidenceRounds).toBe(1);
+
+    // Into the next round, and the one before it should be gone.
+    h.room.tick(h.r1.state.phaseEndsAt!);
+    expect(h.r1.state.phase).toBe('countdown');
+    expect(h.room.retainedEvidenceRounds).toBe(0);
+
+    const second = h.r1.state.round!;
+    h.room.tick(h.r1.state.phaseEndsAt!);
+    h.room.handle(
+      h.p1,
+      { t: 'submit', roundId: second.id, image: heldObjectFrame(BLUE) },
+      40_000,
+    );
+    expect(h.room.retainedEvidenceRounds).toBeLessThanOrEqual(1);
+  });
+});
+
 describe('collection', () => {
   it('marks a room collectable once it has been empty long enough', () => {
     const room = new Room('ABCDE', 0);

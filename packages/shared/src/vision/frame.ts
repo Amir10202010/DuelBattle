@@ -65,8 +65,3 @@ export function resizeFrame(src: Frame, width: number, height: number): Frame {
   }
   return { width, height, data: out };
 }
-
-/** Normalizes any frame to the shared analysis resolution. */
-export function toAnalysisFrame(src: Frame): Frame {
-  return resizeFrame(src, ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
-}

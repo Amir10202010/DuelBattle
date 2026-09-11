@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createFrame, resizeFrame, type Frame } from '../src/vision/frame.js';
-import { classifyColor, matchesColor, relativeLuminance, rgbToHsv } from '../src/vision/color.js';
+import { COLOR_KEYS, matchesColor, relativeLuminance, rgbToHsv, type ColorKey } from '../src/vision/color.js';
 import {
-  detectChange,
+  analyseChange,
   detectColorObject,
   detectColorPair,
   detectCoverage,
@@ -88,13 +88,17 @@ describe('relativeLuminance', () => {
   });
 });
 
-describe('colour classification', () => {
-  it('names obvious colours', () => {
-    expect(classifyColor(220, 30, 30)).toBe('red');
-    expect(classifyColor(30, 60, 220)).toBe('blue');
-    expect(classifyColor(40, 180, 80)).toBe('green');
-    expect(classifyColor(250, 250, 248)).toBe('white');
-    expect(classifyColor(12, 12, 14)).toBe('black');
+describe('colour matching', () => {
+  /** Which colours a pixel would answer for, in catalogue order. */
+  const matching = (r: number, g: number, b: number): ColorKey[] =>
+    COLOR_KEYS.filter((key) => matchesColor(key, rgbToHsv(r, g, b)));
+
+  it('recognises obvious colours', () => {
+    expect(matching(220, 30, 30)).toContain('red');
+    expect(matching(30, 60, 220)).toContain('blue');
+    expect(matching(40, 180, 80)).toContain('green');
+    expect(matching(250, 250, 248)).toContain('white');
+    expect(matching(12, 12, 14)).toContain('black');
   });
 
   it('treats crimson at the top of the hue wheel as red', () => {
@@ -102,7 +106,14 @@ describe('colour classification', () => {
   });
 
   it('does not call a grey wall any chromatic colour', () => {
-    expect(classifyColor(128, 128, 130)).toBe(null);
+    const chromatic = matching(128, 128, 130).filter((k) => k !== 'white' && k !== 'black');
+    expect(chromatic).toEqual([]);
+  });
+
+  it('keeps colours apart that a player would never confuse', () => {
+    expect(matching(220, 30, 30)).not.toContain('blue');
+    expect(matching(30, 60, 220)).not.toContain('red');
+    expect(matching(250, 250, 248)).not.toContain('black');
   });
 });
 
@@ -166,7 +177,7 @@ describe('detectColorObject', () => {
       current.data[i + 1] = 92 + jitter;
       current.data[i + 2] = 95 + jitter;
     }
-    expect(detectChange(baseline, current)).toBeLessThan(0.01);
+    expect(analyseChange(baseline, current).changeRatio).toBeLessThan(0.01);
     expect(detectColorObject(baseline, current, { target: 'red' }).matched).toBe(false);
   });
 

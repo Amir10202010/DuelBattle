@@ -169,11 +169,6 @@ export function analyseChange(
   };
 }
 
-/** "Did anything meaningfully enter or move in the frame?" */
-export function detectChange(baseline: Frame, current: Frame, opts: AnalyseOptions = {}): number {
-  return analyseChange(baseline, current, { ...opts, colors: [] }).changeRatio;
-}
-
 // ---------------------------------------------------------------------------
 // Detectors
 // ---------------------------------------------------------------------------

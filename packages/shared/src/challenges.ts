@@ -1,4 +1,4 @@
-import type { ColorKey } from './vision/color.js';
+import { isColorKey, type ColorKey } from './vision/color.js';
 import type { DetectorSpec } from './vision/run.js';
 import type { RandomSource } from './ids.js';
 
@@ -299,6 +299,13 @@ export function customChallenge(id: string, prompt: string): Challenge {
   };
 }
 
+function colorTargets(detector: DetectorSpec | undefined): readonly string[] {
+  if (!detector) return [];
+  if (detector.kind === 'color') return [detector.target];
+  if (detector.kind === 'colorPair') return detector.targets;
+  return [];
+}
+
 /** Structural invariants the catalogue must satisfy; asserted by the tests. */
 export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): string[] {
   const problems: string[] = [];
@@ -316,6 +323,14 @@ export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): 
     if (c.prompt !== promptKey) problems.push(`${c.id}: prompt must be upper case`);
     if (c.prompt.length > 48) problems.push(`${c.id}: prompt too long to render large`);
     if (c.judging === 'auto' && !c.detector) problems.push(`${c.id}: auto round without a detector`);
+    for (const target of colorTargets(c.detector)) {
+      if (!isColorKey(target)) problems.push(`${c.id}: unknown colour "${target}"`);
+      else if (!c.prompt.toLowerCase().includes(target)) {
+        // A prompt that names one colour while the detector hunts another is
+        // unwinnable, and no amount of playtesting would explain why.
+        problems.push(`${c.id}: prompt does not name the colour it tests for ("${target}")`);
+      }
+    }
     if (c.judging === 'peer' && c.detector) problems.push(`${c.id}: peer round must not carry a detector`);
     if (c.durationMs < 10_000 || c.durationMs > 60_000) problems.push(`${c.id}: implausible duration`);
     if (c.tags.length === 0) problems.push(`${c.id}: needs at least one tag`);
