@@ -235,8 +235,14 @@ export function getChallenge(id: string): Challenge | undefined {
   return CHALLENGES_BY_ID.get(id);
 }
 
-/** How many prompts one room may add on top of the catalogue. */
-export const MAX_CUSTOM_CHALLENGES = 8;
+/**
+ * How many prompts each player may add on top of the catalogue.
+ *
+ * Per player rather than per room, so the deck is not first come, first served:
+ * whoever opened the lobby first should not be able to fill it before their
+ * opponent has finished reading the prompt box.
+ */
+export const MAX_CUSTOM_PER_PLAYER = 4;
 export const MAX_CUSTOM_PROMPT_LENGTH = 48;
 export const MIN_CUSTOM_PROMPT_LENGTH = 4;
 
@@ -262,9 +268,15 @@ export function normalizeCustomPrompt(input: string): string {
 
 export function validateCustomPrompt(
   input: string,
-  existing: readonly { prompt: string }[],
+  /** Everything already in the deck, so duplicates can be caught. */
+  existing: readonly { prompt: string; authorId?: string }[],
+  /** Whose prompt this is, when the per-player allowance should be checked. */
+  authorId?: string,
 ): { ok: true; prompt: string } | { ok: false; error: CustomPromptError } {
-  if (existing.length >= MAX_CUSTOM_CHALLENGES) return { ok: false, error: 'deck-full' };
+  if (authorId !== undefined) {
+    const mine = existing.filter((c) => c.authorId === authorId).length;
+    if (mine >= MAX_CUSTOM_PER_PLAYER) return { ok: false, error: 'deck-full' };
+  }
 
   const prompt = normalizeCustomPrompt(input);
   if (prompt.length < MIN_CUSTOM_PROMPT_LENGTH) return { ok: false, error: 'too-short' };

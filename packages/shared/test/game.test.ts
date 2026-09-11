@@ -660,10 +660,25 @@ describe('prompts the players write themselves', () => {
       expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c2' }, ctxAt(0)),
     ).toBe('duplicate-prompt');
 
-    for (let i = 1; i < 8; i++) s = add(s, 'p1', `PROMPT NUMBER ${i}`, `c${i + 1}`);
+    for (let i = 1; i < 4; i++) s = add(s, 'p1', `PROMPT NUMBER ${i}`, `c${i + 1}`);
     expect(
       expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'ONE TOO MANY', id: 'cx' }, ctxAt(0)),
     ).toBe('deck-full');
+  });
+
+  it('gives each player their own allowance', () => {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAt(0);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    for (let i = 0; i < 4; i++) s = add(s, 'p1', `ADA PROMPT ${i}`, `a${i}`);
+
+    // Ada has used hers; Grace has not touched the deck.
+    expect(expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'ONE MORE', id: 'ax' }, ctx)).toBe(
+      'deck-full',
+    );
+    s = add(s, 'p2', 'GRACE PROMPT', 'g1');
+    expect(s.customChallenges).toHaveLength(5);
   });
 
   it('lets only the author take one back out', () => {

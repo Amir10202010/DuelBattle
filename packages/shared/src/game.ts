@@ -1,7 +1,7 @@
 import type { Challenge, JudgingMode } from './challenges.js';
 import {
   CHALLENGES,
-  MAX_CUSTOM_CHALLENGES,
+  MAX_CUSTOM_PER_PLAYER,
   customChallenge,
   getChallenge,
   pickChallenge,
@@ -368,9 +368,8 @@ function addChallenge(
 ): Result {
   if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
   if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
-  if (state.customChallenges.length >= MAX_CUSTOM_CHALLENGES) {
-    return { ok: false, error: 'deck-full' };
-  }
+  const theirs = state.customChallenges.filter((c) => c.authorId === action.playerId).length;
+  if (theirs >= MAX_CUSTOM_PER_PLAYER) return { ok: false, error: 'deck-full' };
   const prompt = action.prompt;
   if (
     state.customChallenges.some((c) => c.prompt === prompt) ||

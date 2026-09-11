@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHALLENGES,
-  MAX_CUSTOM_CHALLENGES,
+  MAX_CUSTOM_PER_PLAYER,
   normalizeCustomPrompt,
   validateCustomPrompt,
 } from '../src/challenges.js';
@@ -67,11 +67,32 @@ describe('validateCustomPrompt', () => {
     expect(validateCustomPrompt(built, [])).toEqual({ ok: false, error: 'duplicate' });
   });
 
-  it('stops once the deck is full', () => {
-    const full = Array.from({ length: MAX_CUSTOM_CHALLENGES }, (_, i) => ({ prompt: `P${i}` }));
-    expect(validateCustomPrompt('SOMETHING NEW ENTIRELY', full)).toEqual({
+  it('stops once a player has used their allowance', () => {
+    const mine = Array.from({ length: MAX_CUSTOM_PER_PLAYER }, (_, i) => ({
+      prompt: `PROMPT NUMBER ${i}`,
+      authorId: 'p1',
+    }));
+    expect(validateCustomPrompt('SOMETHING NEW ENTIRELY', mine, 'p1')).toEqual({
       ok: false,
       error: 'deck-full',
+    });
+  });
+
+  it("counts each player's allowance separately", () => {
+    // Whoever opened the lobby first should not be able to fill the deck
+    // before the other has finished reading the box.
+    const theirs = Array.from({ length: MAX_CUSTOM_PER_PLAYER }, (_, i) => ({
+      prompt: `PROMPT NUMBER ${i}`,
+      authorId: 'p1',
+    }));
+    expect(validateCustomPrompt('MY FIRST ONE', theirs, 'p2').ok).toBe(true);
+  });
+
+  it("still refuses a duplicate of someone else's prompt", () => {
+    const theirs = [{ prompt: 'SHOW A RED MUG', authorId: 'p1' }];
+    expect(validateCustomPrompt('show a red mug', theirs, 'p2')).toEqual({
+      ok: false,
+      error: 'duplicate',
     });
   });
 });

@@ -63,7 +63,7 @@ const ACTION_ERROR_COPY: Record<ActionError, string> = {
   'no-submission-to-judge': 'There is nothing to judge yet.',
   'camera-required': 'Turn your camera on first.',
   'match-paused': 'Waiting for your opponent to reconnect.',
-  'deck-full': 'That is as many of your own as one room can hold.',
+  'deck-full': 'That is as many of your own as you can add.',
   'duplicate-prompt': 'That one is already in the deck.',
   'not-your-prompt': 'Only whoever wrote it can take it out.',
   'no-such-prompt': 'That prompt is already gone.',
@@ -75,7 +75,7 @@ const PROMPT_ERROR_COPY: Record<string, string> = {
   'too-long': 'Too long to read at a glance — keep it short.',
   'unsupported-characters': 'Letters, numbers and ordinary punctuation only.',
   duplicate: 'That one is already in the deck.',
-  'deck-full': 'That is as many of your own as one room can hold.',
+  'deck-full': 'That is as many of your own as you can add.',
 };
 
 /**
@@ -282,7 +282,7 @@ export class Room {
    */
   private onAddChallenge(playerId: PlayerId, seat: Seat, raw: string, now: number): void {
     const state = toPublicState(this.state);
-    const check = validateCustomPrompt(raw, state.customChallenges);
+    const check = validateCustomPrompt(raw, state.customChallenges, playerId);
     if (!check.ok) {
       seat.send?.({
         t: 'error',

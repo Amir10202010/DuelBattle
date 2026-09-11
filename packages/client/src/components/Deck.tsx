@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  MAX_CUSTOM_CHALLENGES,
+  MAX_CUSTOM_PER_PLAYER,
   MAX_CUSTOM_PROMPT_LENGTH,
   validateCustomPrompt,
   type PublicMatchState,
@@ -18,7 +18,7 @@ const LOCAL_ERROR_COPY: Record<string, string> = {
   'too-long': `Keep it under ${MAX_CUSTOM_PROMPT_LENGTH} characters.`,
   'unsupported-characters': 'Letters, numbers and ordinary punctuation only.',
   duplicate: 'Already in the deck.',
-  'deck-full': `${MAX_CUSTOM_CHALLENGES} is the limit.`,
+  'deck-full': `${MAX_CUSTOM_PER_PLAYER} of your own is the limit.`,
 };
 
 /**
@@ -32,10 +32,11 @@ export function Deck({ store, match, youId }: DeckProps) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const deck = match.customChallenges;
-  const full = deck.length >= MAX_CUSTOM_CHALLENGES;
+  const mine = deck.filter((entry) => entry.authorId === youId).length;
+  const full = mine >= MAX_CUSTOM_PER_PLAYER;
 
   const submit = () => {
-    const check = validateCustomPrompt(draft, deck);
+    const check = validateCustomPrompt(draft, deck, youId);
     if (!check.ok) {
       setError(LOCAL_ERROR_COPY[check.error] ?? 'That prompt cannot be used.');
       return;
@@ -48,7 +49,7 @@ export function Deck({ store, match, youId }: DeckProps) {
   return (
     <section className="deck" aria-label="Your own rounds">
       <span className="eyebrow deck__label">
-        Your rounds {deck.length}/{MAX_CUSTOM_CHALLENGES}
+        Your rounds {mine}/{MAX_CUSTOM_PER_PLAYER}
       </span>
 
       <ul className="deck__list">
@@ -76,7 +77,7 @@ export function Deck({ store, match, youId }: DeckProps) {
         <input
           className="input deck__input"
           value={draft}
-          placeholder={full ? 'Deck is full' : 'Show something…'}
+          placeholder={full ? 'That is your four' : 'Show something…'}
           maxLength={MAX_CUSTOM_PROMPT_LENGTH}
           disabled={full}
           aria-label="Write a round of your own"

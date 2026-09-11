@@ -59,8 +59,9 @@ mid-match is not a setting, it is a dispute.
 
 ### Rounds you write yourself
 
-A room can hold up to eight prompts the players write. They are always
-peer-judged — no detector can decide an arbitrary sentence, and inventing one
+Each player can add up to four prompts of their own — per player rather than per
+room, so whoever opened the lobby first cannot fill the deck before the other
+has finished reading the box. They are always peer-judged — no detector can decide an arbitrary sentence, and inventing one
 that pretends to would be worse than asking the opponent — and they can only be
 added between matches, so nobody adds a round they have already set themselves
 up to win.
