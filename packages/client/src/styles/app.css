@@ -1289,3 +1289,27 @@
   font-size: 13px;
   color: var(--text-dim);
 }
+
+.mute {
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: color 120ms var(--ease-out), border-color 120ms var(--ease-out);
+}
+
+.mute:hover {
+  color: var(--text-dim);
+  border-color: var(--line-strong);
+}
+
+.mute[aria-pressed='true'] {
+  color: var(--text-faint);
+  border-style: dashed;
+}

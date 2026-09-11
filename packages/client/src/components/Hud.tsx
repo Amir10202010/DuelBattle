@@ -1,7 +1,8 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { PublicMatchState, PublicPlayer } from '@battle/shared';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { Toast } from '../net/store.js';
+import { sound } from '../media/sound.js';
 
 interface TimerBarProps {
   /** Server-clock deadline. */
@@ -92,6 +93,27 @@ export const ConnectionBadge = memo(function ConnectionBadge({
       <i aria-hidden="true" />
       {copy}
     </span>
+  );
+});
+
+export const MuteButton = memo(function MuteButton() {
+  const [muted, setMuted] = useState(() => sound.isMuted);
+  return (
+    <button
+      type="button"
+      className="mute"
+      aria-pressed={muted}
+      aria-label={muted ? 'Unmute sound' : 'Mute sound'}
+      title={muted ? 'Unmute' : 'Mute'}
+      onClick={() => {
+        sound.setMuted(!muted);
+        setMuted(!muted);
+        // Clicking is a gesture, which is the browser's price for any audio.
+        if (muted) sound.play('tick1');
+      }}
+    >
+      <span aria-hidden="true">{muted ? 'MUTED' : 'SOUND'}</span>
+    </button>
   );
 });
 

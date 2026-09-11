@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { MatchStore } from './net/store.js';
 import { useCamera } from './media/useCamera.js';
+import { sound } from './media/sound.js';
 import { roomPath, useRoute } from './hooks/useRoute.js';
 import { Toasts } from './components/Hud.jsx';
 import { Home } from './screens/Home.jsx';
@@ -14,6 +15,22 @@ export function App() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const camera = useCamera();
   const route = useRoute();
+
+  // Browsers refuse to start an audio context outside a gesture, and every cue
+  // in the game fires from a state transition rather than a click. One listener
+  // on the first interaction is what makes the rest of them audible.
+  useEffect(() => {
+    const unlock = () => sound.unlock();
+    // `click` is the one activation event every input path produces — a mouse,
+    // a tap, Enter on a focused button, or assistive tech driving the page.
+    // The others just get there sooner.
+    const events = ['pointerdown', 'keydown', 'click', 'touchend'] as const;
+    const opts = { once: true, passive: true } as const;
+    for (const name of events) window.addEventListener(name, unlock, opts);
+    return () => {
+      for (const name of events) window.removeEventListener(name, unlock);
+    };
+  }, []);
 
   useEffect(() => {
     store.start();

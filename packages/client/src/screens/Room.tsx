@@ -3,8 +3,9 @@ import type { PublicMatchState } from '@battle/shared';
 import type { MatchStore, StoreSnapshot } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { LIVE_FRAME_QUALITY, createLiveCapture } from '../media/capture.js';
-import { ConnectionBadge, PausedOverlay } from '../components/Hud.jsx';
+import { ConnectionBadge, MuteButton, PausedOverlay } from '../components/Hud.jsx';
 import { useAnimationClock } from '../hooks/useNow.js';
+import { useMatchSound } from '../hooks/useMatchSound.js';
 import { CameraGate } from './CameraGate.jsx';
 import { Lobby } from './Lobby.jsx';
 import { Arena } from './Arena.jsx';
@@ -34,6 +35,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
   }, [store, cameraReady, connected, youId]);
 
   useFrameSender(store, camera, cameraReady && connected);
+  useMatchSound(match, youId);
 
   const timed =
     match.phase === 'countdown' ||
@@ -61,6 +63,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
         <span className="room__phase eyebrow">{phaseLabel(match)}</span>
         <div className="room__right">
           <ConnectionBadge status={snapshot.status} latencyMs={snapshot.latencyMs} />
+          <MuteButton />
           <button className="btn btn--ghost room__leave" onClick={onLeave}>
             Leave
           </button>

@@ -12,6 +12,8 @@ import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
 import { ScoreStrip, TimerBar } from '../components/Hud.jsx';
 import { useLocalDetection } from '../hooks/useVision.js';
+import { useCountdownSound } from '../hooks/useMatchSound.js';
+import { sound } from '../media/sound.js';
 import { EVIDENCE_QUALITY, createEvidenceCapture } from '../media/capture.js';
 
 interface ArenaProps {
@@ -55,6 +57,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     const image = evidenceCapture.current.toDataUrl(camera.videoRef.current, EVIDENCE_QUALITY);
     if (!image) return;
     setSubmitting(true);
+    sound.play('lockIn');
     store.submit(round.id, image);
   }, [round, isChallenge, locked, submitting, camera.videoRef, store]);
 
@@ -78,6 +81,11 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
       : opponent?.submitted
         ? 'locked'
         : 'live';
+
+  useCountdownSound(
+    match.phase === 'countdown',
+    Math.max(0, ((match.phaseEndsAt ?? now) - now) / 1000),
+  );
 
   return (
     <div className="arena">

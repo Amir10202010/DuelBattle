@@ -27,11 +27,25 @@ use a tunnel (or a dev certificate) to play across devices.
 Challenges declare how they can be judged, and the catalogue refuses a
 combination that cannot actually be decided:
 
-- **`auto`** — a detector runs on the submitted frame. Colour rounds work this
-  way: instant, objective, no waiting.
+- **`auto`** — a detector runs on the submitted frame. Instant, objective, no
+  waiting. A detector kind only exists if a pure function over two frames can
+  settle it, which is what lets the server re-run it:
+
+  | kind | decides |
+  | --- | --- |
+  | `color` | show something red |
+  | `colorPair` | show something red *and* white |
+  | `coverage` | fill the whole frame with one thing |
+  | `luminance` | show something darker / brighter than your room |
+  | `darkness` | black out your camera |
+
 - **`peer`** — the opponent judges the snapshot. This is how "find something
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
+
+`runDetector` is the single place a spec becomes a verdict. The client calls it
+several times a second to drive the on-screen meter and the server calls it once
+on the submitted frame, so the preview cannot drift from the ruling.
 
 ### The client never sends a verdict
 
