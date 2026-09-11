@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { Gateway } from './gateway.js';
 import { createHttpServer } from './http.js';
 import { RoomManager } from './rooms.js';
+import type { LimiterOptions } from './limiter.js';
 import { log } from './log.js';
 
 const SWEEP_INTERVAL_MS = 30_000;
@@ -10,6 +11,11 @@ const SWEEP_INTERVAL_MS = 30_000;
 export interface AppOptions {
   clientDir?: string;
   tickMs?: number;
+  /**
+   * Per-IP budget for opening rooms. Overridable so a test suite, where every
+   * client shares one address, is not fighting a limit meant for the internet.
+   */
+  roomCreateLimit?: LimiterOptions;
 }
 
 export interface App {
@@ -32,7 +38,9 @@ export function createApp(options: AppOptions = {}): App {
   });
 
   const server = createHttpServer({ clientDir: options.clientDir ?? config.clientDir, rooms });
-  const gateway = new Gateway(rooms);
+  const gateway = options.roomCreateLimit
+    ? new Gateway(rooms, options.roomCreateLimit)
+    : new Gateway(rooms);
 
   server.on('upgrade', (req, socket, head) => {
     let pathname: string;

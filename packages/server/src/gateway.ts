@@ -12,10 +12,29 @@ import { clientMessageSchema } from '@battle/shared/validation';
 import type { Room } from './room.js';
 import { RoomCapacityError, type RoomManager } from './rooms.js';
 import { config } from './config.js';
+import { TokenBuckets, type LimiterOptions } from './limiter.js';
 import { log } from './log.js';
 
 /** Ceiling on a single frame, above the largest legal message by a small margin. */
 const MAX_MESSAGE_BYTES = 300_000;
+
+/**
+ * Per-IP budget for opening rooms.
+ *
+ * Nothing else stops one client filling the global room table: at the message
+ * rate a socket is already allowed, five hundred rooms takes twenty seconds,
+ * and each one occupies its slot for five minutes after the last person leaves.
+ * That is a denial of service anyone could run from a browser console.
+ *
+ * Per IP rather than per connection, because opening another connection is
+ * exactly what the attack would do next.
+ */
+function defaultCreateLimit(): LimiterOptions {
+  return {
+    burst: config.roomCreateBurst,
+    refillPerSec: config.roomCreatePerMin / 60,
+  };
+}
 interface TokenBucket {
   tokens: number;
   lastRefill: number;
@@ -47,10 +66,15 @@ export class Gateway {
   private readonly wss: WebSocketServer;
   private readonly sessions = new Set<Session>();
   private readonly perIp = new Map<string, number>();
+  private readonly createLimiter: TokenBuckets;
   private heartbeat: NodeJS.Timeout | null = null;
 
-  constructor(private readonly rooms: RoomManager) {
+  constructor(
+    private readonly rooms: RoomManager,
+    createLimit: LimiterOptions = defaultCreateLimit(),
+  ) {
     this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+    this.createLimiter = new TokenBuckets(createLimit);
   }
 
   start(): void {
@@ -227,6 +251,10 @@ export class Gateway {
   }
 
   private createRoom(session: Session, name: string, now: number): void {
+    if (!this.createLimiter.take(session.ip, now)) {
+      this.fail(session, 'rate-limited', 'That is a lot of rooms. Give it a moment.');
+      return;
+    }
     this.leaveCurrentRoom(session, now);
     let room: Room;
     try {

@@ -150,8 +150,9 @@ matter in production:
 | `LOG_LEVEL` | `info` | |
 
 `MAX_ROOMS`, `MESSAGE_RATE_PER_SEC`, `IMAGE_RATE_PER_SEC`,
-`MAX_CONNECTIONS_PER_IP`, `EMPTY_ROOM_TTL_MS` and `MAX_ROOM_AGE_MS` are the
-capacity and abuse limits; see `packages/server/src/config.ts`.
+`MAX_CONNECTIONS_PER_IP`, `ROOM_CREATE_BURST`, `ROOM_CREATE_PER_MIN`,
+`IDLE_SOCKET_TTL_MS`, `EMPTY_ROOM_TTL_MS` and `MAX_ROOM_AGE_MS` are the capacity
+and abuse limits; see `packages/server/src/config.ts`.
 
 A busy room holds two evidence snapshots, two live frames and two decoded
 baselines — roughly 700 KB at the size ceilings. `MAX_ROOMS` therefore sets a
@@ -185,4 +186,6 @@ Everything a room holds disappears when the room does.
 Room codes come from the CSPRNG, not `Math.random`: they are the only thing
 standing between a match and a stranger. The room lookup is rate limited per IP
 for the same reason — it exists so the join screen can fail fast, not so the
-code space can be swept for rooms with a free seat.
+code space can be swept for rooms with a free seat. Opening rooms is metered per
+IP too, because a room holds its slot for minutes after everyone leaves and one
+client could otherwise fill the table in seconds.

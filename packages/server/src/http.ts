@@ -4,6 +4,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { normalizeRoomCode } from '@battle/shared';
 import type { RoomManager } from './rooms.js';
 import { config } from './config.js';
+import { TokenBuckets, type LimiterOptions } from './limiter.js';
 import { log } from './log.js';
 
 const MIME: Record<string, string> = {
@@ -34,44 +35,7 @@ export interface HttpOptions {
  * one of 32^5, so a handful of guesses a minute costs an attacker centuries and
  * costs a real player nothing.
  */
-const LOOKUP_BURST = 20;
-const LOOKUP_REFILL_PER_SEC = 0.5;
-/** Buckets are dropped once a client could not possibly still be limited. */
-const LOOKUP_BUCKET_TTL_MS = 5 * 60_000;
-
-interface Bucket {
-  tokens: number;
-  seenAt: number;
-}
-
-class LookupLimiter {
-  private readonly buckets = new Map<string, Bucket>();
-  private lastSweep = 0;
-
-  /** True when the request may proceed. */
-  take(key: string, now: number): boolean {
-    this.sweep(now);
-    const bucket = this.buckets.get(key) ?? { tokens: LOOKUP_BURST, seenAt: now };
-    bucket.tokens = Math.min(
-      LOOKUP_BURST,
-      bucket.tokens + ((now - bucket.seenAt) / 1000) * LOOKUP_REFILL_PER_SEC,
-    );
-    bucket.seenAt = now;
-    this.buckets.set(key, bucket);
-
-    if (bucket.tokens < 1) return false;
-    bucket.tokens -= 1;
-    return true;
-  }
-
-  private sweep(now: number): void {
-    if (now - this.lastSweep < LOOKUP_BUCKET_TTL_MS) return;
-    this.lastSweep = now;
-    for (const [key, bucket] of this.buckets) {
-      if (now - bucket.seenAt > LOOKUP_BUCKET_TTL_MS) this.buckets.delete(key);
-    }
-  }
-}
+const LOOKUP_LIMIT: LimiterOptions = { burst: 20, refillPerSec: 0.5 };
 
 /**
  * Sent with the app document.
@@ -103,7 +67,7 @@ const DOCUMENT_HEADERS: Record<string, string> = {
 
 export function createHttpServer(options: HttpOptions): Server {
   const clientRoot = options.clientDir ? resolve(options.clientDir) : '';
-  const lookupLimiter = new LookupLimiter();
+  const lookupLimiter = new TokenBuckets(LOOKUP_LIMIT);
 
   return createServer((req, res) => {
     void handle(req, res, options, clientRoot, lookupLimiter).catch((err) => {
@@ -122,7 +86,7 @@ async function handle(
   res: ServerResponse,
   options: HttpOptions,
   clientRoot: string,
-  lookupLimiter: LookupLimiter,
+  lookupLimiter: TokenBuckets,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 

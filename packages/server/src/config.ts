@@ -48,6 +48,13 @@ export const config = {
   imageRatePerSec: int('IMAGE_RATE_PER_SEC', 8),
   /** Connections from one IP. Keeps a single browser from exhausting the box. */
   maxConnectionsPerIp: int('MAX_CONNECTIONS_PER_IP', 12),
+  /**
+   * Rooms one address may open back to back, and how fast the allowance
+   * returns. Without this, one client can fill the whole room table in seconds
+   * and hold it for as long as an empty room survives.
+   */
+  roomCreateBurst: int('ROOM_CREATE_BURST', 5),
+  roomCreatePerMin: int('ROOM_CREATE_PER_MIN', 3),
   /** A socket that misses this many heartbeats is considered gone. */
   heartbeatMs: int('HEARTBEAT_MS', 15_000),
   /**

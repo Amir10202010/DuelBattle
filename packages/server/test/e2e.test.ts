@@ -97,7 +97,10 @@ let app: App;
 let port: number;
 
 beforeAll(async () => {
-  app = createApp({ tickMs: 25 });
+  // Every client in this suite shares one address, so the per-IP room budget
+  // would be fighting the tests rather than an attacker. The limit itself is
+  // exercised deliberately, on its own server, further down.
+  app = createApp({ tickMs: 25, roomCreateLimit: { burst: 10_000, refillPerSec: 1_000 } });
   port = await app.listen(0, '127.0.0.1');
 });
 
@@ -285,6 +288,45 @@ describe('rounds the players write themselves', () => {
 
     host.close();
     guest.close();
+  });
+});
+
+describe('one client filling the room table', () => {
+  /**
+   * Unmetered, a socket can open rooms at its full message rate and each one
+   * holds its slot for minutes after everyone leaves — a denial of service
+   * anybody could run from a browser console. Its own server, so the budget
+   * under test is the real one.
+   */
+  it('is cut off after a handful, and told why', async () => {
+    const guarded = createApp({ tickMs: 25, roomCreateLimit: { burst: 3, refillPerSec: 0.05 } });
+    const guardedPort = await guarded.listen(0, '127.0.0.1');
+    try {
+      const player = await Player.connect(guardedPort);
+      let created = 0;
+      let refusal: Extract<ServerMessage, { t: 'error' }> | null = null;
+
+      for (let i = 0; i < 10; i++) {
+        player.send({ t: 'createRoom', name: `Flood${i}` });
+        const answer = await player.waitFor<ServerMessage>(
+          (m) => m.t === 'joined' || (m.t === 'error' && m.code === 'rate-limited'),
+          3_000,
+        );
+        if (answer.t === 'error') {
+          refusal = answer;
+          break;
+        }
+        created++;
+        player.received.length = 0;
+      }
+
+      expect(created).toBe(3);
+      expect(refusal?.message).toMatch(/a lot of rooms/i);
+      expect(guarded.rooms.size).toBe(3);
+      player.close();
+    } finally {
+      await guarded.close();
+    }
   });
 });
 
