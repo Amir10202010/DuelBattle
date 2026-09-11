@@ -24,6 +24,34 @@ export interface HttpOptions {
   rooms: RoomManager;
 }
 
+/**
+ * Sent with the app document.
+ *
+ * `connect-src 'self'` covers the WebSocket: under CSP3 a same-origin ws:// or
+ * wss:// endpoint matches 'self', so the socket needs no wildcard. `img-src`
+ * has to allow data: because every camera frame and every piece of evidence
+ * arrives as a data URL.
+ */
+const DOCUMENT_HEADERS: Record<string, string> = {
+  'content-security-policy': [
+    "default-src 'self'",
+    "script-src 'self'",
+    // React writes inline style attributes for the timer and detection bars.
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "base-uri 'self'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+  ].join('; '),
+  'permissions-policy': 'camera=(self), microphone=(), geolocation=(), payment=()',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+};
+
 export function createHttpServer(options: HttpOptions): Server {
   const clientRoot = options.clientDir ? resolve(options.clientDir) : '';
 
@@ -111,6 +139,7 @@ async function serveStatic(
     // Vite fingerprints assets, so everything but the entry document is immutable.
     'cache-control': isEntry ? 'no-cache' : 'public, max-age=31536000, immutable',
     'x-content-type-options': 'nosniff',
+    ...(isEntry ? DOCUMENT_HEADERS : {}),
   });
   if (req.method === 'HEAD') {
     res.end();

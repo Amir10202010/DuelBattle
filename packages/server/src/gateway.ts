@@ -3,12 +3,12 @@ import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   PROTOCOL_VERSION,
-  clientMessageSchema,
   normalizeRoomCode,
   type ClientMessage,
   type ErrorCode,
   type ServerMessage,
 } from '@battle/shared';
+import { clientMessageSchema } from '@battle/shared/validation';
 import type { Room } from './room.js';
 import { RoomCapacityError, type RoomManager } from './rooms.js';
 import { config } from './config.js';

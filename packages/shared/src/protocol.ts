@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type {
   MatchEndReason,
   MatchState,
@@ -7,7 +6,6 @@ import type {
   RoundOutcome,
   Submission,
 } from './game.js';
-import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from './ids.js';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -18,67 +16,23 @@ export const MAX_FRAME_BYTES = 60_000;
 export const MAX_NAME_LENGTH = 18;
 
 /**
- * Control characters, zero-width marks and bidi overrides are the cheap way to
- * grief a scoreboard; reject them at the edge rather than defending at every
- * render site.
+ * Everything a client may send. Declared here rather than inferred from the
+ * schema so the client can speak the protocol without importing a validator it
+ * will never run.
  */
-const UNSAFE_NAME_CHARS = new RegExp(
-  // eslint-disable-next-line no-control-regex -- matching control characters is the point
-  '[\\u0000-\\u001F\\u007F-\\u009F\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069]',
-);
-
-export const nameSchema = z
-  .string()
-  .trim()
-  .min(1, 'Pick a name')
-  .max(MAX_NAME_LENGTH, `Keep it under ${MAX_NAME_LENGTH} characters`)
-  .refine((v) => !UNSAFE_NAME_CHARS.test(v), 'Unsupported characters');
-
-export const roomCodeSchema = z
-  .string()
-  .regex(new RegExp(`^[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}$`), 'That room code looks wrong');
-
-/**
- * Evidence is JPEG-only because the server decodes it to re-run the detector
- * itself. Allowing a format the verifier cannot read would mean silently
- * trusting the client's own verdict.
- */
-const evidenceImageSchema = z
-  .string()
-  .max(MAX_IMAGE_BYTES, 'Snapshot too large')
-  .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, 'Unsupported snapshot format');
-
-/**
- * Live camera frames. These are relayed to the opponent, and the last one that
- * lands before a prompt is revealed becomes that round's baseline, so they are
- * held to the same JPEG-only rule as evidence.
- */
-const frameImageSchema = z
-  .string()
-  .max(MAX_FRAME_BYTES, 'Frame too large')
-  .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, 'Unsupported frame format');
-
-export const clientMessageSchema = z.discriminatedUnion('t', [
-  z.object({ t: z.literal('hello'), protocol: z.number().int() }),
-  z.object({ t: z.literal('createRoom'), name: nameSchema }),
-  z.object({ t: z.literal('joinRoom'), code: roomCodeSchema, name: nameSchema }),
-  z.object({ t: z.literal('rejoin'), code: roomCodeSchema, token: z.string().min(8).max(128) }),
-  z.object({ t: z.literal('cameraReady'), ready: z.boolean() }),
-  z.object({ t: z.literal('ready'), ready: z.boolean() }),
-  z.object({ t: z.literal('submit'), roundId: z.string().min(1).max(64), image: evidenceImageSchema }),
-  z.object({
-    t: z.literal('vote'),
-    roundId: z.string().min(1).max(64),
-    targetId: z.string().min(1).max(64),
-    approve: z.boolean(),
-  }),
-  z.object({ t: z.literal('rematch') }),
-  z.object({ t: z.literal('leave') }),
-  z.object({ t: z.literal('ping'), id: z.number().int() }),
-  z.object({ t: z.literal('frame'), image: frameImageSchema, seq: z.number().int().nonnegative() }),
-]);
-
-export type ClientMessage = z.infer<typeof clientMessageSchema>;
+export type ClientMessage =
+  | { t: 'hello'; protocol: number }
+  | { t: 'createRoom'; name: string }
+  | { t: 'joinRoom'; code: string; name: string }
+  | { t: 'rejoin'; code: string; token: string }
+  | { t: 'cameraReady'; ready: boolean }
+  | { t: 'ready'; ready: boolean }
+  | { t: 'submit'; roundId: string; image: string }
+  | { t: 'vote'; roundId: string; targetId: PlayerId; approve: boolean }
+  | { t: 'rematch' }
+  | { t: 'leave' }
+  | { t: 'ping'; id: number }
+  | { t: 'frame'; image: string; seq: number };
 
 export type ErrorCode =
   | 'bad-message'
