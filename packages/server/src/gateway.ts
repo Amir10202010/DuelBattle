@@ -161,6 +161,10 @@ export class Gateway {
 
     const result = clientMessageSchema.safeParse(parsed);
     if (!result.success) {
+      // Live frames are best-effort and arrive several times a second. Telling
+      // the client about a bad one would put an error on screen four times a
+      // second; dropping it costs a quarter of a second of video.
+      if (isFrameMessage(parsed)) return;
       this.fail(session, 'bad-message', result.error.issues[0]?.message ?? 'Unsupported message.');
       return;
     }
@@ -329,6 +333,14 @@ export class Gateway {
 function send(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState !== socket.OPEN) return;
   socket.send(JSON.stringify(message));
+}
+
+function isFrameMessage(parsed: unknown): boolean {
+  return (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    (parsed as { t?: unknown }).t === 'frame'
+  );
 }
 
 function clientIp(request: IncomingMessage): string {

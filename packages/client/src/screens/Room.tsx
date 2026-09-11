@@ -2,7 +2,12 @@ import { useEffect, useRef } from 'react';
 import type { PublicMatchState } from '@battle/shared';
 import type { MatchStore, StoreSnapshot } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
-import { LIVE_FRAME_QUALITY, createLiveCapture } from '../media/capture.js';
+import {
+  LIVE_FRAME_FALLBACK_QUALITY,
+  LIVE_FRAME_QUALITY,
+  createLiveCapture,
+} from '../media/capture.js';
+import { MAX_FRAME_BYTES } from '@battle/shared';
 import { Announcer } from '../components/Announcer.jsx';
 import { ConnectionBadge, MuteButton, PausedOverlay } from '../components/Hud.jsx';
 import { useAnimationClock } from '../hooks/useNow.js';
@@ -138,7 +143,12 @@ function useFrameSender(store: MatchStore, camera: CameraState, active: boolean)
     if (!active) return;
     const capture = captureRef.current;
     const tick = () => {
-      const image = capture.toDataUrl(camera.videoRef.current, LIVE_FRAME_QUALITY);
+      const image = capture.toBoundedDataUrl(
+        camera.videoRef.current,
+        LIVE_FRAME_QUALITY,
+        LIVE_FRAME_FALLBACK_QUALITY,
+        MAX_FRAME_BYTES,
+      );
       if (image) store.sendFrame(image, seqRef.current++);
     };
     tick();

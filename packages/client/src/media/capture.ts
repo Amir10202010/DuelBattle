@@ -5,12 +5,14 @@ import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, type Frame } from '@battle/shared';
  * scores, the frame the opponent sees and the snapshot kept as evidence all
  * show exactly the same field of view.
  */
-export const LIVE_FRAME_WIDTH = 240;
-export const LIVE_FRAME_HEIGHT = 180;
+export const LIVE_FRAME_WIDTH = 320;
+export const LIVE_FRAME_HEIGHT = 240;
 export const EVIDENCE_WIDTH = 480;
 export const EVIDENCE_HEIGHT = 360;
 
-export const LIVE_FRAME_QUALITY = 0.6;
+export const LIVE_FRAME_QUALITY = 0.55;
+/** Tried once when a frame comes out over budget, before giving up on it. */
+export const LIVE_FRAME_FALLBACK_QUALITY = 0.35;
 export const EVIDENCE_QUALITY = 0.78;
 
 export interface Crop {
@@ -80,6 +82,25 @@ export class FrameCapture {
     if (!this.ctx || !isVideoReady(video)) return null;
     drawCover(this.ctx, video, this.width, this.height);
     return this.canvas.toDataURL('image/jpeg', quality);
+  }
+
+  /**
+   * A frame that fits the server's ceiling, or null.
+   *
+   * A busy enough scene can push a JPEG past the limit at any fixed quality,
+   * and a frame the server refuses is worse than no frame at all — so it is
+   * re-encoded once, lower, and otherwise skipped.
+   */
+  toBoundedDataUrl(
+    video: HTMLVideoElement | null,
+    quality: number,
+    fallbackQuality: number,
+    maxBytes: number,
+  ): string | null {
+    const first = this.toDataUrl(video, quality);
+    if (first === null || first.length <= maxBytes) return first;
+    const second = this.canvas.toDataURL('image/jpeg', fallbackQuality);
+    return second.length <= maxBytes ? second : null;
   }
 
   /** Returns raw pixels for the detectors, or null if no frame is available. */

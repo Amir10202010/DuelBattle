@@ -6,7 +6,9 @@ import {
 import {
   EVIDENCE_HEIGHT,
   EVIDENCE_WIDTH,
+  LIVE_FRAME_FALLBACK_QUALITY,
   LIVE_FRAME_HEIGHT,
+  LIVE_FRAME_QUALITY,
   LIVE_FRAME_WIDTH,
   coverCrop,
 } from '../src/media/capture.js';
@@ -65,5 +67,23 @@ describe('coverCrop', () => {
       const crops = sizes.map(([tw, th]) => coverCrop(w, h, tw, th));
       for (const crop of crops) expect(crop).toEqual(crops[0]);
     }
+  });
+});
+
+describe('frame size budget', () => {
+  /**
+   * A frame the server refuses is worse than no frame: it costs a round trip
+   * and, before this, put an error on screen several times a second.
+   */
+  it('is documented by the constants the sender actually uses', () => {
+    expect(LIVE_FRAME_FALLBACK_QUALITY).toBeLessThan(LIVE_FRAME_QUALITY);
+    expect(LIVE_FRAME_QUALITY).toBeGreaterThan(0);
+    expect(LIVE_FRAME_QUALITY).toBeLessThan(1);
+  });
+
+  it('captures live frames at a lower resolution than evidence', () => {
+    // Evidence is looked at; live frames are glanced at and thrown away.
+    expect(LIVE_FRAME_WIDTH).toBeLessThan(EVIDENCE_WIDTH);
+    expect(LIVE_FRAME_WIDTH / LIVE_FRAME_HEIGHT).toBeCloseTo(EVIDENCE_WIDTH / EVIDENCE_HEIGHT, 5);
   });
 });

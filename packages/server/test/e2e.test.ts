@@ -365,6 +365,26 @@ describe('hostile clients', () => {
     guest.close();
   });
 
+  it('drops a bad live frame quietly instead of shouting about it', async () => {
+    const { host, guest } = await pair();
+    host.received.length = 0;
+
+    // Frames arrive several times a second; an error per bad one would put a
+    // message on screen four times a second and make the game unplayable.
+    host.send({ t: 'frame', image: 'not-a-data-url', seq: 1 } as ClientMessage);
+    host.send({ t: 'frame', image: `data:image/jpeg;base64,${'A'.repeat(250_000)}`, seq: 2 });
+
+    // A genuinely malformed non-frame message still gets an answer, which is
+    // how we know the connection is alive and the silence was deliberate.
+    host.send({ t: 'joinRoom', code: 'nope', name: '' } as unknown as ClientMessage);
+    const error = await host.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(error.code).toBe('bad-message');
+    expect(host.received.filter((m) => m.t === 'error')).toHaveLength(1);
+
+    host.close();
+    guest.close();
+  });
+
   it('rate limits a client that floods the socket', async () => {
     const player = await Player.connect(port);
     for (let i = 0; i < 200; i++) player.send({ t: 'ping', id: i });
