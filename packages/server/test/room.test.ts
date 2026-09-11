@@ -175,6 +175,8 @@ describe('auto-judged rounds', () => {
     const image = passingFrameFor(detector!);
 
     h.room.handle(h.p1, { t: 'submit', roundId, image }, 5_500);
+    // The round stays open a beat for a photo finish, then scores.
+    h.room.tick(h.r1.state.phaseEndsAt!);
 
     const state = h.r1.state;
     expect(state.phase).toBe('roundResult');
@@ -201,6 +203,17 @@ describe('auto-judged rounds', () => {
     const seenByOpponent = h.r2.state;
     expect(seenByOpponent.phase).toBe('challenge');
     expect(seenByOpponent.round?.submissions).toEqual({});
+  });
+
+  it('tells a player who just missed the window what actually happened', () => {
+    const h = seated();
+    const { roundId, detector } = intoChallenge(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
+    h.room.tick(h.r1.state.phaseEndsAt!);
+    expect(h.r1.state.phase).toBe('roundResult');
+
+    h.room.handle(h.p2, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 6_000);
+    expect(h.r2.ofType('error').at(-1)?.message).toMatch(/just too late/i);
   });
 
   it('ignores a submission aimed at a round that has moved on', () => {
@@ -294,6 +307,7 @@ describe('evidence handling', () => {
     const h = seated();
     const { roundId, detector } = intoChallenge(h);
     h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
+    h.room.tick(h.r1.state.phaseEndsAt!);
     expect(h.r1.state.phase).toBe('roundResult');
     const owners = new Set(h.r2.ofType('evidence').map((e) => e.playerId));
     expect(owners.has(h.p1)).toBe(true);
@@ -303,6 +317,7 @@ describe('evidence handling', () => {
     const h = seated();
     const { roundId, detector } = intoChallenge(h);
     h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
+    h.room.tick(h.r1.state.phaseEndsAt!);
     h.room.detach(h.p2, 5_200);
 
     const returning = new Recorder();
@@ -321,6 +336,7 @@ describe('memory', () => {
     const h = seated();
     const { roundId, detector } = intoChallenge(h);
     h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5_000);
+    h.room.tick(h.r1.state.phaseEndsAt!);
     expect(h.r1.state.phase).toBe('roundResult');
     expect(h.room.retainedEvidenceRounds).toBe(1);
 

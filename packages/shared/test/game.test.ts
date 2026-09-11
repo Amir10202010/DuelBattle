@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Challenge } from '../src/challenges.js';
 import {
   DEFAULT_SETTINGS,
+  PHOTO_FINISH_MS,
   challengeInRoom,
   createMatch,
   opponentOf,
@@ -160,25 +161,66 @@ describe('auto rounds', () => {
     expect(live.round?.startedAt).toBe(start.phaseEndsAt);
   });
 
-  it('ends the instant a valid answer lands', () => {
+  it('holds the round open briefly after a winning answer, then scores it', () => {
     let s = intoChallenge(seatedMatch(0));
-    const roundId = s.round!.id;
+    const startedAt = s.round!.startedAt;
     s = apply(
       s,
       {
         type: 'submit',
         playerId: 'p2',
-        roundId,
+        roundId: s.round!.id,
         evidenceId: 'e1',
         auto: { matched: true, confidence: 0.9, reason: 'ok' },
       },
-      ctxAt(s.round!.startedAt + 2_400),
+      ctxAt(startedAt + 2_400),
     );
+    // Still open, so an opponent half a second behind is not erased.
+    expect(s.phase).toBe('challenge');
+    expect(s.phaseEndsAt).toBe(startedAt + 2_400 + PHOTO_FINISH_MS);
+
+    s = tick(s, ctxAt(s.phaseEndsAt));
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBe('p2');
     expect(s.round?.outcome?.reason).toBe('only-valid');
     expect(s.players.p2?.score).toBe(1);
     expect(s.players.p1?.score).toBe(0);
+  });
+
+  it('records a photo finish as a race, not as a no-show', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const roundId = s.round!.id;
+    const startedAt = s.round!.startedAt;
+    const won = { matched: true, confidence: 1, reason: 'ok' };
+
+    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: won }, ctxAt(startedAt + 3_000));
+    // Sixty milliseconds later — which used to be "ran out of time".
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: won }, ctxAt(startedAt + 3_060));
+
+    expect(s.phase).toBe('roundResult');
+    expect(s.round?.outcome?.reason).toBe('faster');
+    expect(s.round?.outcome?.winnerId).toBe('p1');
+    const loser = s.round?.outcome?.perPlayer.p2;
+    expect(loser?.valid).toBe(true);
+    expect(loser?.elapsedMs).toBe(3_060);
+  });
+
+  it('never extends a round past its own deadline', () => {
+    let s = intoChallenge(seatedMatch(0));
+    const deadline = s.phaseEndsAt;
+    // A winning answer with less than the window left must not buy extra time.
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p1',
+        roundId: s.round!.id,
+        evidenceId: 'a',
+        auto: { matched: true, confidence: 1, reason: 'ok' },
+      },
+      ctxAt(deadline - 100),
+    );
+    expect(s.phaseEndsAt).toBe(deadline);
   });
 
   it('awards the round to whoever was faster when both are valid', () => {
@@ -338,18 +380,19 @@ describe('peer rounds', () => {
 describe('match lifecycle', () => {
   function winRound(state: MatchState, winner: 'p1' | 'p2', at: number): MatchState {
     const live = state.phase === 'countdown' ? tick(state, ctxAt(state.phaseEndsAt)) : state;
-    const roundId = live.round!.id;
-    return apply(
+    const submitted = apply(
       live,
       {
         type: 'submit',
         playerId: winner,
-        roundId,
+        roundId: live.round!.id,
         evidenceId: `e-${winner}-${live.round!.number}`,
         auto: { matched: true, confidence: 1, reason: 'ok' },
       },
       ctxAt(live.round!.startedAt + at),
     );
+    // The photo-finish window closes on the next tick.
+    return tick(submitted, ctxAt(submitted.phaseEndsAt));
   }
 
   it('runs rounds back to back until the target is reached', () => {
@@ -530,7 +573,8 @@ describe('the series', () => {
         },
         ctxAt(live.round!.startedAt + 1_000),
       );
-      s = tick(s, ctxAt(s.phaseEndsAt));
+      s = tick(s, ctxAt(s.phaseEndsAt)); // photo-finish window closes
+      s = tick(s, ctxAt(s.phaseEndsAt)); // result screen ends
     }
     return s;
   }

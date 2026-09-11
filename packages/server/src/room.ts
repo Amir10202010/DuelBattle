@@ -310,6 +310,16 @@ export class Room {
   ): void {
     const round = this.state.round;
     if (!round || round.id !== roundId || this.state.phase !== 'challenge') {
+      // Missing the round you were actually playing deserves a better answer
+      // than "that is not possible right now".
+      if (round?.id === roundId && seat.send) {
+        seat.send({
+          t: 'error',
+          code: 'rejected',
+          message: 'Just too late — that round is already scored.',
+        });
+        return;
+      }
       this.reportError(seat, round && round.id !== roundId ? 'wrong-round' : 'wrong-phase');
       return;
     }

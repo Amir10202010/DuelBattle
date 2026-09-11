@@ -26,6 +26,17 @@ export interface MatchSettings {
   disconnectGraceMs: number;
 }
 
+/**
+ * How long the round stays open after someone wins it.
+ *
+ * Ending an auto round the instant a valid answer lands means an opponent who
+ * locked in fifty milliseconds later is recorded as never having answered, and
+ * told they ran out of time — in the closest, best moment the game has. This
+ * window lets both answers land so the round is decided on elapsed time and the
+ * loser is told they were slower, which is what actually happened.
+ */
+export const PHOTO_FINISH_MS = 500;
+
 export const DEFAULT_SETTINGS: MatchSettings = {
   winTarget: 3,
   maxRounds: 9,
@@ -528,9 +539,14 @@ function submit(
   const everyoneAnswered = seated.every((p) => round.submissions[p.id]);
 
   if (round.judging === 'auto') {
-    // An auto round is over the moment a valid answer lands: the race is the game.
     const someoneMatched = Object.values(round.submissions).some((s) => s.auto?.matched);
-    if (someoneMatched || everyoneAnswered) next = closeChallenge(next, ctx);
+    if (everyoneAnswered) {
+      next = closeChallenge(next, ctx);
+    } else if (someoneMatched) {
+      // The race is won, but hold the door open for a photo finish. Only ever
+      // shortens the round: a late winner must not extend it.
+      next = { ...next, phaseEndsAt: Math.min(next.phaseEndsAt, ctx.now + PHOTO_FINISH_MS) };
+    }
   } else if (everyoneAnswered) {
     next = openJudging(next, ctx);
   }
