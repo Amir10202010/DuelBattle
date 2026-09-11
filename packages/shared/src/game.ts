@@ -82,6 +82,9 @@ export interface PlayerRoundResult {
 }
 
 export interface RoundOutcome {
+  roundNumber: number;
+  challengeId: string;
+  judging: JudgingMode;
   winnerId: PlayerId | null;
   reason: RoundReason;
   perPlayer: Record<PlayerId, PlayerRoundResult>;
@@ -597,7 +600,14 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
     }
   }
 
-  const outcome: RoundOutcome = { winnerId, reason, perPlayer };
+  const outcome: RoundOutcome = {
+    roundNumber: round.number,
+    challengeId: round.challengeId,
+    judging: round.judging,
+    winnerId,
+    reason,
+    perPlayer,
+  };
   const players = Object.fromEntries(
     Object.entries(state.players).map(([id, p]) => [
       id,

@@ -138,6 +138,8 @@ export interface PublicMatchState {
   players: Record<PlayerId, PublicPlayer>;
   round: PublicRound | null;
   roundNumber: number;
+  /** Every resolved round, oldest first. Drives the end-of-match recap. */
+  history: RoundOutcome[];
   settings: { winTarget: number; maxRounds: number };
   paused: { since: number; deadline: number } | null;
   winnerId: PlayerId | null;
@@ -206,6 +208,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
         }
       : null,
     roundNumber: state.roundNumber,
+    history: state.history,
     settings: { winTarget: state.settings.winTarget, maxRounds: state.settings.maxRounds },
     paused:
       state.pausedAt !== null
