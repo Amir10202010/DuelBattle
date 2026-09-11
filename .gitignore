@@ -7,3 +7,9 @@ coverage/
 *.log
 .DS_Store
 .vite/
+
+# The optional YOLO service: model weights and its virtualenv are downloaded,
+# not committed.
+.venv-yolo/
+*.pt
+vision/models/
