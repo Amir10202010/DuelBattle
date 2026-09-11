@@ -14,6 +14,7 @@ function round(challengeId: string, outcome: RoundOutcome | null = null) {
     number: 1,
     challengeId,
     judging: challenge.judging,
+    aiPending: false,
     startedAt: 0,
     outcome,
     submissions: {},

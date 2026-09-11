@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Challenge } from '../src/challenges.js';
+import { getChallenge } from '../src/challenges.js';
 import {
   DEFAULT_SETTINGS,
   MATCH_LENGTHS,
@@ -1130,5 +1131,150 @@ describe('passing on a round', () => {
 
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBe('p1');
+  });
+});
+
+describe('a round an AI referee takes', () => {
+  // A real catalogue prompt, because whether the referee may take it is a
+  // property of the catalogue rather than of a fixture.
+  const AI_PROMPT = getChallenge('obj-face')!;
+  const pool = [AI_PROMPT];
+
+  function ctxAi(now: number, aiAvailable = true): EngineContext {
+    return { now, newId: () => `r${++aiIds}`, random: () => 0.42, pool, aiAvailable };
+  }
+  let aiIds = 5_000;
+
+  function seated(aiAvailable = true): MatchState {
+    let s = createMatch('ABCDE', 0);
+    const ctx = ctxAi(0, aiAvailable);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, ctx);
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, ctx);
+    return tick(s, ctxAi(s.phaseEndsAt, aiAvailable));
+  }
+
+  /** Both players answer, which closes the round and hands it to the referee. */
+  function bothAnswer(state: MatchState): MatchState {
+    const roundId = state.round!.id;
+    const started = state.round!.startedAt;
+    let s = apply(state, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAi(started + 1_000));
+    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAi(started + 2_000));
+    return s;
+  }
+
+  it('deals the round to the referee when one is available', () => {
+    const s = seated();
+    expect(s.round?.judging).toBe('ai');
+  });
+
+  it('leaves it with the opponent when no referee is configured', () => {
+    const s = seated(false);
+    expect(s.round?.judging).toBe('peer');
+  });
+
+  it('waits for the referee rather than offering a vote', () => {
+    const s = bothAnswer(seated());
+    expect(s.phase).toBe('judging');
+    expect(s.round?.aiPending).toBe(true);
+
+    // Nobody is asked to judge a round somebody else is already judging.
+    expect(
+      expectError(
+        s,
+        { type: 'vote', playerId: 'p1', roundId: s.round!.id, targetId: 'p2', approve: false },
+        ctxAi(s.round!.startedAt + 3_000),
+      ),
+    ).toBe('ai-judging');
+  });
+
+  it('settles the round on the verdicts, with speed breaking the tie', () => {
+    const s = bothAnswer(seated());
+    const roundId = s.round!.id;
+    const settled = apply(
+      s,
+      {
+        type: 'aiFinished',
+        roundId,
+        verdicts: {
+          p1: { matched: true, confidence: 0.9, reason: 'A mug with a painted face.' },
+          p2: { matched: true, confidence: 0.9, reason: 'A poster of a face.' },
+        },
+      },
+      ctxAi(s.round!.startedAt + 4_000),
+    );
+
+    expect(settled.phase).toBe('roundResult');
+    expect(settled.round?.aiPending).toBe(false);
+    // Both answers stand, so the round is still a race — p1 was a second faster.
+    expect(settled.round?.outcome?.winnerId).toBe('p1');
+    expect(settled.round?.outcome?.perPlayer.p1?.note).toBe('A mug with a painted face.');
+  });
+
+  it('lets the referee rule an answer out', () => {
+    const s = bothAnswer(seated());
+    const settled = apply(
+      s,
+      {
+        type: 'aiFinished',
+        roundId: s.round!.id,
+        verdicts: {
+          p1: { matched: false, confidence: 0.95, reason: 'Nothing with a face is visible.' },
+          p2: { matched: true, confidence: 0.9, reason: 'A poster of a face.' },
+        },
+      },
+      ctxAi(s.round!.startedAt + 4_000),
+    );
+
+    expect(settled.round?.outcome?.winnerId).toBe('p2');
+    expect(settled.round?.outcome?.perPlayer.p1?.valid).toBe(false);
+  });
+
+  it('hands the round back to the opponent when the referee gives up', () => {
+    const s = bothAnswer(seated());
+    const handed = apply(
+      s,
+      { type: 'aiFinished', roundId: s.round!.id, verdicts: null },
+      ctxAi(s.round!.startedAt + 4_000),
+    );
+
+    expect(handed.phase).toBe('judging');
+    expect(handed.round?.judging).toBe('peer');
+    expect(handed.round?.aiPending).toBe(false);
+    // With a fresh window to judge in, not what is left of one spent waiting.
+    expect(handed.phaseEndsAt).toBe(s.round!.startedAt + 4_000 + handed.settings.judgingMs);
+
+    const voted = apply(
+      handed,
+      { type: 'vote', playerId: 'p1', roundId: handed.round!.id, targetId: 'p2', approve: true },
+      ctxAi(s.round!.startedAt + 5_000),
+    );
+    expect(voted.round?.submissions.p2?.peer?.approve).toBe(true);
+  });
+
+  it('does not punish anybody when the referee never answers at all', () => {
+    // The machinery failing is not the players' fault: the deadline passes and
+    // both answers stand, so the round is decided by who was faster.
+    const s = bothAnswer(seated());
+    const settled = tick(s, ctxAi(s.phaseEndsAt));
+
+    expect(settled.phase).toBe('roundResult');
+    expect(settled.round?.outcome?.winnerId).toBe('p1');
+    expect(settled.round?.outcome?.perPlayer.p2?.valid).toBe(true);
+  });
+
+  it('ignores a verdict for a round that has already moved on', () => {
+    const s = bothAnswer(seated());
+    const settled = tick(s, ctxAi(s.phaseEndsAt));
+    expect(
+      expectError(
+        settled,
+        { type: 'aiFinished', roundId: s.round!.id, verdicts: null },
+        ctxAi(s.phaseEndsAt + 100),
+      ),
+    ).toBe('wrong-phase');
   });
 });

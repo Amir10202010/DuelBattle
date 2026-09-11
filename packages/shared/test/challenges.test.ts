@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AI_VERIFIABLE_IDS,
   CHALLENGES,
   getChallenge,
+  isAiVerifiable,
   pickChallenge,
   samplePrompts,
-  validateCatalog,
   type Challenge,
   type JudgingMode,
+  validateCatalog,
 } from '../src/challenges.js';
 import { isColorKey } from '../src/vision/color.js';
 
@@ -52,6 +54,34 @@ describe('catalogue', () => {
   it('finds challenges by id and reports misses honestly', () => {
     expect(getChallenge(CHALLENGES[0]!.id)?.id).toBe(CHALLENGES[0]!.id);
     expect(getChallenge('does-not-exist')).toBeUndefined();
+  });
+});
+
+describe('the rounds an AI referee may take', () => {
+  it('names only prompts that exist, and only ones the opponent judges today', () => {
+    for (const id of AI_VERIFIABLE_IDS) {
+      const challenge = getChallenge(id);
+      expect(challenge, `AI_VERIFIABLE names a challenge that does not exist: ${id}`).toBeDefined();
+      // A round the camera already settles has nothing to ask a model.
+      expect(challenge!.judging, id).toBe('peer');
+    }
+  });
+
+  it('leaves the prompts no photograph can settle with the opponent', () => {
+    // Price, weight, smell, personal history and anything needing sound. If one
+    // of these ever turns up in the AI list, it was a mistake.
+    for (const id of ['obj-cheap', 'obj-expensive', 'obj-heavy', 'obj-smell', 'obj-book']) {
+      expect(AI_VERIFIABLE_IDS, id).not.toContain(id);
+    }
+    for (const c of CHALLENGES) {
+      if (c.category === 'story') expect(AI_VERIFIABLE_IDS, c.id).not.toContain(c.id);
+    }
+  });
+
+  it('agrees with isAiVerifiable', () => {
+    for (const c of CHALLENGES) {
+      expect(isAiVerifiable(c), c.id).toBe(AI_VERIFIABLE_IDS.includes(c.id));
+    }
   });
 });
 

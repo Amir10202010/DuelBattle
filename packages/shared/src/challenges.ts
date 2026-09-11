@@ -240,6 +240,43 @@ export function getChallenge(id: string): Challenge | undefined {
 }
 
 /**
+ * The prompts a photograph can actually settle.
+ *
+ * When an AI referee is configured it takes these rounds off the opponent. The
+ * list is written out rather than derived, because the question it answers is a
+ * judgement call per prompt and the answer should be reviewable at a glance:
+ * can somebody looking only at a before-frame and a submitted photo establish
+ * this, without guessing at something invisible?
+ *
+ * Everything else stays with the opponent, deliberately. A price, a weight, a
+ * smell, whose handwriting that is, whether your mother gave it to you, what is
+ * behind you, or anything that needs sound — no camera settles those, and a
+ * model that claimed to would be guessing with confidence.
+ */
+const AI_VERIFIABLE: ReadonlySet<string> = new Set([
+  'obj-face',
+  'obj-letter-b',
+  'obj-letter-s',
+  'obj-round',
+  'obj-battery',
+  'obj-broken',
+  'obj-liquid',
+  'act-hands',
+  'act-blue-head',
+  'act-hat',
+  'act-stack',
+  'wild-three-red',
+]);
+
+/** The ids above, for the catalogue's own test. */
+export const AI_VERIFIABLE_IDS: readonly string[] = [...AI_VERIFIABLE];
+
+/** Whether an AI referee may decide this round, when one is available. */
+export function isAiVerifiable(challenge: Challenge): boolean {
+  return AI_VERIFIABLE.has(challenge.id);
+}
+
+/**
  * How many prompts each player may add on top of the catalogue.
  *
  * Per player rather than per room, so the deck is not first come, first served:
@@ -348,9 +385,14 @@ export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): 
       }
     }
     if (c.judging === 'peer' && c.detector) problems.push(`${c.id}: peer round must not carry a detector`);
+    if (c.judging === 'auto' && AI_VERIFIABLE.has(c.id)) {
+      // A round the camera already settles has nothing to ask a model.
+      problems.push(`${c.id}: an auto round does not need an AI referee`);
+    }
     if (c.durationMs < 10_000 || c.durationMs > 60_000) problems.push(`${c.id}: implausible duration`);
     if (c.tags.length === 0) problems.push(`${c.id}: needs at least one tag`);
   }
+
   return problems;
 }
 

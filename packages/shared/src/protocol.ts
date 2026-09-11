@@ -1,7 +1,7 @@
-import type { JudgingMode } from './challenges.js';
 import type {
   CustomChallenge,
   MatchEndReason,
+  RoundJudging,
   MatchState,
   Phase,
   PlayerId,
@@ -93,7 +93,9 @@ export interface PublicRound {
   id: string;
   number: number;
   challengeId: string;
-  judging: 'auto' | 'peer';
+  judging: RoundJudging;
+  /** True while an AI referee has the round and has not answered yet. */
+  aiPending: boolean;
   startedAt: number;
   outcome: RoundOutcome | null;
   /** Only populated once submissions are no longer secret. */
@@ -137,7 +139,7 @@ export interface PublicMatchState {
 function publicSubmission(
   s: Submission,
   revealVerdicts: boolean,
-  judging: JudgingMode,
+  judging: RoundJudging,
 ): PublicSubmission {
   return {
     playerId: s.playerId,
@@ -188,6 +190,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
           number: round.number,
           challengeId: round.challengeId,
           judging: round.judging,
+          aiPending: round.aiPending,
           startedAt: round.startedAt,
           outcome: round.outcome,
           submissions: showSubmissions

@@ -44,6 +44,7 @@ describe('what the tab should say', () => {
         number: 1,
         challengeId: 'obj-face',
         judging: 'peer',
+        aiPending: false,
         startedAt: 0,
         outcome: null,
         submissions: { p2: submission({ playerId: 'p2' }) },
@@ -60,6 +61,7 @@ describe('what the tab should say', () => {
         number: 1,
         challengeId: 'obj-face',
         judging: 'peer',
+        aiPending: false,
         startedAt: 0,
         outcome: null,
         submissions: {
