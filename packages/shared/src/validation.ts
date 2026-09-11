@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from './ids.js';
 import type { ClientMessage } from './protocol.js';
+import type { Detection, PhotoAssessment } from './judging.js';
 import { MAX_FRAME_BYTES, MAX_IMAGE_BYTES, MAX_NAME_LENGTH } from './protocol.js';
 
 /**
@@ -93,3 +94,108 @@ type SchemaMatchesType = z.infer<typeof clientMessageSchema> extends ClientMessa
     : never
   : never;
 export const PROTOCOL_TYPES_AGREE: SchemaMatchesType = true;
+
+/* -------------------------------------------------------------------------
+ * The AI referee's reply
+ *
+ * A model's output is untrusted input like any other. It arrives as text over
+ * HTTP, so it is parsed here rather than cast, and the schema is handed to the
+ * API as the required response shape so the model is constrained at both ends.
+ * ---------------------------------------------------------------------- */
+
+export const detectionSchema = z
+  .object({
+    label: z.string().min(1).max(60),
+    confidence: z.number().min(0).max(1),
+    box: z.tuple([
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+      z.number().min(0).max(1),
+    ]),
+  })
+  .strict();
+
+export const photoAssessmentSchema = z
+  .object({
+    slot: z.enum(['A', 'B']),
+    valid: z.boolean(),
+    confidence: z.number().min(0).max(1),
+    fulfillment: z.number().int().min(0).max(70),
+    presentation: z.number().int().min(0).max(30),
+    objects: z.array(z.string().min(1).max(60)).max(8),
+    reason: z.string().min(1).max(300),
+  })
+  .strict();
+
+export const judgeResponseSchema = z
+  .object({
+    assessments: z.array(photoAssessmentSchema).min(1).max(2),
+  })
+  .strict();
+
+/**
+ * The same contract again, in the shape Google's API wants.
+ *
+ * Written out rather than generated from the zod schema above: it is what the
+ * model is *required* to return, so it is worth being able to read. A test
+ * holds the two in step — the schema and its twin cannot drift without the
+ * suite noticing.
+ */
+export const JUDGE_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['assessments'],
+  properties: {
+    assessments: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 2,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'slot',
+          'valid',
+          'confidence',
+          'fulfillment',
+          'presentation',
+          'objects',
+          'reason',
+        ],
+        properties: {
+          slot: { type: 'string', enum: ['A', 'B'] },
+          valid: { type: 'boolean' },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          fulfillment: { type: 'integer', minimum: 0, maximum: 70 },
+          presentation: { type: 'integer', minimum: 0, maximum: 30 },
+          objects: {
+            type: 'array',
+            maxItems: 8,
+            items: { type: 'string', minLength: 1, maxLength: 60 },
+          },
+          reason: { type: 'string', minLength: 1, maxLength: 300 },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * The same compile-time proof the wire protocol gets: the hand-written types in
+ * `judging.ts` and the schemas that parse the model's reply cannot drift apart
+ * without the build saying so.
+ */
+type AssessmentSchemaMatchesType = z.infer<typeof photoAssessmentSchema> extends PhotoAssessment
+  ? PhotoAssessment extends z.infer<typeof photoAssessmentSchema>
+    ? true
+    : never
+  : never;
+export const ASSESSMENT_TYPES_AGREE: AssessmentSchemaMatchesType = true;
+
+type DetectionSchemaMatchesType = z.infer<typeof detectionSchema> extends Detection
+  ? Detection extends z.infer<typeof detectionSchema>
+    ? true
+    : never
+  : never;
+export const DETECTION_TYPES_AGREE: DetectionSchemaMatchesType = true;
