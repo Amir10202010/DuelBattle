@@ -6,11 +6,13 @@ import {
   MATCH_LENGTHS,
   PHOTO_FINISH_MS,
   challengeInRoom,
+  countsForRating,
   createMatch,
   opponentIdOf,
   opponentOf,
   playersInSeatOrder,
   reduce,
+  roundsAnswered,
   tick,
   type Action,
   type EngineContext,
@@ -1276,5 +1278,69 @@ describe('a round an AI referee takes', () => {
         ctxAi(s.phaseEndsAt + 100),
       ),
     ).toBe('wrong-phase');
+  });
+});
+
+describe('whether a match counts for rating', () => {
+  const pool = [AUTO, AUTO_2];
+
+  /** Plays `rounds` rounds, with `answered` of them answered by p2. */
+  function played(rounds: number, answeredByP2: number): MatchState {
+    let s = createMatch('ABCDE', 0, { winTarget: 99, maxRounds: rounds, suddenDeathRounds: 0 });
+    const c = ctxAt(0, pool);
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, c);
+    s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, c);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p1', cameraReady: true }, c);
+    s = apply(s, { type: 'setCameraReady', playerId: 'p2', cameraReady: true }, c);
+    s = apply(s, { type: 'setReady', playerId: 'p1', ready: true }, c);
+    s = apply(s, { type: 'setReady', playerId: 'p2', ready: true }, c);
+
+    for (let round = 0; round < rounds; round++) {
+      if (s.phase === 'countdown') s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      const roundId = s.round!.id;
+      const started = s.round!.startedAt;
+      const win = { matched: true, confidence: 1, reason: 'ok' };
+      s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: win }, ctxAt(started + 1_000, pool));
+      if (round < answeredByP2) {
+        s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: win }, ctxAt(started + 2_000, pool));
+      }
+      s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      if (s.phase === 'roundResult') s = tick(s, ctxAt(s.phaseEndsAt, pool));
+    }
+    return s;
+  }
+
+  it('counts a match both of them actually played', () => {
+    const s = played(4, 4);
+    expect(s.phase).toBe('matchResult');
+    expect(countsForRating(s)).toBe(true);
+  });
+
+  it('forgives a round somebody fumbled', () => {
+    // Half is the line, so a bad connection or one missed round still counts.
+    expect(countsForRating(played(4, 2))).toBe(true);
+  });
+
+  it('does not count a match one side sat out', () => {
+    // The cheapest way to inflate a rating is a second tab that never answers.
+    expect(countsForRating(played(4, 1))).toBe(false);
+    expect(countsForRating(played(4, 0))).toBe(false);
+  });
+
+  it('does not count a match that was abandoned', () => {
+    const s = played(4, 4);
+    expect(countsForRating({ ...s, endReason: 'abandoned' })).toBe(false);
+  });
+
+  it('does not count a match that has not finished', () => {
+    const s = played(4, 4);
+    expect(countsForRating({ ...s, phase: 'challenge' })).toBe(false);
+  });
+
+  it('counts rounds answered per player', () => {
+    const s = played(4, 2);
+    expect(roundsAnswered(s.history, 'p1')).toBe(4);
+    expect(roundsAnswered(s.history, 'p2')).toBe(2);
+    expect(roundsAnswered(s.history, 'nobody')).toBe(0);
   });
 });

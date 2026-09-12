@@ -1047,6 +1047,29 @@ function noteForInvalid(judging: RoundJudging, s: Submission): string {
   return 'Rejected by your opponent — the round counts for nobody';
 }
 
+/** How many of the finished rounds this player actually answered. */
+export function roundsAnswered(history: readonly RoundOutcome[], playerId: PlayerId): number {
+  return history.filter((round) => round.perPlayer[playerId]?.elapsedMs != null).length;
+}
+
+/**
+ * Whether a finished match should move anybody's rating.
+ *
+ * Two rules, and both are about the same thing: a rating should only record
+ * matches that happened. An abandoned match did not finish, and a match one
+ * side sat out did not take place — which is also the cheapest way to inflate
+ * a rating, by opening a second tab and letting it lose. Half the rounds is
+ * the line: enough that a bad connection or a fumbled round is forgiven,
+ * little enough that an idle seat never counts.
+ */
+export function countsForRating(state: MatchState): boolean {
+  if (state.phase !== 'matchResult' || state.endReason === 'abandoned') return false;
+  const seated = playersInSeatOrder(state);
+  if (seated.length !== 2 || state.history.length === 0) return false;
+  const needed = Math.ceil(state.history.length / 2);
+  return seated.every((player) => roundsAnswered(state.history, player.id) >= needed);
+}
+
 function afterRoundResult(state: MatchState, ctx: EngineContext): MatchState {
   const seated = playersInSeatOrder(state);
   const leader = [...seated].sort((a, b) => b.score - a.score)[0];
