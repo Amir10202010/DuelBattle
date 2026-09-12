@@ -108,6 +108,33 @@ left, which is all it is for. Without that, a rejected answer came back to life
 on an abstention, and a verified one could be voted away by whoever was about
 to lose to it.
 
+## Rating
+
+Win a match and a number moves. It is ordinary Elo: everybody starts at 1000,
+the exchange is zero-sum, beating somebody far below you is worth almost
+nothing, and an upset pays. K is large while the rating is still finding you
+and small at the top, so placement takes an evening rather than a month. Five
+matches in, the number stops being labelled a guess and starts being a rank.
+
+**There is still no account.** The server issues the browser a signed token and
+that is the whole of it — no email, no password, nothing to remember. The
+signature is the point: without one, "I am player X" is a claim anybody can
+type, and a rating you can take off somebody by guessing their id is not a
+rating. The token unlocks nothing else, because there is nothing else; a row is
+a number and a few counters.
+
+A match only counts if both of you actually played it. Not abandoned, and both
+answering at least half the rounds — which forgives a fumbled round or a bad
+connection, and refuses the cheapest inflation there is, which is a second tab
+that sits there losing. Two seats sharing one browser are not recorded at all.
+
+Ratings live in `DATA_DIR`, one JSON file written whole and atomically. That is
+deliberately the least machinery that is actually durable, and its limit is
+stated where it is implemented: one process, comfortable into the low thousands
+of players. `ProfileStore` is the seam a database goes behind on the day that
+matters. Set `DATA_DIR` to nothing and the game plays exactly as it did before
+any of this — matches simply stop counting afterwards.
+
 ### What the room remembers
 
 The picker never repeats a prompt inside a match, always opens on a

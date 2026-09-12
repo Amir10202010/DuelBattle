@@ -55,6 +55,11 @@ export const config = {
    */
   yoloUrl: process.env.YOLO_URL ?? '',
   yoloToken: process.env.YOLO_TOKEN ?? '',
+  /**
+   * Where ratings and the identity secret are kept. Set it to nothing to run
+   * without either: matches still play, they just stop counting for anything.
+   */
+  dataDir: process.env.DATA_DIR ?? './data',
   /** Sustained client messages per second before we start dropping. */
   messageRatePerSec: int('MESSAGE_RATE_PER_SEC', 25),
   /** Image-bearing messages get their own, much tighter budget. */

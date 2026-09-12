@@ -1,5 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { MATCH_LENGTHS, opponentOf, samplePrompts, type PublicMatchState } from '@battle/shared';
+import {
+  MATCH_LENGTHS,
+  opponentOf,
+  samplePrompts,
+  type PublicMatchState,
+  type PublicProfile,
+} from '@battle/shared';
+import { RatingLine } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
@@ -12,9 +19,10 @@ interface LobbyProps {
   match: PublicMatchState;
   youId: string;
   camera: CameraState;
+  standings: Record<string, PublicProfile>;
 }
 
-export function Lobby({ store, match, youId, camera }: LobbyProps) {
+export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
   const yourSeat = you?.seat ?? 0;
@@ -33,6 +41,18 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
           Private arena · best of {match.settings.winTarget * 2 - 1}
         </p>
         <h1 className="lobby__title display">{headline}</h1>
+        {opponent && (
+          <div className="lobby__standings">
+            <span className="lobby__side">
+              <span className="lobby__who">{you?.name ?? 'You'}</span>
+              <RatingLine profile={standings[youId]} delta={undefined} />
+            </span>
+            <span className="lobby__side lobby__side--them">
+              <span className="lobby__who">{opponent.name}</span>
+              <RatingLine profile={standings[opponent.id]} delta={undefined} />
+            </span>
+          </div>
+        )}
       </header>
 
       <div className="lobby__stages">

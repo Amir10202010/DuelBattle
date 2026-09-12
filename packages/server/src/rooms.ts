@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { generateRoomCode, isValidRoomCode } from '@battle/shared';
 import { Room } from './room.js';
 import type { AiJudge } from './ai/judge.js';
+import type { ProfileStore } from './profiles.js';
 import { log } from './log.js';
 
 /**
@@ -18,6 +19,8 @@ export interface RoomManagerOptions {
   maxRoomAgeMs: number;
   /** Shared by every room: one rotation of keys, one concurrency budget. */
   judge?: AiJudge;
+  /** Shared by every room: one set of ratings for the whole server. */
+  profiles?: ProfileStore;
 }
 
 export class RoomCapacityError extends Error {}
@@ -42,7 +45,10 @@ export class RoomManager {
     for (let attempt = 0; attempt < 12; attempt++) {
       const code = generateRoomCode(CODE_RANDOM);
       if (this.rooms.has(code)) continue;
-      const room = new Room(code, now, this.options.judge ? { judge: this.options.judge } : {});
+      const room = new Room(code, now, {
+        ...(this.options.judge ? { judge: this.options.judge } : {}),
+        ...(this.options.profiles ? { profiles: this.options.profiles } : {}),
+      });
       this.rooms.set(code, room);
       log.info('room created', { room: code, total: this.rooms.size });
       return room;

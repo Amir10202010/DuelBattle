@@ -1,3 +1,4 @@
+import type { PublicProfile, RatingDelta } from './profile.js';
 import type {
   CustomChallenge,
   MatchEndReason,
@@ -23,7 +24,8 @@ export const MAX_NAME_LENGTH = 18;
  * will never run.
  */
 export type ClientMessage =
-  | { t: 'hello'; protocol: number }
+  /** `identity` is the signed token this browser was issued last time, if any. */
+  | { t: 'hello'; protocol: number; identity?: string }
   | { t: 'createRoom'; name: string }
   | { t: 'joinRoom'; code: string; name: string }
   | { t: 'rejoin'; code: string; token: string }
@@ -226,6 +228,22 @@ export function toPublicState(state: MatchState): PublicMatchState {
 
 export type ServerMessage =
   | { t: 'welcome'; protocol: number; serverTime: number }
+  /**
+   * The token this browser should keep. Sent whenever the server had to mint
+   * one, which is the first visit and any visit after the old one stopped
+   * being valid.
+   */
+  | { t: 'identity'; token: string }
+  /**
+   * Ratings for the people in this room, and what the match just finished did
+   * to them. `lastMatch` is null until a match ends, and null again on a
+   * rematch: it describes one result, not a running total.
+   */
+  | {
+      t: 'standings';
+      players: Record<PlayerId, PublicProfile>;
+      lastMatch: Record<PlayerId, RatingDelta> | null;
+    }
   | { t: 'joined'; roomCode: string; playerId: PlayerId; token: string }
   | { t: 'state'; state: PublicMatchState; serverTime: number }
   | { t: 'evidence'; roundId: string; playerId: PlayerId; image: string }

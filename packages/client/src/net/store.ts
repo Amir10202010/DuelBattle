@@ -1,6 +1,8 @@
 import {
   PROTOCOL_VERSION,
   type PublicMatchState,
+  type PublicProfile,
+  type RatingDelta,
   type ServerMessage,
 } from '@battle/shared';
 import { Connection, type ConnectionStatus, type GameConnection } from './connection.js';
@@ -29,6 +31,10 @@ export interface StoreSnapshot {
   /** Shown inline on the home screen, e.g. a bad room code. */
   joinError: string | null;
   latencyMs: number | null;
+  /** Ratings for the people in this room, once the server has said. */
+  standings: Record<string, PublicProfile>;
+  /** What the match just finished did to those ratings. Null until one does. */
+  lastRatings: Record<string, RatingDelta> | null;
 }
 
 type Intent =
@@ -44,6 +50,7 @@ interface StoredSession {
 
 const SESSION_KEY = 'battle.sessions.v2';
 const NAME_KEY = 'battle.name.v1';
+const IDENTITY_KEY = 'battle.identity.v1';
 const TOAST_MS = 4_000;
 /**
  * Snapshots the client keeps, for the end-of-match recap.
@@ -125,6 +132,30 @@ function writeSession(code: string, session: StoredSession | null): void {
   }
 }
 
+/**
+ * The signed token that says which player this browser is.
+ *
+ * localStorage rather than sessionStorage, because the whole point is that it
+ * outlives the tab — a rating that resets when you close the window is not a
+ * rating. It is only ever a name: the server mints it, and it unlocks nothing
+ * but the row it belongs to.
+ */
+export function storedIdentity(): string | undefined {
+  try {
+    return localStorage.getItem(IDENTITY_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberIdentity(token: string): void {
+  try {
+    localStorage.setItem(IDENTITY_KEY, token);
+  } catch {
+    /* A browser that will not store it just gets a new one next visit. */
+  }
+}
+
 export function rememberedName(): string {
   try {
     return localStorage.getItem(NAME_KEY) ?? '';
@@ -142,6 +173,8 @@ function rememberName(name: string): void {
 }
 
 const EMPTY: StoreSnapshot = {
+  standings: {},
+  lastRatings: null,
   status: 'connecting',
   screen: 'home',
   joining: false,
@@ -315,7 +348,12 @@ export class MatchStore {
   // -- Wire handling --------------------------------------------------------
 
   private onReady(): void {
-    this.connection.send({ t: 'hello', protocol: PROTOCOL_VERSION });
+    const identity = storedIdentity();
+    this.connection.send({
+      t: 'hello',
+      protocol: PROTOCOL_VERSION,
+      ...(identity ? { identity } : {}),
+    });
     const intent = this.intent;
     if (!intent) return;
     // Replay whatever we were doing so a dropped socket is invisible to the player.
@@ -328,6 +366,12 @@ export class MatchStore {
   private onMessage(message: ServerMessage): void {
     switch (message.t) {
       case 'welcome':
+        return;
+      case 'identity':
+        rememberIdentity(message.token);
+        return;
+      case 'standings':
+        this.patch({ standings: message.players, lastRatings: message.lastMatch });
         return;
       case 'joined': {
         const name = this.intent && 'name' in this.intent ? this.intent.name : rememberedName();

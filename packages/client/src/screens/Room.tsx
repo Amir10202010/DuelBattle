@@ -86,7 +86,13 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
       </header>
 
       {match.phase === 'lobby' && (
-        <Lobby store={store} match={match} youId={youId} camera={camera} />
+        <Lobby
+          store={store}
+          match={match}
+          youId={youId}
+          camera={camera}
+          standings={snapshot.standings}
+        />
       )}
       {match.phase === 'matchResult' && (
         <MatchOver
@@ -94,6 +100,8 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
           match={match}
           youId={youId}
           evidence={snapshot.evidence}
+          standings={snapshot.standings}
+          lastRatings={snapshot.lastRatings}
           onLeave={onLeave}
         />
       )}

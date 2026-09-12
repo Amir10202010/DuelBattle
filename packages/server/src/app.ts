@@ -1,6 +1,9 @@
 import type { Server } from 'node:http';
 import { config } from './config.js';
 import { GeminiPhotoJudge, type AiJudge } from './ai/judge.js';
+import { FileProfileStore, type ProfileStore } from './profiles.js';
+import { Identities } from './identity.js';
+import { identitySecret } from './secret.js';
 import { YoloObjectDetector } from './ai/detector.js';
 
 /**
@@ -11,6 +14,27 @@ import { YoloObjectDetector } from './ai/detector.js';
  * list is a misconfiguration, and says so rather than starting up pretending
  * the referee exists.
  */
+/**
+ * Ratings, if this deployment keeps any.
+ *
+ * An empty DATA_DIR is a supported way to run: matches play exactly the same,
+ * they simply stop counting for anything afterwards.
+ */
+function buildProfiles(): ProfileStore | undefined {
+  if (!config.dataDir) {
+    log.info('ratings disabled', { reason: 'no DATA_DIR configured' });
+    return undefined;
+  }
+  const store = new FileProfileStore(config.dataDir);
+  log.info('ratings enabled', { dir: config.dataDir, profiles: store.size });
+  return store;
+}
+
+function buildIdentities(): Identities | undefined {
+  if (!config.dataDir && !process.env.IDENTITY_SECRET) return undefined;
+  return new Identities(identitySecret(config.dataDir || '.'));
+}
+
 function buildJudge(): AiJudge | undefined {
   if (config.geminiApiKeys.length === 0) {
     log.info('ai judge disabled', { reason: 'no GEMINI_API_KEYS configured' });
@@ -47,8 +71,10 @@ export interface AppOptions {
    * client shares one address, is not fighting a limit meant for the internet.
    */
   roomCreateLimit?: LimiterOptions;
-  /** Injected by tests; production builds one from the environment. */
+  /** Injected by tests; production builds these from the environment. */
   judge?: AiJudge;
+  profiles?: ProfileStore;
+  identities?: Identities;
 }
 
 export interface App {
@@ -65,17 +91,20 @@ export interface App {
  */
 export function createApp(options: AppOptions = {}): App {
   const judge = options.judge ?? buildJudge();
+  const profiles = options.profiles ?? buildProfiles();
+  const identities = options.identities ?? buildIdentities();
   const rooms = new RoomManager({
     maxRooms: config.maxRooms,
     emptyRoomTtlMs: config.emptyRoomTtlMs,
     maxRoomAgeMs: config.maxRoomAgeMs,
     ...(judge ? { judge } : {}),
+    ...(profiles ? { profiles } : {}),
   });
 
   const server = createHttpServer({ clientDir: options.clientDir ?? config.clientDir, rooms });
   const gateway = options.roomCreateLimit
-    ? new Gateway(rooms, options.roomCreateLimit)
-    : new Gateway(rooms);
+    ? new Gateway(rooms, options.roomCreateLimit, identities)
+    : new Gateway(rooms, undefined, identities);
 
   server.on('upgrade', (req, socket, head) => {
     let pathname: string;

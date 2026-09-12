@@ -13,3 +13,6 @@ coverage/
 .venv-yolo/
 *.pt
 vision/models/
+
+# Ratings and the identity secret.
+data/

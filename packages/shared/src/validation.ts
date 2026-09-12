@@ -53,7 +53,13 @@ const frameImageSchema = z
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, 'Unsupported frame format');
 
 export const clientMessageSchema = z.discriminatedUnion('t', [
-  z.object({ t: z.literal('hello'), protocol: z.number().int() }),
+  z.object({
+    t: z.literal('hello'),
+    protocol: z.number().int(),
+    // Bounded before it is verified: an oversized token should be refused, not
+    // hashed.
+    identity: z.string().max(128).optional(),
+  }),
   z.object({ t: z.literal('createRoom'), name: nameSchema }),
   z.object({ t: z.literal('joinRoom'), code: roomCodeSchema, name: nameSchema }),
   z.object({ t: z.literal('rejoin'), code: roomCodeSchema, token: z.string().min(8).max(128) }),

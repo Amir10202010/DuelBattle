@@ -1,31 +1,18 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { STARTING_RATING, type MatchResult } from '@battle/shared';
+import { STARTING_RATING, type MatchRecord, type PublicProfile } from '@battle/shared';
 import { log } from './log.js';
 
-/** One finished match, as it reads on a profile card. */
-export interface MatchRecord {
-  at: number;
-  opponentName: string;
-  result: MatchResult;
-  ratingBefore: number;
-  ratingAfter: number;
-  yourScore: number;
-  theirScore: number;
-}
+export type { MatchRecord };
 
-export interface PlayerProfile {
+/**
+ * A stored row: everything the opponent may see, plus the parts that never
+ * leave this side — who it belongs to and when it was last touched.
+ */
+export interface PlayerProfile extends Required<PublicProfile> {
   id: string;
   /** The last name they played under. Display only. */
   name: string;
-  rating: number;
-  matchesPlayed: number;
-  wins: number;
-  losses: number;
-  draws: number;
-  /** Consecutive wins, reset by anything that is not a win. */
-  streak: number;
-  bestStreak: number;
   createdAt: number;
   lastSeenAt: number;
   /** Most recent first. */

@@ -11,8 +11,11 @@ import {
   type ActionError,
   type AutoVerdict,
   type ClientMessage,
+  countsForRating,
   type Challenge,
   type EngineContext,
+  type PublicProfile,
+  type RatingDelta,
   type ErrorCode,
   type Frame,
   type MatchState,
@@ -22,6 +25,8 @@ import {
 } from '@battle/shared';
 import { DecodeError, decodeEvidence, verifySubmission } from './verify.js';
 import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
+import type { PlayerProfile, ProfileStore } from './profiles.js';
+import { profileFor, recordMatch } from './standings.js';
 import { log } from './log.js';
 
 export type Send = (message: ServerMessage) => void;
@@ -29,6 +34,8 @@ export type Send = (message: ServerMessage) => void;
 export interface RoomOptions {
   /** The AI referee, when this deployment has one. Shared across rooms. */
   judge?: AiJudge;
+  /** Where ratings live. Shared across rooms; absent means nothing is kept. */
+  profiles?: ProfileStore;
   /**
    * Restricts the deck this room draws from. The engine has always supported
    * it; a room passes it through for a themed deck, or for a test that needs
@@ -49,6 +56,8 @@ interface Seat {
   /** Raw JPEG data URL of the most recent live frame, kept for one relay hop. */
   lastFrame: { image: string; at: number } | null;
   lastRelayAt: number;
+  /** Who is in this seat across visits, if their browser has said. */
+  identity: string | null;
   /** Decoded baseline for the round named by `baselineRoundId`. */
   baseline: Frame | null;
   /**
@@ -127,14 +136,119 @@ export class Room {
   emptySince: number | null;
 
   private readonly judge: AiJudge | undefined;
+  private readonly profiles: ProfileStore | undefined;
   private readonly pool: readonly Challenge[] | undefined;
+  /** Set when a match ends, cleared when the next one starts. */
+  private lastRatings: Record<PlayerId, RatingDelta> | null = null;
 
   constructor(code: string, now: number, options: RoomOptions = {}) {
     this.code = code;
     this.state = createMatch(code, now);
     this.emptySince = now;
     this.judge = options.judge;
+    this.profiles = options.profiles;
     this.pool = options.pool;
+  }
+
+  /**
+   * Attaches a returning player's record to the seat they are sitting in.
+   *
+   * Called once the browser has proved which identity it is. Seats work fine
+   * without this — a player with no identity simply has no rating to move.
+   */
+  identify(playerId: PlayerId, identity: string, now: number): void {
+    const seat = this.seats.get(playerId);
+    if (!seat || seat.identity === identity) return;
+    seat.identity = identity;
+    this.sendStandings(now);
+  }
+
+  /**
+   * Sends everybody the ratings in the room.
+   *
+   * Tailored per socket: the counts are the same for both, but the recent
+   * history only ever goes to the person it belongs to. Ten of somebody else's
+   * matches is a stalking tool rather than a scoreboard.
+   */
+  private sendStandings(now: number): void {
+    const store = this.profiles;
+    if (!store) return;
+
+    const cards = new Map<PlayerId, PlayerProfile>();
+    for (const [playerId, seat] of this.seats) {
+      if (!seat.identity) continue;
+      const player = this.state.players[playerId];
+      cards.set(playerId, profileFor(store, seat.identity, player?.name ?? '', now));
+    }
+    if (cards.size === 0) return;
+
+    for (const [viewerId, seat] of this.seats) {
+      if (!seat.send) continue;
+      const players: Record<PlayerId, PublicProfile> = {};
+      for (const [playerId, card] of cards) {
+        const { rating, matchesPlayed, wins, losses, draws, streak, bestStreak } = card;
+        players[playerId] = {
+          rating,
+          matchesPlayed,
+          wins,
+          losses,
+          draws,
+          streak,
+          bestStreak,
+          ...(playerId === viewerId ? { history: card.history } : {}),
+        };
+      }
+      seat.send({ t: 'standings', players, lastMatch: this.lastRatings });
+    }
+  }
+
+  /**
+   * Writes the finished match into both records, if it was one worth writing.
+   *
+   * A match nobody can be identified in is simply not recorded: no rating, no
+   * error, no complaint. Playing without one is a supported way to play.
+   */
+  private settleRatings(now: number): void {
+    const store = this.profiles;
+    this.lastRatings = null;
+    if (!store || !countsForRating(this.state)) return;
+
+    const seated = this.state.seats
+      .map((playerId) => (playerId ? this.seats.get(playerId) : undefined))
+      .map((seat, index) => ({ seat, playerId: this.state.seats[index] }));
+    const contenders = seated.filter(
+      (entry): entry is { seat: Seat; playerId: PlayerId } =>
+        Boolean(entry.seat?.identity) && Boolean(entry.playerId),
+    );
+    if (contenders.length !== 2) return;
+
+    const [a, b] = contenders as [
+      { seat: Seat; playerId: PlayerId },
+      { seat: Seat; playerId: PlayerId },
+    ];
+    if (a.seat.identity === b.seat.identity) return; // One browser, both seats.
+
+    const updates = recordMatch(
+      store,
+      {
+        id: a.seat.identity!,
+        name: this.state.players[a.playerId]?.name ?? '',
+        score: this.state.players[a.playerId]?.score ?? 0,
+      },
+      {
+        id: b.seat.identity!,
+        name: this.state.players[b.playerId]?.name ?? '',
+        score: this.state.players[b.playerId]?.score ?? 0,
+      },
+      now,
+    );
+
+    // Keyed by seat rather than by identity, because that is what a client can
+    // match against the players it already knows about.
+    this.lastRatings = {
+      [a.playerId]: updates[a.seat.identity!]!,
+      [b.playerId]: updates[b.seat.identity!]!,
+    };
   }
 
   get createdAt(): number {
@@ -193,6 +307,7 @@ export class Room {
       send: null,
       lastFrame: null,
       lastRelayAt: 0,
+      identity: null,
       baseline: null,
       baselineImage: null,
       baselineRoundId: null,
@@ -468,6 +583,16 @@ export class Room {
     }
     if (phase === 'roundResult' && this.lastPhase !== 'roundResult' && round) {
       this.deliverEvidence(round.id, 'result');
+    }
+    if (phase === 'matchResult' && this.lastPhase !== 'matchResult') {
+      this.settleRatings(now);
+      this.sendStandings(now);
+    }
+    if (phase === 'lobby' && this.lastPhase === 'matchResult') {
+      // A rematch is a new question; last match's arithmetic stops being the
+      // answer to it.
+      this.lastRatings = null;
+      this.sendStandings(now);
     }
     if (roundChanged && round) this.pruneEvidenceExcept(round.id);
 

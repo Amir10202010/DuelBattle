@@ -39,6 +39,8 @@ function props(over: Partial<Parameters<typeof MatchOver>[0]> = {}) {
     match: publicMatch({ phase: 'matchResult', winnerId: 'p1', endReason: 'target-reached' }),
     youId: 'p1',
     evidence: {},
+    standings: {},
+    lastRatings: null,
     onLeave: () => {},
     ...over,
   };

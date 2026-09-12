@@ -1,4 +1,12 @@
-import { getChallenge, opponentOf, type PublicMatchState, type RoundOutcome } from '@battle/shared';
+import {
+  getChallenge,
+  opponentOf,
+  type PublicMatchState,
+  type PublicProfile,
+  type RatingDelta,
+  type RoundOutcome,
+} from '@battle/shared';
+import { ProfileCard, RatingLine } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import { SeriesLine } from '../components/Series.jsx';
 
@@ -8,6 +16,8 @@ interface MatchOverProps {
   youId: string;
   /** `${roundId}:${playerId}` -> JPEG data URL, as collected during the match. */
   evidence: Record<string, string>;
+  standings: Record<string, PublicProfile>;
+  lastRatings: Record<string, RatingDelta> | null;
   onLeave: () => void;
 }
 
@@ -51,7 +61,15 @@ function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kin
   return { label: 'not detected', kind: 'missed' };
 }
 
-export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverProps) {
+export function MatchOver({
+  store,
+  match,
+  youId,
+  evidence,
+  standings,
+  lastRatings,
+  onLeave,
+}: MatchOverProps) {
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
   const winner = match.winnerId ? match.players[match.winnerId] ?? null : null;
@@ -95,12 +113,17 @@ export function MatchOver({ store, match, youId, evidence, onLeave }: MatchOverP
               <span className="over__stat dim">
                 {player?.validAnswers ?? 0} valid {player?.validAnswers === 1 ? 'answer' : 'answers'}
               </span>
+              {id && (
+                <RatingLine profile={standings[id]} delta={lastRatings?.[id] ?? undefined} />
+              )}
             </div>
           );
         })}
       </div>
 
       <Filmstrip match={match} youId={youId} evidence={evidence} />
+
+      <ProfileCard profile={standings[youId]} />
 
       {match.history.length > 0 && (
         <ol className="recap" aria-label="Round by round">

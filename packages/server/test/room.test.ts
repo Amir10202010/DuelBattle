@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHALLENGES,
   getChallenge,
   type DetectorSpec,
   type PublicMatchState,
@@ -7,6 +8,7 @@ import {
 } from '@battle/shared';
 import { Room } from '../src/room.js';
 import { JudgeUnavailable, type AiJudge, type JudgePhoto } from '../src/ai/judge.js';
+import { MemoryProfileStore } from '../src/profiles.js';
 import {
   BLUE,
   emptyRoomFrame,
@@ -577,5 +579,129 @@ describe('a round the AI referee takes', () => {
     room.tick(4_000);
 
     expect(rec.state.round?.judging).toBe('peer');
+  });
+});
+
+describe('what a finished match is worth', () => {
+  const AUTO_ONLY = CHALLENGES.filter((c) => c.judging === 'auto').slice(0, 4);
+
+  interface Rated extends Harness {
+    store: MemoryProfileStore;
+  }
+
+  function ratedRoom(): Rated {
+    const store = new MemoryProfileStore();
+    const room = new Room('RATE1', 0, { profiles: store, pool: AUTO_ONLY });
+    const a = room.join('Ada', 0);
+    const b = room.join('Grace', 0);
+    const p1 = a.playerId!;
+    const p2 = b.playerId!;
+    const r1 = new Recorder();
+    const r2 = new Recorder();
+    room.attach(p1, r1.send, 0);
+    room.attach(p2, r2.send, 0);
+    room.identify(p1, 'ada-identity', 0);
+    room.identify(p2, 'grace-identity', 0);
+    room.handle(p1, { t: 'cameraReady', ready: true }, 0);
+    room.handle(p2, { t: 'cameraReady', ready: true }, 0);
+    return { room, p1, p2, r1, r2, store };
+  }
+
+  /** Plays a whole match with p1 winning every round, both answering. */
+  function playThrough(h: Rated): void {
+    h.room.handle(h.p1, { t: 'ready', ready: true }, 100);
+    h.room.handle(h.p2, { t: 'ready', ready: true }, 100);
+    let at = 1_000;
+
+    for (let step = 0; step < 200 && h.r1.state.phase !== 'matchResult'; step++) {
+      at += 1_000;
+      // Live frames keep a baseline available, which is what lets the camera
+      // reach a verdict rather than handing the round to the opponent.
+      h.room.handle(h.p1, { t: 'frame', image: emptyRoomFrame(), seq: step }, at);
+      h.room.handle(h.p2, { t: 'frame', image: emptyRoomFrame(), seq: step }, at);
+      h.room.tick(at);
+
+      const state = h.r1.state;
+      if (state.phase !== 'challenge' || !state.round) continue;
+      const detector = getChallenge(state.round.challengeId)?.detector;
+      if (!detector) continue;
+      if (state.players[h.p1]?.submitted) continue;
+
+      const roundId = state.round.id;
+      h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector) }, at + 100);
+      h.room.handle(h.p2, { t: 'submit', roundId, image: failingFrameFor(detector) }, at + 200);
+    }
+  }
+
+  it('moves both ratings in opposite directions and says by how much', () => {
+    const h = ratedRoom();
+    playThrough(h);
+    expect(h.r1.state.phase).toBe('matchResult');
+
+    const standings = h.r1.ofType('standings').at(-1);
+    expect(standings).toBeDefined();
+    const mine = standings!.lastMatch?.[h.p1];
+    const theirs = standings!.lastMatch?.[h.p2];
+    expect(mine!.change).toBeGreaterThan(0);
+    expect(theirs!.change).toBeLessThan(0);
+    expect(mine!.change + theirs!.change).toBe(0);
+    expect(standings!.players[h.p1]!.rating).toBe(mine!.after);
+  });
+
+  it('keeps the record for next time', () => {
+    const h = ratedRoom();
+    playThrough(h);
+    expect(h.store.get('ada-identity')!.wins).toBe(1);
+    expect(h.store.get('grace-identity')!.losses).toBe(1);
+    expect(h.store.get('ada-identity')!.name).toBe('Ada');
+  });
+
+  it('sends each player their own history and nobody else’s', () => {
+    // Ten of somebody else's matches is a stalking tool, not a scoreboard.
+    const h = ratedRoom();
+    playThrough(h);
+
+    const forAda = h.r1.ofType('standings').at(-1)!;
+    expect(forAda.players[h.p1]!.history).toBeDefined();
+    expect(forAda.players[h.p2]!.history).toBeUndefined();
+
+    const forGrace = h.r2.ofType('standings').at(-1)!;
+    expect(forGrace.players[h.p2]!.history).toBeDefined();
+    expect(forGrace.players[h.p1]!.history).toBeUndefined();
+  });
+
+  it('records nothing when one browser is holding both seats', () => {
+    // Two tabs of your own is not a match, whatever the scoreboard says.
+    const store = new MemoryProfileStore();
+    const room = new Room('RATE2', 0, { profiles: store, pool: AUTO_ONLY });
+    const a = room.join('Ada', 0);
+    const b = room.join('Grace', 0);
+    const r1 = new Recorder();
+    const r2 = new Recorder();
+    room.attach(a.playerId!, r1.send, 0);
+    room.attach(b.playerId!, r2.send, 0);
+    room.identify(a.playerId!, 'same-browser', 0);
+    room.identify(b.playerId!, 'same-browser', 0);
+    room.handle(a.playerId!, { t: 'cameraReady', ready: true }, 0);
+    room.handle(b.playerId!, { t: 'cameraReady', ready: true }, 0);
+
+    playThrough({ room, p1: a.playerId!, p2: b.playerId!, r1, r2, store });
+    expect(store.size).toBe(0);
+  });
+
+  it('plays perfectly well with nowhere to keep a rating', () => {
+    const room = new Room('RATE3', 0, { pool: AUTO_ONLY });
+    const a = room.join('Ada', 0);
+    const b = room.join('Grace', 0);
+    const r1 = new Recorder();
+    const r2 = new Recorder();
+    room.attach(a.playerId!, r1.send, 0);
+    room.attach(b.playerId!, r2.send, 0);
+    room.handle(a.playerId!, { t: 'cameraReady', ready: true }, 0);
+    room.handle(b.playerId!, { t: 'cameraReady', ready: true }, 0);
+
+    playThrough({ room, p1: a.playerId!, p2: b.playerId!, r1, r2, store: new MemoryProfileStore() });
+    expect(r1.state.phase).toBe('matchResult');
+    expect(r1.ofType('standings')).toHaveLength(0);
   });
 });

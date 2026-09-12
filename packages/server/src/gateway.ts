@@ -10,6 +10,7 @@ import {
 } from '@battle/shared';
 import { clientMessageSchema } from '@battle/shared/validation';
 import type { Room } from './room.js';
+import type { Identities } from './identity.js';
 import { RoomCapacityError, type RoomManager } from './rooms.js';
 import { config } from './config.js';
 import { TokenBuckets, type LimiterOptions } from './limiter.js';
@@ -54,6 +55,8 @@ interface Session {
   ip: string;
   room: Room | null;
   playerId: string | null;
+  /** Who this browser is across visits, once `hello` has established it. */
+  identity: string | null;
   connectedAt: number;
   alive: boolean;
   messages: TokenBucket;
@@ -71,10 +74,11 @@ export class Gateway {
 
   constructor(
     private readonly rooms: RoomManager,
-    createLimit: LimiterOptions = defaultCreateLimit(),
+    createLimit: LimiterOptions | undefined = undefined,
+    private readonly identities: Identities | null = null,
   ) {
     this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
-    this.createLimiter = new TokenBuckets(createLimit);
+    this.createLimiter = new TokenBuckets(createLimit ?? defaultCreateLimit());
   }
 
   start(): void {
@@ -130,6 +134,7 @@ export class Gateway {
       ip,
       room: null,
       playerId: null,
+      identity: null,
       connectedAt: now,
       alive: true,
       messages: { tokens: config.messageRatePerSec, lastRefill: now },
@@ -216,7 +221,7 @@ export class Gateway {
 
   private route(session: Session, message: ClientMessage, now: number): void {
     switch (message.t) {
-      case 'hello':
+      case 'hello': {
         if (message.protocol !== PROTOCOL_VERSION) {
           this.fail(
             session,
@@ -224,8 +229,25 @@ export class Gateway {
             'This tab is running an old version. Reload to continue.',
             true,
           );
+          return;
+        }
+        if (!this.identities) return;
+        // An unsigned or unrecognised token is not an error worth telling
+        // anybody about: it is a first visit, or a browser that cleared its
+        // storage. Either way they get a new name and carry on.
+        const known = this.identities.verify(message.identity);
+        if (known) {
+          session.identity = known;
+        } else {
+          const token = this.identities.issue();
+          session.identity = this.identities.verify(token);
+          send(session.socket, { t: 'identity', token });
+        }
+        if (session.room && session.playerId && session.identity) {
+          session.room.identify(session.playerId, session.identity, now);
         }
         return;
+      }
       case 'ping':
         send(session.socket, { t: 'pong', id: message.id, serverTime: now });
         return;
@@ -314,6 +336,7 @@ export class Gateway {
       token: outcome.token,
     });
     room.attach(outcome.playerId, (msg) => send(session.socket, msg), now);
+    if (session.identity) room.identify(outcome.playerId, session.identity, now);
   }
 
   private leaveCurrentRoom(session: Session, now: number): void {
