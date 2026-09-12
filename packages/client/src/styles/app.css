@@ -46,14 +46,48 @@
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+/* The bolt, set in a lime tile that leans forward. The icon leans back by the
+   same amount so the shape is skewed and the symbol inside it is not. */
+.wordmark__mark {
+  width: 33px;
+  height: 35px;
+  margin-right: 9px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--lime);
+  color: var(--on-lime);
+  transform: skew(-7deg);
+}
+
+.wordmark__mark svg {
+  transform: skew(7deg);
 }
 
 .wordmark__half {
+  font-weight: 600;
+  color: var(--paper-muted);
+}
+
+.wordmark__beta {
+  align-self: flex-start;
+  margin: 3px 0 0 7px;
+  padding: 3px 4px;
+  border: 1px solid var(--paper-line);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   color: var(--paper-muted);
 }
 
@@ -171,59 +205,48 @@
   background: var(--paper-line);
 }
 
-/* The mockup, which is a diagram of a match rather than a photograph of one. */
+/* The hero scene: a real photograph of the game being played, with the match
+   furniture laid over it. */
 .hero__demo {
   position: relative;
   padding-top: var(--space-6);
 }
 
-.demo {
-  border: 1px solid var(--line-strong);
+.scene {
+  border: 1px solid #2a3124;
   border-radius: var(--r-lg);
-  background: var(--ink-0-dark, #171a16);
-  padding: var(--space-4);
+  background: #10130f;
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  box-shadow: 0 18px 40px rgba(25, 28, 25, 0.18);
+  gap: var(--space-3);
+  box-shadow: 0 18px 44px rgba(25, 28, 25, 0.22);
 }
 
-.demo__eyebrow {
+.scene__topline {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #8f9c84;
 }
 
-.demo__split {
+.scene__photo {
   position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-}
-
-.demo__seat {
-  aspect-ratio: 4 / 3;
   border-radius: var(--r-md);
-  border: 1px solid #444f38;
-  display: flex;
-  align-items: flex-end;
-  padding: var(--space-3);
-  background: linear-gradient(160deg, #2c3326, #1d2219);
+  overflow: hidden;
+  line-height: 0;
 }
 
-.demo__seat--b {
-  background: linear-gradient(160deg, #33291f, #221c17);
+.scene__photo img {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
-.demo__label {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #a6b29a;
-}
-
-.demo__vs {
+.scene__vs {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -232,30 +255,76 @@
   color: var(--on-lime);
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: 20px;
   letter-spacing: 0.06em;
-  padding: 2px 10px;
+  padding: 2px 12px;
   border-radius: var(--r-sm);
 }
 
-.demo__prompt {
-  border-top: 1px solid #373e31;
-  padding-top: var(--space-3);
+.scene__player {
+  position: absolute;
+  bottom: var(--space-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #f4f6ed;
+  background: rgba(16, 19, 15, 0.8);
+  padding: 3px 7px;
+  border-radius: var(--r-sm);
 }
 
-.demo__promptlabel {
+.scene__player--one {
+  left: var(--space-3);
+}
+
+.scene__player--two {
+  right: var(--space-3);
+}
+
+.scene__challenge {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  color: #f4f6ed;
+}
+
+.scene__label {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  color: var(--lime);
+}
+
+.scene__prompt {
+  font-size: clamp(22px, 2.6vw, 30px);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.scene__challenge svg {
+  color: var(--lime);
+}
+
+.scene__caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid #2a3124;
+  padding-top: var(--space-3);
+  font-size: 11px;
   color: #8f9c84;
 }
 
-.demo__prompttext {
-  font-size: 30px;
-  line-height: 1;
+.scene__credit {
   text-transform: uppercase;
-  color: #f4f6ed;
-  margin-top: var(--space-2);
+  letter-spacing: 0.12em;
+  font-size: 9px;
 }
 
 .sticker {
@@ -601,6 +670,7 @@
  * is labelling is the gap: two rooms, pointed at each other.
  */
 .vs {
+  box-shadow: var(--glow-lime);
   position: absolute;
   left: 50%;
   top: 50%;
@@ -870,6 +940,11 @@
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  /* A lit space rather than a flat panel: the room falls off towards its
+     corners, which is what gives the glowing parts something to glow against. */
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(217, 246, 90, 0.05), transparent 58%),
+    radial-gradient(100% 100% at 50% 50%, #1a2016 0%, var(--ink-0) 72%);
 }
 
 .room__bar {
@@ -940,14 +1015,16 @@
 
 .stage--locked {
   border-color: var(--seat-color);
+  box-shadow: 0 0 18px -2px var(--seat-color);
 }
 
 .stage--won {
-  border-color: var(--good);
+  border-color: var(--lime);
+  box-shadow: var(--glow-lime);
 }
 
 .stage--lost {
-  border-color: rgba(255, 92, 92, 0.55);
+  border-color: rgba(255, 111, 94, 0.55);
 }
 
 .stage__media {
@@ -1246,9 +1323,12 @@
   flex-wrap: wrap;
 }
 
+/* The prompt is the one thing in the room you are actually racing, so it is
+   the one piece of text that is lit. */
 .prompt__text {
   font-size: clamp(22px, 4.4vw, 46px);
   text-transform: uppercase;
+  text-shadow: 0 0 30px rgba(244, 246, 237, 0.2);
   animation: slam 240ms var(--ease-out);
 }
 
@@ -1302,6 +1382,7 @@
   color: var(--lime);
   border-color: rgba(217, 246, 90, 0.4);
   background: var(--lime-soft);
+  box-shadow: var(--glow-lime-soft);
 }
 
 .arena__stages {
@@ -1330,7 +1411,8 @@
 
 .timer__fill {
   height: 100%;
-  background: var(--text);
+  background: var(--lime);
+  box-shadow: var(--glow-lime-soft);
   transform-origin: left center;
   will-change: transform;
 }
@@ -1377,7 +1459,15 @@
 
 .meter__fill {
   height: 100%;
-  transition: width 140ms linear;
+  transition:
+    width 140ms linear,
+    box-shadow 200ms var(--ease-out);
+}
+
+/* The meter only lights up once it has actually found the answer, which is the
+   moment worth looking at. */
+.meter__fill.is-hit {
+  box-shadow: var(--glow-lime);
 }
 
 .meter__label {
@@ -1466,15 +1556,16 @@
 }
 
 .lockin--hot {
-  background: var(--text);
-  border-color: var(--text);
-  color: var(--ink-0);
+  background: var(--lime);
+  border-color: var(--lime);
+  color: var(--on-lime);
   font-weight: 800;
+  box-shadow: var(--glow-lime);
 }
 
 .lockin--hot:hover:not(:disabled) {
-  background: #fff;
-  border-color: #fff;
+  background: var(--lime-bright);
+  border-color: var(--lime-bright);
 }
 
 .vote {
@@ -1482,21 +1573,23 @@
 }
 
 .vote--yes {
-  border-color: rgba(87, 217, 138, 0.5);
+  border-color: rgba(168, 224, 95, 0.5);
   color: var(--good);
 }
 
 .vote--yes:hover:not(:disabled) {
-  background: rgba(87, 217, 138, 0.12);
+  background: rgba(168, 224, 95, 0.12);
+  box-shadow: var(--glow-lime-soft);
 }
 
 .vote--no {
-  border-color: rgba(255, 92, 92, 0.45);
+  border-color: rgba(255, 111, 94, 0.45);
   color: var(--bad);
 }
 
 .vote--no:hover:not(:disabled) {
-  background: rgba(255, 92, 92, 0.1);
+  background: rgba(255, 111, 94, 0.1);
+  box-shadow: var(--glow-bad);
 }
 
 .actions__headline {
@@ -1505,7 +1598,8 @@
 }
 
 .result--win .actions__headline {
-  color: var(--good);
+  color: var(--lime);
+  text-shadow: var(--glow-lime);
 }
 
 .result--loss .actions__headline {
@@ -1684,7 +1778,8 @@
 }
 
 .over__title--win {
-  color: var(--good);
+  color: var(--lime);
+  text-shadow: var(--glow-lime);
 }
 
 .over__sub {

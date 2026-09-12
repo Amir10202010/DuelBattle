@@ -263,8 +263,8 @@ function DetectionMeter({ detection, detector }: { detection: Detection; detecto
       ))}
       <div className="meter__track">
         <div
-          className="meter__fill"
-          style={{ width: `${Math.round(progress * 100)}%`, background: matched ? 'var(--good)' : tint }}
+          className={`meter__fill ${matched ? 'is-hit' : ''}`}
+          style={{ width: `${Math.round(progress * 100)}%`, background: matched ? 'var(--lime)' : tint }}
         />
       </div>
       <span className="meter__label mono">{matched ? 'LOCKED' : `${Math.round(progress * 100)}%`}</span>

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { MoveUpRight, Zap } from 'lucide-react';
 import {
   MAX_NAME_LENGTH,
   ROOM_CODE_LENGTH,
@@ -97,7 +98,11 @@ export function Home({ store, invitedCode, joining, error, offline, profile }: H
     <main className="landing">
       <header className="landing__bar">
         <span className="wordmark">
-          Duel<span className="wordmark__half">Battle</span>
+          <span className="wordmark__mark" aria-hidden="true">
+            <Zap size={21} fill="currentColor" strokeWidth={2.5} />
+          </span>
+          DUEL<span className="wordmark__half">BATTLE</span>
+          <span className="wordmark__beta">BETA</span>
         </span>
         {/* A returning player is greeted by rank rather than by a tagline they
             have already read. */}
@@ -258,26 +263,49 @@ export function Home({ store, invitedCode, joining, error, offline, profile }: H
           </div>
         </div>
 
-        <aside className="hero__demo" aria-hidden="true">
-          <div className="demo">
-            <p className="demo__eyebrow">This could get personal</p>
-            <div className="demo__split">
-              <div className="demo__seat demo__seat--a">
-                <span className="demo__label">The mug person</span>
-              </div>
-              <span className="demo__vs">VS</span>
-              <div className="demo__seat demo__seat--b">
-                <span className="demo__label">The shoe person</span>
-              </div>
+        <aside className="hero__demo">
+          <div className="scene">
+            <div className="scene__topline" aria-hidden="true">
+              <span>This could get personal</span>
+              <span className="mono">01 / 05</span>
             </div>
-            <div className="demo__prompt">
-              <span className="demo__promptlabel">Example challenge</span>
-              <p className="demo__prompttext display">
+
+            <div className="scene__photo">
+              <img
+                src="/friends.jpg"
+                alt="Two people in separate rooms, one holding up a red mug and the other a red trainer."
+                width={1200}
+                height={800}
+                fetchPriority="high"
+              />
+              <span className="scene__vs" aria-hidden="true">
+                VS
+              </span>
+              <span className="scene__player scene__player--one" aria-hidden="true">
+                The mug person
+              </span>
+              <span className="scene__player scene__player--two" aria-hidden="true">
+                The shoe person
+              </span>
+            </div>
+
+            <div className="scene__challenge">
+              <span className="scene__label">
+                <Zap size={13} fill="currentColor" aria-hidden="true" /> Example challenge
+              </span>
+              <span className="scene__prompt display">
                 Show something <span className="hero__mark">red.</span>
-              </p>
+              </span>
+              <MoveUpRight size={28} aria-hidden="true" />
+            </div>
+
+            <div className="scene__caption">
+              <span>One challenge. Two very different answers.</span>
+              <span className="scene__credit">Staged scene</span>
             </div>
           </div>
-          <span className="sticker">
+
+          <span className="sticker" aria-hidden="true">
             Less scroll
             <br />
             more chaos
