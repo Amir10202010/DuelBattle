@@ -1,4 +1,5 @@
 import { isColorKey, type ColorKey } from './vision/color.js';
+import { topicChallenges } from './topics.js';
 import type { DetectorSpec } from './vision/run.js';
 import type { RandomSource } from './ids.js';
 
@@ -231,13 +232,45 @@ export const CHALLENGES: readonly Challenge[] = [
   peer('wild-noise', 'SHOW SOMETHING THAT MAKES A NOISE', 'wildcard', 2, NORMAL, ['wildcard', 'sound'], 'Make it, so they can hear it.'),
 ];
 
+/**
+ * Everything the game can deal: the hand-written catalogue, then the pool.
+ *
+ * The catalogue comes first and stays first. It owns every camera-judged round
+ * in the game, and the picker's rules — a detector in round one, never three
+ * opponent-judged rounds in a row — are what keep those rounds turning up
+ * however large the pool behind them grows.
+ */
+let allChallenges: readonly Challenge[] | null = null;
+
+export function allChallengesPool(): readonly Challenge[] {
+  allChallenges ??= [...CHALLENGES, ...topicChallenges()];
+  return allChallenges;
+}
+
+let byId: ReadonlyMap<string, Challenge> | null = null;
+
+function index(): ReadonlyMap<string, Challenge> {
+  byId ??= new Map(allChallengesPool().map((c) => [c.id, c]));
+  return byId;
+}
+
+/** The hand-written catalogue on its own, for anything that means only those. */
 export const CHALLENGES_BY_ID: ReadonlyMap<string, Challenge> = new Map(
   CHALLENGES.map((c) => [c.id, c]),
 );
 
+/** Resolves any dealt round — catalogue or pool — by id. */
 export function getChallenge(id: string): Challenge | undefined {
-  return CHALLENGES_BY_ID.get(id);
+  return index().get(id);
 }
+
+/** Whether a prompt is already in the game, wherever it came from. */
+export function promptExists(prompt: string): boolean {
+  promptSet ??= new Set(allChallengesPool().map((c) => c.prompt));
+  return promptSet.has(prompt);
+}
+
+let promptSet: Set<string> | null = null;
 
 /**
  * The prompts a photograph can actually settle.
@@ -271,9 +304,17 @@ const AI_VERIFIABLE: ReadonlySet<string> = new Set([
 /** The ids above, for the catalogue's own test. */
 export const AI_VERIFIABLE_IDS: readonly string[] = [...AI_VERIFIABLE];
 
-/** Whether an AI referee may decide this round, when one is available. */
+/**
+ * Whether an AI referee may decide this round, when one is available.
+ *
+ * The catalogue says so by id, one judgement call per prompt, reviewable at a
+ * glance. The pool says so with a tag, because a thousand of them cannot be
+ * reviewed at a glance and the generator has already had to answer the same
+ * question — can somebody looking only at a photograph establish this? — before
+ * a topic was allowed in at all.
+ */
 export function isAiVerifiable(challenge: Challenge): boolean {
-  return AI_VERIFIABLE.has(challenge.id);
+  return AI_VERIFIABLE.has(challenge.id) || challenge.tags.includes('visual');
 }
 
 /**
@@ -329,7 +370,7 @@ export function validateCustomPrompt(
   }
   if (!/[A-Z]/.test(prompt)) return { ok: false, error: 'too-short' };
   if (existing.some((c) => c.prompt === prompt)) return { ok: false, error: 'duplicate' };
-  if (CHALLENGES.some((c) => c.prompt === prompt)) return { ok: false, error: 'duplicate' };
+  if (promptExists(prompt)) return { ok: false, error: 'duplicate' };
 
   return { ok: true, prompt };
 }
@@ -406,10 +447,11 @@ export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): 
 export function samplePrompts(count = 3, random: RandomSource = Math.random): string[] {
   const wanted: ChallengeCategory[] = ['color', 'story', 'action', 'object', 'wildcard'];
   const picked: string[] = [];
+  const pool = allChallengesPool();
 
   for (const category of wanted) {
     if (picked.length >= count) break;
-    const options = CHALLENGES.filter((c) => c.category === category);
+    const options = pool.filter((c) => c.category === category);
     if (options.length === 0) continue;
     const choice = options[Math.min(options.length - 1, Math.floor(random() * options.length))];
     if (choice) picked.push(choice.prompt);

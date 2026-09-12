@@ -18,7 +18,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "node packages/server/dist/index.js"
+    "start": "node packages/server/dist/index.js",
+    "topics:generate": "tsx packages/server/scripts/generate-topics.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

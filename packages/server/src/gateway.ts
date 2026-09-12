@@ -3,6 +3,8 @@ import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   PROTOCOL_VERSION,
+  STARTING_RATING,
+  normalizeAvatar,
   normalizeRoomCode,
   type ClientMessage,
   type ErrorCode,
@@ -11,8 +13,10 @@ import {
 import { clientMessageSchema } from '@battle/shared/validation';
 import type { Room } from './room.js';
 import type { Identities } from './identity.js';
-import type { ProfileStore } from './profiles.js';
+import { publicView, type ProfileStore } from './profiles.js';
 import { profileFor } from './standings.js';
+import { buildBoard, isBoardKind } from './leaderboard.js';
+import { MatchQueue } from './queue.js';
 import { RoomCapacityError, type RoomManager } from './rooms.js';
 import { config } from './config.js';
 import { TokenBuckets, type LimiterOptions } from './limiter.js';
@@ -52,13 +56,19 @@ function drain(bucket: TokenBucket, ratePerSec: number, burst: number, now: numb
   return true;
 }
 
+let nextSessionKey = 1;
+
 interface Session {
+  /** Stable for the life of the socket. Only the queue needs one. */
+  key: string;
   socket: WebSocket;
   ip: string;
   room: Room | null;
   playerId: string | null;
   /** Who this browser is across visits, once `hello` has established it. */
   identity: string | null;
+  /** The name they last asked to play under, for a queued match. */
+  queuedName: string;
   connectedAt: number;
   alive: boolean;
   messages: TokenBucket;
@@ -72,6 +82,8 @@ export class Gateway {
   private readonly sessions = new Set<Session>();
   private readonly perIp = new Map<string, number>();
   private readonly createLimiter: TokenBuckets;
+  private readonly queue = new MatchQueue();
+  private readonly queued = new Map<string, Session>();
   private heartbeat: NodeJS.Timeout | null = null;
 
   constructor(
@@ -133,11 +145,13 @@ export class Gateway {
   private onConnection(socket: WebSocket, ip: string): void {
     const now = Date.now();
     const session: Session = {
+      key: `s${nextSessionKey++}`,
       socket,
       ip,
       room: null,
       playerId: null,
       identity: null,
+      queuedName: '',
       connectedAt: now,
       alive: true,
       messages: { tokens: config.messageRatePerSec, lastRefill: now },
@@ -167,6 +181,7 @@ export class Gateway {
 
   private onClose(session: Session): void {
     if (!this.sessions.delete(session)) return;
+    this.dequeue(session);
     const remaining = (this.perIp.get(session.ip) ?? 1) - 1;
     if (remaining <= 0) this.perIp.delete(session.ip);
     else this.perIp.set(session.ip, remaining);
@@ -249,11 +264,9 @@ export class Gateway {
         if (session.identity && this.profiles) {
           // The front page can greet a returning player by rank rather than
           // waiting for a match to tell them.
-          const card = profileFor(this.profiles, session.identity, '', now);
-          const { rating, matchesPlayed, wins, losses, draws, streak, bestStreak, history } = card;
           send(session.socket, {
             t: 'profile',
-            profile: { rating, matchesPlayed, wins, losses, draws, streak, bestStreak, history },
+            profile: publicView(profileFor(this.profiles, session.identity, '', now), true),
           });
         }
         if (session.room && session.playerId && session.identity) {
@@ -272,6 +285,18 @@ export class Gateway {
         return;
       case 'rejoin':
         this.rejoinRoom(session, message.code, message.token, now);
+        return;
+      case 'findMatch':
+        this.enqueue(session, message.name, now);
+        return;
+      case 'cancelFind':
+        if (this.dequeue(session)) send(session.socket, { t: 'unqueued' });
+        return;
+      case 'setProfile':
+        this.updateProfile(session, message, now);
+        return;
+      case 'leaderboard':
+        this.sendBoard(session, message.board);
         return;
       default:
         break;
@@ -350,6 +375,141 @@ export class Gateway {
     });
     room.attach(outcome.playerId, (msg) => send(session.socket, msg), now);
     if (session.identity) room.identify(outcome.playerId, session.identity, now);
+  }
+
+  // -- Matchmaking ---------------------------------------------------------
+
+  /**
+   * Joins the queue.
+   *
+   * The room budget is spent here rather than when a pair is found, because a
+   * queue entry is a promise of at most one room and this is the moment the
+   * player asked for one. Charging at pairing time would let somebody queue
+   * from twenty tabs for free and then hand the bill to whoever they matched.
+   */
+  private enqueue(session: Session, name: string, now: number): void {
+    if (!this.createLimiter.take(session.ip, now)) {
+      this.fail(session, 'rate-limited', 'That is a lot of matches. Give it a moment.');
+      return;
+    }
+    // Looking for a new match means leaving whatever room you were in: a seat
+    // held in one room while queueing for another is how a ghost is made.
+    this.leaveCurrentRoom(session, now);
+
+    session.queuedName = name;
+    const rating = session.identity && this.profiles
+      ? profileFor(this.profiles, session.identity, name, now).rating
+      : STARTING_RATING;
+
+    this.queue.add({ key: session.key, identity: session.identity, rating, joinedAt: now });
+    this.queued.set(session.key, session);
+    this.announceQueue();
+  }
+
+  private dequeue(session: Session): boolean {
+    this.queued.delete(session.key);
+    const was = this.queue.remove(session.key);
+    if (was) this.announceQueue();
+    return was;
+  }
+
+  /** Everybody waiting is told where they are, whenever the line changes. */
+  private announceQueue(): void {
+    const waiting = this.queue.size;
+    for (const [key, session] of this.queued) {
+      send(session.socket, { t: 'queued', position: this.queue.positionOf(key), waiting });
+    }
+  }
+
+  /**
+   * Pairs whoever can be paired and puts them in a room together.
+   *
+   * Called on the same clock that ticks the matches. A pair that cannot be
+   * seated — the room table is full, or one of them closed their laptop in the
+   * half second it took to get here — puts whoever is left back in the queue
+   * rather than dropping them silently.
+   */
+  matchmake(now: number): void {
+    const pairs = this.queue.pairs(now);
+    if (pairs.length === 0) return;
+
+    for (const [one, two] of pairs) {
+      const first = this.queued.get(one.key);
+      const second = this.queued.get(two.key);
+      this.queued.delete(one.key);
+      this.queued.delete(two.key);
+
+      const live = [first, second].filter(
+        (s): s is Session => Boolean(s) && s!.socket.readyState === s!.socket.OPEN,
+      );
+      if (live.length < 2) {
+        // One of them is gone. Put the other back where they were, at the front.
+        const survivor = live[0];
+        const entry = survivor === first ? one : two;
+        if (survivor) {
+          this.queue.add({ ...entry, joinedAt: entry.joinedAt });
+          this.queued.set(survivor.key, survivor);
+        }
+        continue;
+      }
+
+      let room: Room;
+      try {
+        room = this.rooms.create(now);
+      } catch (err) {
+        if (!(err instanceof RoomCapacityError)) throw err;
+        for (const session of live) {
+          this.fail(session, 'server-error', 'The server is at capacity. Try again shortly.');
+          send(session.socket, { t: 'unqueued' });
+        }
+        continue;
+      }
+
+      for (const session of live) {
+        this.seat(session, room, room.join(session.queuedName || 'Player', now), now);
+      }
+    }
+
+    this.announceQueue();
+  }
+
+  // -- Identity ------------------------------------------------------------
+
+  /**
+   * The name and avatar this browser plays under.
+   *
+   * Stored against the identity rather than in the browser, so the name follows
+   * a player onto the leaderboard and back after they clear their cache — which
+   * is the whole of what an account would have bought them here.
+   */
+  private updateProfile(
+    session: Session,
+    message: Extract<ClientMessage, { t: 'setProfile' }>,
+    now: number,
+  ): void {
+    if (!session.identity || !this.profiles) return;
+    const current = profileFor(this.profiles, session.identity, '', now);
+    const updated = {
+      ...current,
+      ...(message.name ? { name: message.name } : {}),
+      ...(message.avatar ? { avatar: normalizeAvatar(message.avatar) } : {}),
+      lastSeenAt: now,
+    };
+    this.profiles.save(updated);
+    send(session.socket, { t: 'profile', profile: publicView(updated, true) });
+  }
+
+  private sendBoard(session: Session, board: string): void {
+    if (!this.profiles) return;
+    const kind = isBoardKind(board) ? board : 'rating';
+    const built = buildBoard(this.profiles, kind, session.identity);
+    send(session.socket, {
+      t: 'leaderboard',
+      board: built.kind,
+      entries: built.entries,
+      total: built.total,
+      you: built.you,
+    });
   }
 
   private leaveCurrentRoom(session: Session, now: number): void {

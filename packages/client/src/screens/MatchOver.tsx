@@ -1,6 +1,10 @@
 import {
+  getAchievement,
   getChallenge,
+  levelFor,
   opponentOf,
+  rankFor,
+  type MatchRewards,
   type PublicMatchState,
   type PublicProfile,
   type RatingDelta,
@@ -9,6 +13,7 @@ import {
 import { ProfileCard, RatingLine } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import { SeriesLine } from '../components/Series.jsx';
+import { LevelBar } from '../components/Identity.jsx';
 
 interface MatchOverProps {
   store: MatchStore;
@@ -18,7 +23,11 @@ interface MatchOverProps {
   evidence: Record<string, string>;
   standings: Record<string, PublicProfile>;
   lastRatings: Record<string, RatingDelta> | null;
+  /** What this match paid you. Null when nothing was recorded. */
+  rewards: MatchRewards | null;
   onLeave: () => void;
+  /** Back out to the queue rather than to a dead room. */
+  onFindAnother: () => void;
 }
 
 /**
@@ -68,7 +77,9 @@ export function MatchOver({
   evidence,
   standings,
   lastRatings,
+  rewards,
   onLeave,
+  onFindAnother,
 }: MatchOverProps) {
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
@@ -121,6 +132,8 @@ export function MatchOver({
         })}
       </div>
 
+      <Payout rewards={rewards} profile={standings[youId]} />
+
       <Filmstrip match={match} youId={youId} evidence={evidence} />
 
       <ProfileCard profile={standings[youId]} />
@@ -156,14 +169,24 @@ export function MatchOver({
         </ol>
       )}
 
+      {/* Nobody should reach the end of a match and have to work out what to do
+          next. If the opponent is still here the obvious thing is another one;
+          if they are not, it is somebody else — and that is now a button rather
+          than an instruction to go and find the front page. */}
       <div className="over__actions">
-        <button
-          className="btn btn--primary btn--lg"
-          onClick={() => store.rematch()}
-          disabled={you?.rematchVote || !opponent?.connected}
-        >
-          {you?.rematchVote ? 'Waiting for them…' : 'Rematch'}
-        </button>
+        {opponent?.connected ? (
+          <button
+            className="btn btn--primary btn--lg"
+            onClick={() => store.rematch()}
+            disabled={you?.rematchVote}
+          >
+            {you?.rematchVote ? 'Waiting for them…' : 'Play again'}
+          </button>
+        ) : (
+          <button className="btn btn--primary btn--lg" onClick={onFindAnother}>
+            Find another opponent
+          </button>
+        )}
         <button className="btn btn--lg" onClick={onLeave}>
           Leave
         </button>
@@ -176,10 +199,69 @@ export function MatchOver({
       )}
       {!opponent?.connected && (
         <p className="over__nudge dim" role="status">
-          Your opponent has left. Share the room code to play someone else.
+          Your opponent has left. The room stays open if they come back.
         </p>
       )}
     </main>
+  );
+}
+
+/**
+ * What the match was worth, beyond the score.
+ *
+ * The rating is on the scoreline above, where it belongs, and it can go down.
+ * This is the other half: XP always goes up, a level is a thing you cannot lose,
+ * and an award is a sentence about something you actually did. A losing player
+ * should still have something true to read here, which is why it renders on a
+ * loss exactly as it does on a win.
+ */
+function Payout({
+  rewards,
+  profile,
+}: {
+  rewards: MatchRewards | null;
+  profile: PublicProfile | undefined;
+}) {
+  if (!rewards || !profile) return null;
+  const levelled = rewards.levelAfter > rewards.levelBefore;
+  const unlocked = rewards.unlocked
+    .map((id) => getAchievement(id))
+    .filter((a): a is NonNullable<typeof a> => Boolean(a));
+
+  return (
+    <section className="payout" aria-label="What this match was worth">
+      <div className="payout__head">
+        <span className="payout__xp display">+{rewards.xp}</span>
+        <span className="payout__label">XP</span>
+        {levelled && <span className="payout__level">Level {rewards.levelAfter}</span>}
+        {rewards.rankMove && (
+          <span className={`payout__rank is-${rewards.rankMove}`}>
+            {rewards.rankMove === 'promoted' ? 'Promoted to' : 'Dropped to'}{' '}
+            {rankFor(profile.rating).label}
+          </span>
+        )}
+      </div>
+
+      <LevelBar xp={profile.xp} />
+
+      {unlocked.length > 0 && (
+        <ul className="payout__awards">
+          {unlocked.map((award) => (
+            <li key={award.id} className={`payout__award payout__award--${award.rarity}`}>
+              <span className="payout__awardname">{award.name}</span>
+              <span className="payout__awardwhat">{award.description}</span>
+              <span className="payout__awardxp mono">+{award.xp}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="payout__foot dim">
+        {levelled
+          ? `Level ${rewards.levelBefore} to ${rewards.levelAfter}. ${levelFor(profile.xp).cost - levelFor(profile.xp).into} XP to the next.`
+          : `${levelFor(profile.xp).cost - levelFor(profile.xp).into} XP to level ${levelFor(profile.xp).level + 1}.`}
+      </p>
+    </section>
   );
 }
 

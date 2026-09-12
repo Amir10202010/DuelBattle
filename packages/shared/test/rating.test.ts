@@ -100,8 +100,12 @@ describe('nextRating', () => {
 });
 
 describe('tiers', () => {
-  it('starts everybody in the first tier', () => {
-    expect(tierFor(STARTING_RATING).name).toBe(TIERS[1]!.name);
+  it('starts everybody with room to fall as well as room to climb', () => {
+    // Deliberate: a new player lands partway up rather than one step off the
+    // bottom. A ladder whose only direction is up is a progress bar.
+    const start = TIERS.indexOf(tierFor(STARTING_RATING));
+    expect(start).toBeGreaterThan(0);
+    expect(start).toBeLessThan(TIERS.length - 1);
     expect(tierFor(0).name).toBe(TIERS[0]!.name);
   });
 

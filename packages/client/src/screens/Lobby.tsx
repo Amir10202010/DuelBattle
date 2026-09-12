@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { Check, Copy, Share2 } from 'lucide-react';
 import {
   MATCH_LENGTHS,
   opponentOf,
-  samplePrompts,
   type PublicMatchState,
   type PublicProfile,
 } from '@battle/shared';
@@ -22,24 +22,40 @@ interface LobbyProps {
   standings: Record<string, PublicProfile>;
 }
 
+/**
+ * The room before the match.
+ *
+ * One question at a time, in the order they actually arise: is somebody here,
+ * how long are we playing, are you ready. Everything that is not one of those
+ * three is below them or gone.
+ *
+ * What went: a panel of three sampled prompts that never changed after the page
+ * loaded and told a waiting player nothing they could act on, and a bare camera
+ * dropdown wedged between two buttons — a setting, and now on the settings
+ * page, where somebody can work out which of three webcams is the right one
+ * without an opponent watching them do it.
+ *
+ * What arrived: the room code stays reachable after the opponent turns up,
+ * because the moment you most need to send the link again is the moment they
+ * have dropped out of it.
+ */
 export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
   const yourSeat = you?.seat ?? 0;
   const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
+  const bothReady = Boolean(you?.ready && opponent?.ready);
 
   const headline = !opponent
     ? 'Every rivalry starts here.'
-    : you?.ready && opponent.ready
+    : bothReady
       ? 'Here we go.'
       : `${opponent.name} is in the room.`;
 
   return (
     <div className="lobby">
       <header className="lobby__head">
-        <p className="eyebrow">
-          Private arena · best of {match.settings.winTarget * 2 - 1}
-        </p>
+        <p className="eyebrow">Private room · best of {match.settings.winTarget * 2 - 1}</p>
         <h1 className="lobby__title display">{headline}</h1>
         {opponent && (
           <div className="lobby__standings">
@@ -74,27 +90,20 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
       </div>
 
       <SeriesLine match={match} youId={youId} className="lobby__series" />
-      <Taster />
-      <Deck store={store} match={match} youId={youId} />
 
       <div className="lobby__controls">
         <MatchLength store={store} match={match} />
         <ReadyBar store={store} match={match} youId={youId} hasOpponent={Boolean(opponent)} />
-        {camera.devices.length > 1 && (
-          <select
-            className="lobby__camera-select"
-            aria-label="Camera"
-            value={camera.deviceId ?? ''}
-            onChange={(e) => camera.selectDevice(e.target.value)}
-          >
-            {camera.devices.map((device) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
+
+      <details className="lobby__extras">
+        <summary>Write your own rounds</summary>
+        <Deck store={store} match={match} youId={youId} />
+      </details>
+
+      {/* Always reachable, never in the way. The one time a room code matters
+          after somebody has joined is when they have just dropped out. */}
+      {opponent && <ShareLine code={match.roomCode} />}
     </div>
   );
 }
@@ -122,21 +131,6 @@ function MatchLength({ store, match }: { store: MatchStore; match: PublicMatchSt
   );
 }
 
-/** What the game is about to ask, so nobody readies up blind. */
-function Taster() {
-  const prompts = useMemo(() => samplePrompts(3), []);
-  return (
-    <div className="taster">
-      <span className="eyebrow taster__label">Rounds look like</span>
-      <ul className="taster__list">
-        {prompts.map((prompt) => (
-          <li key={prompt}>{prompt}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function ReadyBar({
   store,
   match,
@@ -156,7 +150,7 @@ function ReadyBar({
     return (
       <div className="readybar readybar--waiting">
         <span className="readybar__hint">
-          Share the code. The match starts the moment you are both ready.
+          Send the link. The match starts the moment you are both ready.
         </span>
       </div>
     );
@@ -181,24 +175,29 @@ function ReadyBar({
   );
 }
 
-function InvitePanel({ code, seat }: { code: string; seat: 0 | 1 }) {
+/** Copying, without a second component that does the same thing differently. */
+function useCopier(): [('link' | 'code') | null, (text: string, kind: 'link' | 'code') => void] {
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
-  const url = roomUrl(code);
-
-  const copy = useCallback(async (text: string, kind: 'link' | 'code') => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(kind);
-      window.setTimeout(() => setCopied(null), 1_800);
-    } catch {
+  const copy = useCallback((text: string, kind: 'link' | 'code') => {
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(kind);
+        window.setTimeout(() => setCopied(null), 1_800);
+      })
       // Clipboard access can be refused; the code is on screen to be read out.
-      setCopied(null);
-    }
+      .catch(() => setCopied(null));
   }, []);
+  return [copied, copy];
+}
+
+function InvitePanel({ code, seat }: { code: string; seat: 0 | 1 }) {
+  const [copied, copy] = useCopier();
+  const url = roomUrl(code);
 
   const share = useCallback(async () => {
     if (!navigator.share) {
-      void copy(url, 'link');
+      copy(url, 'link');
       return;
     }
     try {
@@ -211,7 +210,7 @@ function InvitePanel({ code, seat }: { code: string; seat: 0 | 1 }) {
   return (
     <section className={`invite invite--seat${seat}`}>
       <p className="eyebrow">Waiting for an opponent</p>
-      <button className="invite__code" onClick={() => void copy(code, 'code')} title="Copy code">
+      <button className="invite__code" onClick={() => copy(code, 'code')} title="Copy code">
         {code.split('').map((char, i) => (
           <span key={i}>{char}</span>
         ))}
@@ -230,5 +229,29 @@ function InvitePanel({ code, seat }: { code: string; seat: 0 | 1 }) {
         <i />
       </div>
     </section>
+  );
+}
+
+function ShareLine({ code }: { code: string }) {
+  const [copied, copy] = useCopier();
+  return (
+    <p className="shareline">
+      <span className="shareline__label">Room</span>
+      <span className="shareline__code mono">{code}</span>
+      <button className="shareline__btn" onClick={() => copy(roomUrl(code), 'link')}>
+        {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+        {copied ? 'Link copied' : 'Copy link'}
+      </button>
+      {typeof navigator !== 'undefined' && 'share' in navigator && (
+        <button
+          className="shareline__btn"
+          onClick={() =>
+            void navigator.share?.({ title: 'Battle', url: roomUrl(code) }).catch(() => {})
+          }
+        >
+          <Share2 size={13} aria-hidden="true" /> Share
+        </button>
+      )}
+    </p>
   );
 }

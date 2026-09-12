@@ -7,6 +7,24 @@ answer takes the round.
 
 Your room is the game.
 
+## Getting into a game
+
+There are two ways in, and only one of them needs a friend:
+
+- **Quick match.** Press play, and the server pairs you with whoever else is
+  waiting. It starts by looking for somebody within 120 rating points of you and
+  opens that window as you wait, so a close match is worth a few seconds and a
+  quiet evening still ends in a game rather than a spinner. Two tabs of the same
+  browser are never paired with each other.
+- **A private room.** Open one and send the link. Nobody without the code can
+  get in, which is the whole of the access control and always has been.
+
+Everything else lives around the match: a leaderboard built from the same rows
+the game writes, a profile with your record and your awards, the ladder
+explained in one page, and a settings page holding the three things there are to
+set. None of it is reachable from inside a match — a match has one exit and it
+is called Leave.
+
 ## Running it
 
 ```bash
@@ -43,18 +61,26 @@ combination that cannot actually be decided:
   your mum gave you" is scored, because no camera can decide it. It is a
   product choice, not a placeholder for a model that is missing.
 
-- **`ai`** — an AI referee looks at both photographs. Only twelve prompts are
-  marked for it, and only when one is configured; see below.
+- **`ai`** — an AI referee looks at both photographs, for the prompts a
+  photograph can actually settle, and only when one is configured; see below.
 
 #### The AI referee
 
-Set `GEMINI_API_KEYS` and twelve of the thirty-eight opponent-judged prompts are
-decided by a model instead — the ones a photograph can actually settle. "Show
-something with a face" can be looked at. A price, a weight, a smell, whose
-handwriting that is, whether your mother gave it to you, or anything that needs
-sound cannot, so those stay with the opponent. Prompts players write themselves
-stay there too: they are untrusted strings, and the one place they must never
-end up is inside the referee's instructions.
+Set `GEMINI_API_KEYS` and some of the opponent-judged prompts are decided by a
+model instead — the ones a photograph can actually settle. "Show something with
+a face" can be looked at. A price, a weight, a smell, whose handwriting that is,
+whether your mother gave it to you, or anything that needs sound cannot, so
+those stay with the opponent.
+
+The hand-written catalogue says which twelve of its prompts qualify by id, one
+judgement call each, reviewable at a glance. The topic pool says so with a tag,
+because a thousand of them cannot be reviewed at a glance and the generator has
+already had to answer the same question — can somebody looking only at a
+photograph establish this? — before a topic was allowed in at all.
+
+Prompts players write themselves always stay with the opponent: they are
+untrusted strings, and the one place they must never end up is inside the
+referee's instructions.
 
 What keeps a model honest here is what it is not allowed to do:
 
@@ -108,7 +134,7 @@ left, which is all it is for. Without that, a rejected answer came back to life
 on an abstention, and a verified one could be voted away by whoever was about
 to lose to it.
 
-## Rating
+## Rating, ranks and XP
 
 Win a match and a number moves. It is ordinary Elo: everybody starts at 1000,
 the exchange is zero-sum, beating somebody far below you is worth almost
@@ -116,8 +142,38 @@ nothing, and an upset pays. K is large while the rating is still finding you
 and small at the top, so placement takes an evening rather than a month. Five
 matches in, the number stops being labelled a guess and starts being a rank.
 
+The ladder is eight tiers — Still Looking, Rummager, Quick Hands, Room Reader,
+Clean Sweep, Sleight of Hand, Untouchable, Household Name — each cut into three
+divisions, so there is always a rung close enough to aim at. A new player lands
+on the third tier rather than the first, because the only direction a ladder can
+go from the bottom is up, and one you cannot fall down is a progress bar in a
+costume. Promotion and demotion are the same rule read both ways: the rung you
+stand on is the rung your rating clears. There is no hidden shield and no grace
+match; what the game owes you instead is the drop line on your profile *before*
+you play, not after.
+
+Alongside it, **XP**, which only ever goes up. A rating has to be able to fall
+to mean anything, which leaves somebody who has just lost three in a row looking
+at a screen that says only that. XP answers a different question — was that
+evening worth anything — and the answer is always yes: it pays for turning up,
+for each round taken, for each answer that counted, and for the awards those
+add up to. It feeds a level and nothing else. It is deliberately not a currency
+and deliberately not an input to matchmaking, because an award for turning up
+must never become a way to buy rank.
+
+**Awards** are the same idea at a larger grain: twenty-eight of them, each one
+something that happens to you in a match rather than a chore with a badge on it
+— a round won in under three seconds, a match taken from two rounds down, a
+round won under each of the three referees. They are decided by a pure function
+of a settled record and one match summary, which is why the same list draws the
+locked ones with a progress bar on the client and awards the unlocked ones on
+the server. There is exactly one list.
+
 **There is still no account.** The server issues the browser a signed token and
-that is the whole of it — no email, no password, nothing to remember. The
+that is the whole of it — no email, no password, nothing to remember. A name and
+a mark are stored against it, because a leaderboard of anonymous numbers is not
+a leaderboard, and neither is an upload field on a game with no moderation: the
+mark is one of six shapes in one of eight colours. The
 signature is the point: without one, "I am player X" is a claim anybody can
 type, and a rating you can take off somebody by guessing their id is not a
 rating. The token unlocks nothing else, because there is nothing else; a row is
@@ -134,6 +190,50 @@ stated where it is implemented: one process, comfortable into the low thousands
 of players. `ProfileStore` is the seam a database goes behind on the day that
 matters. Set `DATA_DIR` to nothing and the game plays exactly as it did before
 any of this — matches simply stop counting afterwards.
+
+## Prompts
+
+Fifty-six of them are written by hand and live in `packages/shared/src/challenges.ts`.
+Every camera-judged round in the game is one of those, tied to a detector, and
+no amount of generated English produces one of them.
+
+The other thousand are the **topic pool** in `packages/shared/src/topics/pool.ts`
+— the rounds a person decides. They exist because two people who play all
+evening should not be handed the same prompt twice, and fifty-six does not
+survive an evening.
+
+They are generated, curated and validated *before* they are shipped, not while
+somebody is playing:
+
+```
+Gemini → curation → validation → pool file → game
+```
+
+The arrow that matters is the last one: at play time the game reads a file.
+Nothing in a match, a lobby or a page load reaches a model for a prompt — that
+would be a network round trip and an API bill in the middle of a race decided in
+three seconds. `npm run topics:generate` is the only thing that calls Gemini,
+it is run by an operator, and with no `GEMINI_API_KEYS` it says what it would
+have done and changes nothing. The pool in the repository is the game's actual
+content; a machine with no keys still builds it and plays it.
+
+Everything a model returns is a proposal. `validateTopic` refuses anything too
+long to render, anything that is not an instruction, anything the game already
+asks, and anything that would have a player hold up a bank card, produce another
+person on camera, or set something on fire — those are the three a prompt
+generator reaches for unprompted. What survives goes in the file; what does not
+is counted and reported, because a generator whose rejection rate nobody looks
+at is a generator quietly getting worse. Ids are derived from the prompt rather
+than from position, so a regenerated pool keeps the ids of every topic that
+survived it — a room's recent-prompt memory and a match history both refer to
+rounds by id.
+
+A thousand extra opponent-judged prompts do **not** change the shape of a match.
+The picker already guarantees a camera-judged opener and refuses three
+opponent-judged rounds in a row, so the ratio of referees is set by those rules
+rather than by how many prompts sit behind each one. A pool twenty times the
+size buys variety, not a different game, and `packages/shared/test/topics.test.ts`
+holds that line.
 
 ### What the room remembers
 
@@ -216,10 +316,26 @@ player for their lighting.
 
 ```
 packages/
-  shared/   pure game logic: challenge catalogue, match engine, detectors, protocol
-  server/   authoritative rooms over WebSocket, plus static hosting in production
-  client/   React app: camera pipeline, realtime store, the match UI
+  shared/   pure game logic: challenges, topic pool, match engine, detectors,
+            ratings, ranks, XP, awards, protocol
+  server/   authoritative rooms over WebSocket, the matchmaking queue, the
+            leaderboard, ratings storage, plus static hosting in production
+  client/   React app: camera pipeline, realtime store, the match UI, and the
+            pages around it
 ```
+
+The client has two halves and they look it. `screens/` is a match — olive-dark,
+full-bleed, no navigation, because the brightest thing on screen has to be the
+camera feed. `pages/` is everything else — paper-light, one column, a nav bar —
+because out there is no camera and the page can be a printed thing. The palette
+is re-pointed once, on the shell, rather than overridden control by control, so
+every button and field that works inside the game works outside it without
+knowing anything about it.
+
+Routing is eight paths and a regex. What a router would add is nested layouts,
+loaders and a matching algorithm, none of which this has a use for; what it
+costs is a dependency in the bundle of a game trying to load before somebody's
+friend gets bored.
 
 `shared` has no runtime dependencies beyond zod, no DOM and no Node APIs, so the
 match engine and the detectors run identically in a browser, on the server and
@@ -242,6 +358,7 @@ whole lifecycle is testable without a network.
 | `npm run lint` | ESLint |
 | `npm run build` | Builds all three packages |
 | `npm start` | Runs the built server, serving the built client |
+| `npm run topics:generate` | Rebuilds the topic pool. Needs `GEMINI_API_KEYS`; says so and changes nothing without them. `--dry` reports, `--target N` sets the size |
 
 ## Configuration
 
@@ -255,6 +372,11 @@ matter in production:
 | `ALLOWED_ORIGINS` | *(empty)* | Comma-separated. Empty means same-origin only, which is what a single-service deployment wants. |
 | `TRUST_PROXY` | `0` | Set to `1` only behind a proxy you control, so `X-Forwarded-For` can be trusted for per-IP limits. |
 | `LOG_LEVEL` | `info` | |
+
+Opening a room and joining the quick-match queue share one per-IP budget, since
+a queue entry is a promise of at most one room. It is charged when somebody
+joins the queue rather than when a pair is found, so nobody can queue from
+twenty tabs for free and hand the bill to whoever they match.
 
 `MAX_ROOMS`, `MESSAGE_RATE_PER_SEC`, `IMAGE_RATE_PER_SEC`,
 `MAX_CONNECTIONS_PER_IP`, `ROOM_CREATE_BURST`, `ROOM_CREATE_PER_MIN`,

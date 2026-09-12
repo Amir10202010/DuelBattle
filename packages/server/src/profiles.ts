@@ -1,6 +1,12 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { STARTING_RATING, type MatchRecord, type PublicProfile } from '@battle/shared';
+import {
+  STARTING_RATING,
+  avatarFor,
+  normalizeAvatar,
+  type MatchRecord,
+  type PublicProfile,
+} from '@battle/shared';
 import { log } from './log.js';
 
 export type { MatchRecord };
@@ -19,29 +25,88 @@ export interface PlayerProfile extends Required<PublicProfile> {
   history: MatchRecord[];
 }
 
-/** How much of a player's past is worth keeping on the card. */
-export const HISTORY_KEPT = 10;
+/**
+ * How much of a player's past is worth keeping.
+ *
+ * Enough to fill a profile page and to show a shape — a bad week, a run of
+ * upsets — without the file growing without limit. Twenty-five rows is about
+ * four kilobytes per player at the top end, which is nothing next to the
+ * rating it sits beside.
+ */
+export const HISTORY_KEPT = 25;
 
 export function blankProfile(id: string, now: number): PlayerProfile {
   return {
     id,
     name: '',
+    avatar: avatarFor(id),
     rating: STARTING_RATING,
+    peakRating: STARTING_RATING,
     matchesPlayed: 0,
     wins: 0,
     losses: 0,
     draws: 0,
     streak: 0,
     bestStreak: 0,
+    xp: 0,
+    achievements: [],
     createdAt: now,
     lastSeenAt: now,
     history: [],
   };
 }
 
+/**
+ * Fills in a row written before a field existed.
+ *
+ * The store is one JSON file that outlives deploys, so every read has to cope
+ * with a row from an older build. Defaulting on read rather than migrating the
+ * file keeps the rule in one place and means a rollback does not strand
+ * anybody's rating behind a schema they no longer have.
+ */
+export function hydrate(row: Partial<PlayerProfile> & { id: string }, now: number): PlayerProfile {
+  const blank = blankProfile(row.id, now);
+  return {
+    ...blank,
+    ...row,
+    avatar: normalizeAvatar(row.avatar ?? blank.avatar),
+    peakRating: Math.max(row.peakRating ?? 0, row.rating ?? blank.rating),
+    xp: Math.max(0, Math.floor(row.xp ?? 0)),
+    achievements: Array.isArray(row.achievements) ? row.achievements.filter((a) => typeof a === 'string') : [],
+    history: Array.isArray(row.history) ? row.history : [],
+  };
+}
+
+/** Everything a client may be told about a row, with nothing private in it. */
+export function publicView(profile: PlayerProfile, own: boolean): PublicProfile {
+  const { name, avatar, rating, peakRating, matchesPlayed, wins, losses, draws, streak, bestStreak, xp, achievements } = profile;
+  return {
+    name,
+    avatar,
+    rating,
+    peakRating,
+    matchesPlayed,
+    wins,
+    losses,
+    draws,
+    streak,
+    bestStreak,
+    xp,
+    achievements,
+    ...(own ? { history: profile.history } : {}),
+  };
+}
+
 export interface ProfileStore {
   get(id: string): PlayerProfile | undefined;
   save(profile: PlayerProfile): void;
+  /**
+   * Every row, for the leaderboard.
+   *
+   * A copy rather than the live map: a board is a snapshot of a moment, and
+   * handing out the store's own collection would let a caller reorder it.
+   */
+  all(): PlayerProfile[];
   /** Flushes anything pending. Safe to call more than once. */
   close(): void;
   readonly size: number;
@@ -58,6 +123,10 @@ export class MemoryProfileStore implements ProfileStore {
 
   save(profile: PlayerProfile): void {
     this.rows.set(profile.id, profile);
+  }
+
+  all(): PlayerProfile[] {
+    return [...this.rows.values()];
   }
 
   close(): void {}
@@ -108,6 +177,10 @@ export class FileProfileStore implements ProfileStore {
     this.flushTimer.unref?.();
   }
 
+  all(): PlayerProfile[] {
+    return [...this.rows.values()];
+  }
+
   close(): void {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
@@ -131,9 +204,9 @@ export class FileProfileStore implements ProfileStore {
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) throw new Error('expected an array of profiles');
       for (const row of parsed) {
-        const profile = row as PlayerProfile;
+        const profile = row as Partial<PlayerProfile> & { id?: unknown };
         if (typeof profile?.id === 'string' && typeof profile.rating === 'number') {
-          this.rows.set(profile.id, profile);
+          this.rows.set(profile.id, hydrate(profile as Partial<PlayerProfile> & { id: string }, Date.now()));
         }
       }
       log.info('profiles loaded', { count: this.rows.size });

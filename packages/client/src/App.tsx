@@ -2,10 +2,17 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { MatchStore } from './net/store.js';
 import { useCamera } from './media/useCamera.js';
 import { sound } from './media/sound.js';
-import { roomPath, useRoute } from './hooks/useRoute.js';
+import { pagePath, roomPath, useRoute } from './hooks/useRoute.js';
 import { useDocumentTitle } from './hooks/useDocumentTitle.js';
 import { Toasts } from './components/Hud.jsx';
-import { Home } from './screens/Home.jsx';
+import { Nav } from './components/Nav.jsx';
+import { Home } from './pages/Home.jsx';
+import { Play } from './pages/Play.jsx';
+import { Leaderboard } from './pages/Leaderboard.jsx';
+import { Profile } from './pages/Profile.jsx';
+import { Ranks } from './pages/Ranks.jsx';
+import { Awards } from './pages/Awards.jsx';
+import { Settings } from './pages/Settings.jsx';
 import { Room } from './screens/Room.jsx';
 
 export function App() {
@@ -54,9 +61,9 @@ export function App() {
   // Once seated, the address bar shows the shareable room link.
   //
   // It deliberately only ever moves *into* a room. Clearing the URL whenever the
-  // app is on the home screen would wipe /r/CODE on the very first render of a
-  // freshly opened invite link, before the session has had a chance to resume.
-  // Leaving a room navigates explicitly instead.
+  // app is on a page would wipe /r/CODE on the very first render of a freshly
+  // opened invite link, before the session has had a chance to resume. Leaving a
+  // room navigates explicitly instead.
   useEffect(() => {
     if (snapshot.roomCode && snapshot.screen === 'room') route.go(roomPath(snapshot.roomCode));
   }, [snapshot.roomCode, snapshot.screen, route]);
@@ -67,19 +74,49 @@ export function App() {
     if (camera.status === 'ready' || camera.status === 'requesting') camera.stop();
   }, [snapshot.screen, camera]);
 
+  // The front page shows the top of the board. Asked for once, when the socket
+  // comes up, rather than on every visit to the page.
+  const askedForBoard = useRef(false);
+  useEffect(() => {
+    if (snapshot.status !== 'open' || askedForBoard.current) return;
+    askedForBoard.current = true;
+    store.requestBoard('rating');
+  }, [snapshot.status, store]);
+
   const leave = () => {
     store.leave();
     camera.stop();
     resumedFor.current = null;
-    route.go('/');
+    route.go(pagePath('play'));
+  };
+
+  /**
+   * Out of a finished room and straight back into a queue.
+   *
+   * The one thing a player must never hit at the end of a match is a dead end,
+   * and an opponent who has closed their laptop turns the rematch button into
+   * one. This leaves the seat, opens the search, and lands them on the page
+   * that shows it.
+   */
+  const findAnother = () => {
+    const name = snapshot.match?.players[snapshot.you ?? '']?.name ?? '';
+    store.leave();
+    camera.stop();
+    resumedFor.current = null;
+    route.go(pagePath('play'));
+    if (name) store.findMatch(name);
   };
 
   const abandon = () => {
     store.dismissFatal();
     camera.stop();
     resumedFor.current = null;
-    route.go('/');
+    route.go(pagePath('home'));
   };
+
+  const inRoom = snapshot.screen === 'room';
+  // An invite link is a request to join, so it opens the page that can.
+  const page = route.code && !inRoom ? 'play' : route.page;
 
   return (
     <>
@@ -95,7 +132,7 @@ export function App() {
         </div>
       )}
 
-      {snapshot.screen === 'room' && snapshot.match && snapshot.you ? (
+      {inRoom && snapshot.match && snapshot.you ? (
         <Room
           store={store}
           snapshot={snapshot}
@@ -103,23 +140,71 @@ export function App() {
           youId={snapshot.you}
           camera={camera}
           onLeave={leave}
+          onFindAnother={findAnother}
         />
-      ) : snapshot.screen === 'room' ? (
+      ) : inRoom ? (
         <main className="loading" role="status">
           <p className="eyebrow">Entering room {snapshot.roomCode}</p>
         </main>
       ) : (
-        <Home
-          store={store}
-          invitedCode={route.code}
-          joining={snapshot.joining}
-          error={snapshot.joinError}
-          offline={snapshot.status === 'offline'}
-          profile={snapshot.profile}
-        />
+        <div className="shell">
+          <Nav page={page} profile={snapshot.profile} onNavigate={route.go} />
+          {page === 'play' ? (
+            <Play
+              store={store}
+              invitedCode={route.code}
+              joining={snapshot.joining}
+              error={snapshot.joinError}
+              offline={snapshot.status === 'offline'}
+              queue={snapshot.queue}
+              profile={snapshot.profile}
+            />
+          ) : page === 'leaderboard' ? (
+            <Leaderboard
+              store={store}
+              board={snapshot.board}
+              loading={snapshot.boardLoading}
+              profile={snapshot.profile}
+            />
+          ) : page === 'profile' ? (
+            <Profile profile={snapshot.profile} onNavigate={route.go} />
+          ) : page === 'ranks' ? (
+            <Ranks profile={snapshot.profile} />
+          ) : page === 'awards' ? (
+            <Awards profile={snapshot.profile} />
+          ) : page === 'settings' ? (
+            <Settings store={store} profile={snapshot.profile} camera={camera} />
+          ) : (
+            <Home
+              profile={snapshot.profile}
+              board={snapshot.board?.kind === 'rating' ? snapshot.board.entries : []}
+              onNavigate={route.go}
+            />
+          )}
+          <Footer onNavigate={route.go} />
+        </div>
       )}
 
       <Toasts toasts={snapshot.toasts} />
     </>
+  );
+}
+
+/** The one place Settings is linked from on a desktop, plus the honest small print. */
+function Footer({ onNavigate }: { onNavigate: (path: string) => void }) {
+  const go = (path: string) => (event: React.MouseEvent) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+    event.preventDefault();
+    onNavigate(path);
+  };
+  return (
+    <footer className="foot">
+      <span className="foot__note">
+        No account, no database of you. Frames are kept for the round being scored and then dropped.
+      </span>
+      <a className="foot__link" href={pagePath('settings')} onClick={go(pagePath('settings'))}>
+        Settings
+      </a>
+    </footer>
   );
 }

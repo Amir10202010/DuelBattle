@@ -1,7 +1,8 @@
 import type { Challenge, JudgingMode } from './challenges.js';
 import {
-  CHALLENGES,
   MAX_CUSTOM_PER_PLAYER,
+  allChallengesPool,
+  promptExists,
   customChallenge,
   getChallenge,
   isAiVerifiable,
@@ -426,7 +427,7 @@ function addChallenge(
   const prompt = action.prompt;
   if (
     state.customChallenges.some((c) => c.prompt === prompt) ||
-    CHALLENGES.some((c) => c.prompt === prompt)
+    promptExists(prompt)
   ) {
     return { ok: false, error: 'duplicate-prompt' };
   }
@@ -844,11 +845,11 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
 }
 
 /**
- * Everything this room can draw from: the catalogue plus whatever the players
- * wrote, or an explicit pool when one is supplied.
+ * Everything this room can draw from: the catalogue and the topic pool, plus
+ * whatever the players wrote, or an explicit pool when one is supplied.
  */
 function deckFor(state: MatchState, ctx: EngineContext): readonly Challenge[] {
-  const base = ctx.pool ?? CHALLENGES;
+  const base = ctx.pool ?? allChallengesPool();
   if (state.customChallenges.length === 0) return base;
   return [...base, ...state.customChallenges.map((c) => customChallenge(c.id, c.prompt))];
 }

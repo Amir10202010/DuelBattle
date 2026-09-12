@@ -14,6 +14,8 @@ import {
   countsForRating,
   type Challenge,
   type EngineContext,
+  type MatchRewards,
+  type MatchSummary,
   type PublicProfile,
   type RatingDelta,
   type ErrorCode,
@@ -25,7 +27,7 @@ import {
 } from '@battle/shared';
 import { DecodeError, decodeEvidence, verifySubmission } from './verify.js';
 import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
-import type { PlayerProfile, ProfileStore } from './profiles.js';
+import { publicView, type PlayerProfile, type ProfileStore } from './profiles.js';
 import { profileFor, recordMatch } from './standings.js';
 import { log } from './log.js';
 
@@ -140,6 +142,8 @@ export class Room {
   private readonly pool: readonly Challenge[] | undefined;
   /** Set when a match ends, cleared when the next one starts. */
   private lastRatings: Record<PlayerId, RatingDelta> | null = null;
+  /** XP, levels and badges from the match just finished, by seat. */
+  private lastRewards: Record<PlayerId, MatchRewards> | null = null;
 
   constructor(code: string, now: number, options: RoomOptions = {}) {
     this.code = code;
@@ -186,19 +190,16 @@ export class Room {
       if (!seat.send) continue;
       const players: Record<PlayerId, PublicProfile> = {};
       for (const [playerId, card] of cards) {
-        const { rating, matchesPlayed, wins, losses, draws, streak, bestStreak } = card;
-        players[playerId] = {
-          rating,
-          matchesPlayed,
-          wins,
-          losses,
-          draws,
-          streak,
-          bestStreak,
-          ...(playerId === viewerId ? { history: card.history } : {}),
-        };
+        players[playerId] = publicView(card, playerId === viewerId);
       }
-      seat.send({ t: 'standings', players, lastMatch: this.lastRatings });
+      seat.send({
+        t: 'standings',
+        players,
+        lastMatch: this.lastRatings,
+        // Rewards belong to one person. The opponent is told the rating moved;
+        // they are not told what it unlocked.
+        rewards: this.lastRewards?.[viewerId] ?? null,
+      });
     }
   }
 
@@ -211,6 +212,7 @@ export class Room {
   private settleRatings(now: number): void {
     const store = this.profiles;
     this.lastRatings = null;
+    this.lastRewards = null;
     if (!store || !countsForRating(this.state)) return;
 
     const seated = this.state.seats
@@ -234,11 +236,13 @@ export class Room {
         id: a.seat.identity!,
         name: this.state.players[a.playerId]?.name ?? '',
         score: this.state.players[a.playerId]?.score ?? 0,
+        summary: summarise(this.state, a.playerId, b.playerId),
       },
       {
         id: b.seat.identity!,
         name: this.state.players[b.playerId]?.name ?? '',
         score: this.state.players[b.playerId]?.score ?? 0,
+        summary: summarise(this.state, b.playerId, a.playerId),
       },
       now,
     );
@@ -248,6 +252,10 @@ export class Room {
     this.lastRatings = {
       [a.playerId]: updates[a.seat.identity!]!,
       [b.playerId]: updates[b.seat.identity!]!,
+    };
+    this.lastRewards = {
+      [a.playerId]: updates[a.seat.identity!]!.rewards,
+      [b.playerId]: updates[b.seat.identity!]!.rewards,
     };
   }
 
@@ -592,6 +600,7 @@ export class Room {
       // A rematch is a new question; last match's arithmetic stops being the
       // answer to it.
       this.lastRatings = null;
+      this.lastRewards = null;
       this.sendStandings(now);
     }
     if (roundChanged && round) this.pruneEvidenceExcept(round.id);
@@ -758,4 +767,71 @@ export class Room {
     if (now - this.state.createdAt > maxAgeMs) return true;
     return this.emptySince !== null && now - this.emptySince > emptyTtlMs;
   }
+}
+
+/**
+ * What one player's match looked like, for the parts of a record that are not
+ * a score.
+ *
+ * Read off the history the engine already kept rather than tallied as the
+ * match ran: a counter incremented in six places is a counter that will
+ * disagree with the recap eventually, and the recap is the thing players can
+ * actually check.
+ */
+function summarise(
+  state: MatchState,
+  playerId: PlayerId,
+  opponentId: PlayerId,
+): Omit<MatchSummary, 'result' | 'ratingBefore' | 'ratingAfter' | 'opponentRating'> {
+  const wonByJudge = { auto: 0, peer: 0, ai: 0 };
+  const customIds = new Set(state.customChallenges.map((c) => c.id));
+  let fastestWinMs: number | null = null;
+  let closestWinMs: number | null = null;
+  let customRounds = 0;
+  let customWins = 0;
+
+  // A comeback is measured as it happened, round by round, because the final
+  // score cannot tell you whether anybody was ever behind.
+  let mine = 0;
+  let theirs = 0;
+  let wasTwoDown = false;
+
+  for (const outcome of state.history) {
+    if (customIds.has(outcome.challengeId)) customRounds++;
+
+    if (outcome.winnerId === playerId) {
+      mine++;
+      wonByJudge[outcome.judging]++;
+      if (customIds.has(outcome.challengeId)) customWins++;
+
+      const ours = outcome.perPlayer[playerId]?.elapsedMs ?? null;
+      if (ours !== null) {
+        fastestWinMs = fastestWinMs === null ? ours : Math.min(fastestWinMs, ours);
+        const other = outcome.perPlayer[opponentId];
+        if (other?.valid && other.elapsedMs !== null) {
+          const margin = other.elapsedMs - ours;
+          if (margin >= 0) closestWinMs = closestWinMs === null ? margin : Math.min(closestWinMs, margin);
+        }
+      }
+    } else if (outcome.winnerId === opponentId) {
+      theirs++;
+    }
+    if (theirs - mine >= 2) wasTwoDown = true;
+  }
+
+  const player = state.players[playerId];
+  return {
+    yourScore: player?.score ?? 0,
+    theirScore: state.players[opponentId]?.score ?? 0,
+    validAnswers: player?.validAnswers ?? 0,
+    roundsPlayed: state.history.length,
+    fastestWinMs,
+    closestWinMs,
+    wonByJudge,
+    comeback: wasTwoDown,
+    customRounds,
+    customWins,
+    seriesLength: Object.values(state.series).reduce((sum, n) => sum + n, 0),
+    wentTheDistance: state.history.length >= state.settings.maxRounds,
+  };
 }

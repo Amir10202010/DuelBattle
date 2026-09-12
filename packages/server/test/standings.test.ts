@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { STARTING_RATING } from '@battle/shared';
+import { STARTING_RATING, levelFor, matchXp } from '@battle/shared';
 import { Identities } from '../src/identity.js';
 import {
   FileProfileStore,
@@ -10,7 +10,12 @@ import {
   MemoryProfileStore,
   blankProfile,
 } from '../src/profiles.js';
-import { profileFor, recordMatch } from '../src/standings.js';
+import { plainSummary, profileFor, recordMatch } from '../src/standings.js';
+
+/** A contestant with a bare summary: these tests are about ratings, not badges. */
+function who(id: string, name: string, score: number, against = 0) {
+  return { id, name, score, summary: plainSummary({ yourScore: score, theirScore: against }) };
+}
 
 const secret = Buffer.alloc(32, 7);
 const temps: string[] = [];
@@ -76,7 +81,7 @@ describe('recording a match', () => {
 
   it('starts both players at the same rating and moves them opposite ways', () => {
     const store = new MemoryProfileStore();
-    const updates = recordMatch(store, { id: 'a', name: 'Ada', score: 3 }, { id: 'b', name: 'Grace', score: 1 }, at);
+    const updates = recordMatch(store, who('a', 'Ada', 3), who('b', 'Grace', 1), at);
 
     expect(updates.a!.before).toBe(STARTING_RATING);
     expect(updates.a!.change).toBeGreaterThan(0);
@@ -91,12 +96,12 @@ describe('recording a match', () => {
     store.save({ ...blankProfile('a', at), rating: 1400, matchesPlayed: 30 });
     store.save({ ...blankProfile('b', at), rating: 1100, matchesPlayed: 30 });
 
-    const forwards = recordMatch(store, { id: 'a', name: 'A', score: 3 }, { id: 'b', name: 'B', score: 0 }, at);
+    const forwards = recordMatch(store, who('a', 'A', 3), who('b', 'B', 0), at);
 
     const mirror = new MemoryProfileStore();
     mirror.save({ ...blankProfile('a', at), rating: 1400, matchesPlayed: 30 });
     mirror.save({ ...blankProfile('b', at), rating: 1100, matchesPlayed: 30 });
-    const backwards = recordMatch(mirror, { id: 'b', name: 'B', score: 0 }, { id: 'a', name: 'A', score: 3 }, at);
+    const backwards = recordMatch(mirror, who('b', 'B', 0), who('a', 'A', 3), at);
 
     expect(forwards.a!.change).toBe(backwards.a!.change);
     expect(forwards.b!.change).toBe(backwards.b!.change);
@@ -104,7 +109,7 @@ describe('recording a match', () => {
 
   it('counts a draw as a draw for both', () => {
     const store = new MemoryProfileStore();
-    const updates = recordMatch(store, { id: 'a', name: 'A', score: 2 }, { id: 'b', name: 'B', score: 2 }, at);
+    const updates = recordMatch(store, who('a', 'A', 2), who('b', 'B', 2), at);
     expect(store.get('a')!.draws).toBe(1);
     expect(store.get('b')!.draws).toBe(1);
     expect(updates.a!.change).toBe(0);
@@ -113,12 +118,12 @@ describe('recording a match', () => {
   it('keeps a win streak, and a loss ends it', () => {
     const store = new MemoryProfileStore();
     for (let i = 0; i < 3; i++) {
-      recordMatch(store, { id: 'a', name: 'A', score: 3 }, { id: 'b', name: 'B', score: 0 }, at + i);
+      recordMatch(store, who('a', 'A', 3), who('b', 'B', 0), at + i);
     }
     expect(store.get('a')!.streak).toBe(3);
     expect(store.get('a')!.bestStreak).toBe(3);
 
-    recordMatch(store, { id: 'a', name: 'A', score: 0 }, { id: 'b', name: 'B', score: 3 }, at + 10);
+    recordMatch(store, who('a', 'A', 0), who('b', 'B', 3), at + 10);
     expect(store.get('a')!.streak).toBe(0);
     // The best is a record, so it stands.
     expect(store.get('a')!.bestStreak).toBe(3);
@@ -127,7 +132,7 @@ describe('recording a match', () => {
   it('remembers the last few matches and no more', () => {
     const store = new MemoryProfileStore();
     for (let i = 0; i < HISTORY_KEPT + 6; i++) {
-      recordMatch(store, { id: 'a', name: 'A', score: 3 }, { id: 'b', name: 'B', score: i % 3 }, at + i);
+      recordMatch(store, who('a', 'A', 3), who('b', 'B', i % 3), at + i);
     }
     const history = store.get('a')!.history;
     expect(history).toHaveLength(HISTORY_KEPT);
@@ -137,7 +142,7 @@ describe('recording a match', () => {
 
   it('records what the opponent was called at the time', () => {
     const store = new MemoryProfileStore();
-    recordMatch(store, { id: 'a', name: 'Ada', score: 3 }, { id: 'b', name: 'Grace', score: 1 }, at);
+    recordMatch(store, who('a', 'Ada', 3), who('b', 'Grace', 1), at);
     expect(store.get('a')!.history[0]!.opponentName).toBe('Grace');
     expect(store.get('a')!.history[0]!.yourScore).toBe(3);
     expect(store.get('a')!.history[0]!.theirScore).toBe(1);
@@ -145,8 +150,8 @@ describe('recording a match', () => {
 
   it('takes the newest display name without losing the record behind it', () => {
     const store = new MemoryProfileStore();
-    recordMatch(store, { id: 'a', name: 'Ada', score: 3 }, { id: 'b', name: 'B', score: 1 }, at);
-    recordMatch(store, { id: 'a', name: 'Ada L.', score: 3 }, { id: 'b', name: 'B', score: 1 }, at + 1);
+    recordMatch(store, who('a', 'Ada', 3), who('b', 'B', 1), at);
+    recordMatch(store, who('a', 'Ada L.', 3), who('b', 'B', 1), at + 1);
     expect(store.get('a')!.name).toBe('Ada L.');
     expect(store.get('a')!.matchesPlayed).toBe(2);
   });
@@ -166,7 +171,7 @@ describe('profiles that survive a restart', () => {
   it('reads back what it wrote', () => {
     const dir = tempDir();
     const store = new FileProfileStore(dir, 0);
-    recordMatch(store, { id: 'a', name: 'Ada', score: 3 }, { id: 'b', name: 'Grace', score: 1 }, at);
+    recordMatch(store, who('a', 'Ada', 3), who('b', 'Grace', 1), at);
     store.close();
 
     const reopened = new FileProfileStore(dir, 0);
@@ -199,7 +204,7 @@ describe('profiles that survive a restart', () => {
   it('writes through a temp file, so a crash cannot leave half a file', () => {
     const dir = tempDir();
     const store = new FileProfileStore(dir, 0);
-    recordMatch(store, { id: 'a', name: 'A', score: 1 }, { id: 'b', name: 'B', score: 0 }, at);
+    recordMatch(store, who('a', 'A', 1), who('b', 'B', 0), at);
     store.close();
 
     const raw = readFileSync(join(dir, 'profiles.json'), 'utf8');
@@ -218,5 +223,96 @@ describe('profiles that survive a restart', () => {
     expect(store.size).toBe(1);
     expect(store.get('good')!.rating).toBe(1200);
     store.close();
+  });
+});
+
+describe('what a match pays out', () => {
+  const at = 1_700_000_000_000;
+
+  /** A contestant with a real match behind them, for the reward rules. */
+  function played(
+    id: string,
+    name: string,
+    score: number,
+    against: number,
+    over: Partial<ReturnType<typeof plainSummary>> = {},
+  ) {
+    return {
+      id,
+      name,
+      score,
+      summary: { ...plainSummary({ yourScore: score, theirScore: against }), validAnswers: score, ...over },
+    };
+  }
+
+  it('pays XP for a loss as well as a win', () => {
+    const store = new MemoryProfileStore();
+    const updates = recordMatch(store, played('a', 'A', 3, 1), played('b', 'B', 1, 3), at);
+    expect(updates.a!.rewards.xp).toBeGreaterThan(updates.b!.rewards.xp);
+    expect(updates.b!.rewards.xp).toBeGreaterThan(0);
+  });
+
+  it('adds the XP an award is worth to the XP the match was worth', () => {
+    const store = new MemoryProfileStore();
+    const updates = recordMatch(store, played('a', 'A', 3, 0), played('b', 'B', 0, 3), at);
+    const base = matchXp({ result: 'win', roundsWon: 3, validAnswers: 3, streak: 1 });
+    // A first win also unlocks Opening Night, First Blood and Clean Sheet.
+    expect(updates.a!.rewards.xp).toBeGreaterThan(base);
+    expect(updates.a!.rewards.unlocked).toContain('clean-sheet');
+    expect(updates.a!.rewards.unlocked).toContain('first-blood');
+  });
+
+  it('never awards the same thing twice', () => {
+    const store = new MemoryProfileStore();
+    recordMatch(store, played('a', 'A', 3, 0), played('b', 'B', 0, 3), at);
+    const second = recordMatch(store, played('a', 'A', 3, 0), played('b', 'B', 0, 3), at + 1);
+    expect(second.a!.rewards.unlocked).not.toContain('clean-sheet');
+    expect(new Set(store.get('a')!.achievements).size).toBe(store.get('a')!.achievements.length);
+  });
+
+  it('only says somebody levelled up when they did', () => {
+    const store = new MemoryProfileStore();
+    const first = recordMatch(store, played('a', 'A', 3, 1), played('b', 'B', 1, 3), at);
+    expect(first.a!.rewards.levelAfter).toBeGreaterThanOrEqual(first.a!.rewards.levelBefore);
+    expect(first.a!.rewards.levelAfter).toBe(levelFor(store.get('a')!.xp).level);
+  });
+
+  it('keeps a peak rating that a bad run cannot take back', () => {
+    const store = new MemoryProfileStore();
+    store.save({ ...blankProfile('a', at), rating: 1400, peakRating: 1400, matchesPlayed: 30 });
+    store.save({ ...blankProfile('b', at), rating: 1400, matchesPlayed: 30 });
+    recordMatch(store, played('a', 'A', 0, 3), played('b', 'B', 3, 0), at);
+    expect(store.get('a')!.rating).toBeLessThan(1400);
+    expect(store.get('a')!.peakRating).toBe(1400);
+  });
+
+  it('reports a promotion only when the rung actually changed', () => {
+    const store = new MemoryProfileStore();
+    // Both are a handful of points above a rung, so one upset moves them past
+    // it in opposite directions.
+    store.save({ ...blankProfile('a', at), rating: 1090, matchesPlayed: 30 });
+    store.save({ ...blankProfile('b', at), rating: 1370, matchesPlayed: 30 });
+    const updates = recordMatch(store, played('a', 'A', 3, 0), played('b', 'B', 0, 3), at);
+    expect(updates.a!.after).toBeGreaterThanOrEqual(1100);
+    expect(updates.a!.rewards.rankMove).toBe('promoted');
+    expect(updates.b!.rewards.rankMove).toBe('demoted');
+  });
+
+  it('writes what the match paid into the history row', () => {
+    const store = new MemoryProfileStore();
+    const updates = recordMatch(store, played('a', 'A', 3, 1), played('b', 'B', 1, 3), at);
+    expect(store.get('a')!.history[0]!.xp).toBe(updates.a!.rewards.xp);
+  });
+
+  it('notices a match that used every referee it had', () => {
+    const store = new MemoryProfileStore();
+    const updates = recordMatch(
+      store,
+      played('a', 'A', 3, 1, { wonByJudge: { auto: 1, peer: 1, ai: 1 } }),
+      played('b', 'B', 1, 3),
+      at,
+    );
+    expect(updates.a!.rewards.unlocked).toContain('all-three');
+    expect(updates.b!.rewards.unlocked).not.toContain('all-three');
   });
 });

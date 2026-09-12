@@ -19,5 +19,22 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        /*
+         * The topic pool gets its own file.
+         *
+         * It is about sixty kilobytes of prompts that change when somebody
+         * regenerates them and at no other time, so bundling it with the app
+         * would throw all of it away on every deploy. Split out, it is
+         * fingerprinted separately and stays in a returning player's cache
+         * across releases that never touched it.
+         */
+        manualChunks(id) {
+          if (id.includes('shared/dist/topics/pool')) return 'topics';
+          return undefined;
+        },
+      },
+    },
   },
 });

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CHALLENGES } from '@battle/shared';
+import { CHALLENGES, type MatchRewards, type PublicProfile } from '@battle/shared';
 import { MatchOver } from '../src/screens/MatchOver.jsx';
 import { MatchStore } from '../src/net/store.js';
 import { outcome, publicMatch } from './fixtures.js';
@@ -41,7 +41,9 @@ function props(over: Partial<Parameters<typeof MatchOver>[0]> = {}) {
     evidence: {},
     standings: {},
     lastRatings: null,
+    rewards: null,
     onLeave: () => {},
+    onFindAnother: () => {},
     ...over,
   };
 }
@@ -173,6 +175,109 @@ describe('why you lost each round', () => {
       },
     });
     expect(row(view.container)).toBe('not detected');
+    view.unmount();
+  });
+});
+
+describe('what the match paid out', () => {
+  const rewards = (over: Partial<MatchRewards> = {}): MatchRewards => ({
+    xp: 128,
+    levelBefore: 4,
+    levelAfter: 4,
+    unlocked: [],
+    rankMove: null,
+    ...over,
+  });
+
+  const card = (over: Partial<PublicProfile> = {}): PublicProfile => ({
+    name: 'You',
+    avatar: { shape: 0, color: 0 },
+    rating: 1180,
+    peakRating: 1180,
+    matchesPlayed: 12,
+    wins: 7,
+    losses: 5,
+    draws: 0,
+    streak: 1,
+    bestStreak: 3,
+    xp: 900,
+    achievements: [],
+    ...over,
+  });
+
+  it('says nothing at all when the match counted for nothing', () => {
+    const view = render(props({ rewards: null, standings: { p1: card() } }));
+    expect(view.container.querySelector('.payout')).toBeNull();
+    view.unmount();
+  });
+
+  it('shows the XP a match was worth', () => {
+    const view = render(props({ rewards: rewards(), standings: { p1: card() } }));
+    expect(view.container.querySelector('.payout__xp')?.textContent).toBe('+128');
+    view.unmount();
+  });
+
+  it('announces a level only when one was crossed', () => {
+    const flat = render(props({ rewards: rewards(), standings: { p1: card() } }));
+    expect(flat.container.querySelector('.payout__level')).toBeNull();
+    flat.unmount();
+
+    const up = render(
+      props({ rewards: rewards({ levelBefore: 4, levelAfter: 5 }), standings: { p1: card() } }),
+    );
+    expect(up.container.querySelector('.payout__level')?.textContent).toContain('5');
+    up.unmount();
+  });
+
+  it('names every award the match unlocked', () => {
+    const view = render(
+      props({
+        rewards: rewards({ unlocked: ['first-blood', 'quickdraw'] }),
+        standings: { p1: card() },
+      }),
+    );
+    const names = [...view.container.querySelectorAll('.payout__awardname')].map((n) => n.textContent);
+    expect(names).toEqual(['First Blood', 'Quickdraw']);
+    view.unmount();
+  });
+
+  it('ignores an award id it does not recognise rather than rendering a blank', () => {
+    const view = render(
+      props({ rewards: rewards({ unlocked: ['no-such-award'] }), standings: { p1: card() } }),
+    );
+    expect(view.container.querySelectorAll('.payout__award')).toHaveLength(0);
+    view.unmount();
+  });
+
+  it('draws a demotion differently from a promotion', () => {
+    const down = render(
+      props({ rewards: rewards({ rankMove: 'demoted' }), standings: { p1: card() } }),
+    );
+    expect(down.container.querySelector('.payout__rank')?.className).toContain('is-demoted');
+    expect(down.container.querySelector('.payout__rank')?.textContent).toContain('Dropped to');
+    down.unmount();
+  });
+});
+
+describe('the way out of a finished match', () => {
+  it('offers a rematch while the opponent is still there', () => {
+    const view = render(props());
+    expect(view.container.textContent).toContain('Play again');
+    expect(view.container.textContent).not.toContain('Find another opponent');
+    view.unmount();
+  });
+
+  it('offers somebody else once they have gone', () => {
+    const match = publicMatch({ phase: 'matchResult', winnerId: 'p1', endReason: 'target-reached' });
+    const gone = {
+      ...match,
+      players: {
+        ...match.players,
+        p2: { ...match.players.p2!, connected: false },
+      },
+    };
+    const view = render(props({ match: gone }));
+    expect(view.container.textContent).toContain('Find another opponent');
     view.unmount();
   });
 });

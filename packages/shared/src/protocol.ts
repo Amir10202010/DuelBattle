@@ -1,4 +1,4 @@
-import type { PublicProfile, RatingDelta } from './profile.js';
+import type { Avatar, MatchRewards, PublicProfile, RatingDelta } from './profile.js';
 import type {
   CustomChallenge,
   MatchEndReason,
@@ -18,6 +18,20 @@ export const MAX_IMAGE_BYTES = 220_000;
 export const MAX_FRAME_BYTES = 60_000;
 export const MAX_NAME_LENGTH = 18;
 
+/** One row of a leaderboard, as it crosses the wire. */
+export interface LeaderboardEntry {
+  position: number;
+  name: string;
+  avatar: Avatar;
+  rating: number;
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  streak: number;
+  bestStreak: number;
+  level: number;
+}
+
 /**
  * Everything a client may send. Declared here rather than inferred from the
  * schema so the client can speak the protocol without importing a validator it
@@ -28,6 +42,12 @@ export type ClientMessage =
   | { t: 'hello'; protocol: number; identity?: string }
   | { t: 'createRoom'; name: string }
   | { t: 'joinRoom'; code: string; name: string }
+  /** Join the queue for whoever turns up next. */
+  | { t: 'findMatch'; name: string }
+  | { t: 'cancelFind' }
+  /** The name and avatar this browser plays under, kept between visits. */
+  | { t: 'setProfile'; name?: string; avatar?: Avatar }
+  | { t: 'leaderboard'; board: string }
   | { t: 'rejoin'; code: string; token: string }
   | { t: 'cameraReady'; ready: boolean }
   | { t: 'ready'; ready: boolean }
@@ -249,8 +269,27 @@ export type ServerMessage =
       t: 'standings';
       players: Record<PlayerId, PublicProfile>;
       lastMatch: Record<PlayerId, RatingDelta> | null;
+      /** What the match paid out, for the person it belongs to. Null otherwise. */
+      rewards?: MatchRewards | null;
     }
   | { t: 'joined'; roomCode: string; playerId: PlayerId; token: string }
+  /**
+   * You are in the queue.
+   *
+   * `position` and `waiting` are the only honest things to show somebody who
+   * is looking at a spinner: how many people are in front of them, and how
+   * many are looking at the same spinner.
+   */
+  | { t: 'queued'; position: number; waiting: number }
+  /** You are no longer in the queue, and did not get a match out of it. */
+  | { t: 'unqueued' }
+  | {
+      t: 'leaderboard';
+      board: string;
+      entries: LeaderboardEntry[];
+      total: number;
+      you: LeaderboardEntry | null;
+    }
   | { t: 'state'; state: PublicMatchState; serverTime: number }
   | { t: 'evidence'; roundId: string; playerId: PlayerId; image: string }
   | { t: 'peerFrame'; playerId: PlayerId; image: string; seq: number }

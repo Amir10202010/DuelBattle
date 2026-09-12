@@ -9,6 +9,7 @@ import {
   type Challenge,
   type JudgingMode,
   validateCatalog,
+  allChallengesPool,
 } from '../src/challenges.js';
 import { isColorKey } from '../src/vision/color.js';
 
@@ -245,8 +246,8 @@ describe('samplePrompts', () => {
     expect(samplePrompts(1)).toHaveLength(1);
   });
 
-  it('returns real prompts from the catalogue', () => {
-    const all = new Set(CHALLENGES.map((c) => c.prompt));
+  it('returns real prompts the game can actually deal', () => {
+    const all = new Set(allChallengesPool().map((c) => c.prompt));
     for (const prompt of samplePrompts(4)) expect(all.has(prompt)).toBe(true);
   });
 
@@ -263,7 +264,7 @@ describe('samplePrompts', () => {
     for (let i = 0; i < 100; i++) {
       const sample = samplePrompts(3);
       const categories = sample.map(
-        (prompt) => CHALLENGES.find((c) => c.prompt === prompt)!.category,
+        (prompt) => allChallengesPool().find((c) => c.prompt === prompt)!.category,
       );
       expect(new Set(categories).size).toBe(categories.length);
     }

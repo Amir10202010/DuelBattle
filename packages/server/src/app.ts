@@ -62,6 +62,7 @@ import type { LimiterOptions } from './limiter.js';
 import { log } from './log.js';
 
 const SWEEP_INTERVAL_MS = 30_000;
+const MATCHMAKE_INTERVAL_MS = 1_000;
 
 export interface AppOptions {
   clientDir?: string;
@@ -80,6 +81,7 @@ export interface AppOptions {
 export interface App {
   server: Server;
   rooms: RoomManager;
+  gateway: Gateway;
   listen(port: number, host?: string): Promise<number>;
   close(): Promise<void>;
 }
@@ -126,13 +128,19 @@ export function createApp(options: AppOptions = {}): App {
   });
 
   const ticker = setInterval(() => rooms.tick(Date.now()), options.tickMs ?? config.tickMs);
+  // Pairing runs on its own, slower clock. Nobody notices a second's wait for
+  // an opponent, and checking every hundred milliseconds would sort the queue
+  // ten times for every person who joins it.
+  const matchmaker = setInterval(() => gateway.matchmake(Date.now()), MATCHMAKE_INTERVAL_MS);
   const sweeper = setInterval(() => rooms.sweep(Date.now()), SWEEP_INTERVAL_MS);
   ticker.unref?.();
   sweeper.unref?.();
+  matchmaker.unref?.();
 
   return {
     server,
     rooms,
+    gateway,
     listen(port, host = config.host) {
       gateway.start();
       return new Promise((resolve, reject) => {
@@ -148,6 +156,7 @@ export function createApp(options: AppOptions = {}): App {
     close() {
       clearInterval(ticker);
       clearInterval(sweeper);
+      clearInterval(matchmaker);
       gateway.stop();
       return new Promise((resolve) => server.close(() => resolve()));
     },

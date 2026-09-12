@@ -28,9 +28,10 @@ interface RoomProps {
   youId: string;
   camera: CameraState;
   onLeave: () => void;
+  onFindAnother: () => void;
 }
 
-export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomProps) {
+export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAnother }: RoomProps) {
   const cameraReady = camera.status === 'ready';
   const connected = snapshot.status === 'open';
 
@@ -102,7 +103,9 @@ export function Room({ store, snapshot, match, youId, camera, onLeave }: RoomPro
           evidence={snapshot.evidence}
           standings={snapshot.standings}
           lastRatings={snapshot.lastRatings}
+          rewards={snapshot.rewards}
           onLeave={onLeave}
+          onFindAnother={onFindAnother}
         />
       )}
       {match.phase !== 'lobby' && match.phase !== 'matchResult' && (

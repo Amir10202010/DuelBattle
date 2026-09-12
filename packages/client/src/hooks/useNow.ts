@@ -38,3 +38,25 @@ export function useAnimationClock(active: boolean): number {
 
   return now;
 }
+
+/**
+ * A coarse clock, for anything that counts in whole seconds.
+ *
+ * Separate from the animation clock on purpose: a queue timer that ticks sixty
+ * times a second to move a digit once is sixty renders of the same number.
+ */
+export function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, intervalMs);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [intervalMs]);
+
+  return now;
+}

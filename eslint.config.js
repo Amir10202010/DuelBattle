@@ -25,8 +25,9 @@ export default tseslint.config(
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
   },
   {
-    // Probes are measurement scripts. Printing numbers is the whole job.
-    files: ['**/*.probe.ts'],
+    // Probes are measurement scripts and the scripts directory is operator
+    // tooling run from a terminal. Printing to it is the whole job.
+    files: ['**/*.probe.ts', '**/scripts/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
 );

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { renderHook } from './render.jsx';
-import { roomPath, useRoute } from '../src/hooks/useRoute.js';
+import { PAGES, pagePath, roomPath, useRoute } from '../src/hooks/useRoute.js';
 
 function at(pathname: string) {
   history.replaceState(null, '', pathname);
@@ -34,5 +34,28 @@ describe('useRoute', () => {
   it('builds the same path it parses', () => {
     expect(roomPath('AB12C')).toBe('/r/AB12C');
     expect(at(roomPath('AB12C')).current.code).toBe('AB12C');
+  });
+});
+
+describe('pages', () => {
+  it('round-trips every page in the navigation', () => {
+    for (const page of PAGES) {
+      expect(at(pagePath(page)).current.page).toBe(page);
+    }
+  });
+
+  it('ignores a trailing slash', () => {
+    expect(at('/leaderboard/').current.page).toBe('leaderboard');
+  });
+
+  it('falls back to home rather than showing nothing', () => {
+    expect(at('/nowhere').current.page).toBe('home');
+    expect(at('/play/deeper').current.page).toBe('home');
+  });
+
+  it('treats a room link as a seat, not a page', () => {
+    const route = at('/r/AB12C').current;
+    expect(route.code).toBe('AB12C');
+    expect(route.page).toBe('home');
   });
 });

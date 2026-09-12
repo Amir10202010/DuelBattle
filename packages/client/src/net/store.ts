@@ -1,5 +1,8 @@
 import {
   PROTOCOL_VERSION,
+  type Avatar,
+  type LeaderboardEntry,
+  type MatchRewards,
   type PublicMatchState,
   type PublicProfile,
   type RatingDelta,
@@ -14,6 +17,20 @@ export interface Toast {
 }
 
 export type Screen = 'home' | 'room';
+
+/** Where the search for an opponent has got to. */
+export interface QueueState {
+  position: number;
+  waiting: number;
+  since: number;
+}
+
+export interface BoardState {
+  kind: string;
+  entries: LeaderboardEntry[];
+  total: number;
+  you: LeaderboardEntry | null;
+}
 
 export interface StoreSnapshot {
   status: ConnectionStatus;
@@ -37,6 +54,14 @@ export interface StoreSnapshot {
   standings: Record<string, PublicProfile>;
   /** What the match just finished did to those ratings. Null until one does. */
   lastRatings: Record<string, RatingDelta> | null;
+  /** XP, levels and badges from the match just finished. Yours only. */
+  rewards: MatchRewards | null;
+  /** Set while waiting for the server to find an opponent. */
+  queue: QueueState | null;
+  /** The leaderboard, once it has been asked for. */
+  board: BoardState | null;
+  /** True between asking for a board and being sent one. */
+  boardLoading: boolean;
 }
 
 type Intent =
@@ -178,6 +203,10 @@ const EMPTY: StoreSnapshot = {
   profile: null,
   standings: {},
   lastRatings: null,
+  rewards: null,
+  queue: null,
+  board: null,
+  boardLoading: false,
   status: 'connecting',
   screen: 'home',
   joining: false,
@@ -263,6 +292,40 @@ export class MatchStore {
     this.connection.send({ t: 'joinRoom', code, name });
   }
 
+  /**
+   * Asks the server to find somebody.
+   *
+   * Queueing is not an intent that survives a reconnect, deliberately: a socket
+   * that dropped has already been taken out of the queue server-side, and
+   * replaying the request would silently re-queue somebody who has since walked
+   * away from the page. They press the button again, which is one click and no
+   * surprises.
+   */
+  findMatch(name: string): void {
+    rememberName(name);
+    this.patch({
+      joinError: null,
+      queue: { position: 0, waiting: 0, since: Date.now() },
+    });
+    this.connection.send({ t: 'findMatch', name });
+  }
+
+  cancelFind(): void {
+    this.patch({ queue: null });
+    this.connection.send({ t: 'cancelFind' });
+  }
+
+  /** The name and avatar this browser plays under, kept by the server. */
+  saveProfile(changes: { name?: string; avatar?: Avatar }): void {
+    if (changes.name) rememberName(changes.name);
+    this.connection.send({ t: 'setProfile', ...changes });
+  }
+
+  requestBoard(kind: string): void {
+    this.patch({ boardLoading: true });
+    this.connection.send({ t: 'leaderboard', board: kind });
+  }
+
   /** Re-enters a room this tab was already seated in. Never another tab's. */
   resumeSession(code: string): boolean {
     return this.rejoinWith(sessionFrom('session', code), code);
@@ -334,6 +397,7 @@ export class MatchStore {
       evidence: {},
       joining: false,
       fatalError: null,
+      rewards: null,
     });
   }
 
@@ -377,7 +441,34 @@ export class MatchStore {
         this.patch({ profile: message.profile });
         return;
       case 'standings':
-        this.patch({ standings: message.players, lastRatings: message.lastMatch });
+        this.patch({
+          standings: message.players,
+          lastRatings: message.lastMatch,
+          rewards: message.rewards ?? null,
+        });
+        return;
+      case 'queued':
+        this.patch({
+          queue: {
+            position: message.position,
+            waiting: message.waiting,
+            since: this.snapshot.queue?.since ?? Date.now(),
+          },
+        });
+        return;
+      case 'unqueued':
+        this.patch({ queue: null });
+        return;
+      case 'leaderboard':
+        this.patch({
+          boardLoading: false,
+          board: {
+            kind: message.board,
+            entries: message.entries,
+            total: message.total,
+            you: message.you,
+          },
+        });
         return;
       case 'joined': {
         const name = this.intent && 'name' in this.intent ? this.intent.name : rememberedName();
@@ -391,6 +482,8 @@ export class MatchStore {
           you: message.playerId,
           roomCode: message.roomCode,
           fatalError: null,
+          // Being seated is how a search ends well.
+          queue: null,
         });
         return;
       }
@@ -431,6 +524,11 @@ export class MatchStore {
   }
 
   private onError(message: Extract<ServerMessage, { t: 'error' }>): void {
+    // A search that was refused is a search that is over. Leaving the spinner
+    // up would have somebody waiting for an opponent the server is not looking
+    // for.
+    if (this.snapshot.queue) this.patch({ queue: null });
+
     const joinFailure =
       message.code === 'room-not-found' ||
       message.code === 'room-full' ||

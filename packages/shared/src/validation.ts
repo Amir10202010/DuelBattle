@@ -62,6 +62,18 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('createRoom'), name: nameSchema }),
   z.object({ t: z.literal('joinRoom'), code: roomCodeSchema, name: nameSchema }),
+  z.object({ t: z.literal('findMatch'), name: nameSchema }),
+  z.object({ t: z.literal('cancelFind') }),
+  z.object({
+    t: z.literal('setProfile'),
+    name: nameSchema.optional(),
+    // Indices into shared lists. Bounded here and clamped again on the way in,
+    // because a number out of range is a drawing bug rather than an error.
+    avatar: z
+      .object({ shape: z.number().int().min(0).max(64), color: z.number().int().min(0).max(64) })
+      .optional(),
+  }),
+  z.object({ t: z.literal('leaderboard'), board: z.string().max(24) }),
   z.object({ t: z.literal('rejoin'), code: roomCodeSchema, token: z.string().min(8).max(128) }),
   z.object({ t: z.literal('cameraReady'), ready: z.boolean() }),
   z.object({ t: z.literal('ready'), ready: z.boolean() }),
