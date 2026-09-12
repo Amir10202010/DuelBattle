@@ -552,6 +552,42 @@
   }
 }
 
+/* Lobby head --------------------------------------------------------- */
+
+.lobby__head {
+  padding-bottom: var(--space-2);
+}
+
+.lobby__title {
+  font-size: clamp(26px, 3.6vw, 42px);
+  line-height: 1;
+  text-transform: uppercase;
+  margin-top: var(--space-2);
+}
+
+/*
+ * The badge that says this is a duel.
+ *
+ * It sits between the two stages rather than above them, because the thing it
+ * is labelling is the gap: two rooms, pointed at each other.
+ */
+.vs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-6deg);
+  z-index: 2;
+  background: var(--lime);
+  color: var(--on-lime);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  padding: 2px 12px;
+  border-radius: var(--r-sm);
+  pointer-events: none;
+}
+
 /* ==================================================================== */
 /* Room shell                                                            */
 /* ==================================================================== */
@@ -774,6 +810,7 @@
 }
 
 .lobby__stages {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -970,23 +1007,29 @@
   border: 1px solid transparent;
 }
 
+/*
+ * Who judges the round, in three colours that are deliberately not the two
+ * seat colours. Lime means "you" everywhere else on screen; a badge saying
+ * "your opponent decides this one" in the colour of your own seat is a label
+ * arguing with itself.
+ */
 .badge--auto {
-  color: var(--seat-b);
-  border-color: rgba(58, 209, 224, 0.35);
-  background: var(--seat-b-soft);
+  color: var(--text-dim);
+  border-color: var(--line-strong);
+  background: var(--ink-2);
 }
 
 .badge--peer {
-  color: var(--seat-a);
-  border-color: rgba(255, 138, 61, 0.35);
-  background: var(--seat-a-soft);
+  color: var(--warn);
+  border-color: rgba(255, 200, 97, 0.35);
+  background: rgba(255, 200, 97, 0.12);
 }
 
-/* A third judge needs a third colour, or the badge stops carrying information. */
+/* The AI gets the loud one: it is the referee worth noticing. */
 .badge--ai {
-  color: var(--good);
-  border-color: rgba(87, 217, 138, 0.35);
-  background: rgba(87, 217, 138, 0.12);
+  color: var(--lime);
+  border-color: rgba(217, 246, 90, 0.4);
+  background: var(--lime-soft);
 }
 
 .arena__stages {

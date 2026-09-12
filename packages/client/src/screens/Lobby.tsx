@@ -20,9 +20,25 @@ export function Lobby({ store, match, youId, camera }: LobbyProps) {
   const yourSeat = you?.seat ?? 0;
   const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
 
+  const headline = !opponent
+    ? 'Every rivalry starts here.'
+    : you?.ready && opponent.ready
+      ? 'Here we go.'
+      : `${opponent.name} is in the room.`;
+
   return (
     <div className="lobby">
+      <header className="lobby__head">
+        <p className="eyebrow">
+          Private arena · best of {match.settings.winTarget * 2 - 1}
+        </p>
+        <h1 className="lobby__title display">{headline}</h1>
+      </header>
+
       <div className="lobby__stages">
+        <span className="vs" aria-hidden="true">
+          VS
+        </span>
         <StageFrame seat={yourSeat} player={you} state={you?.ready ? 'locked' : 'live'}>
           <SelfVideo videoRef={camera.videoRef} />
         </StageFrame>
