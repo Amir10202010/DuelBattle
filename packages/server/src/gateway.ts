@@ -11,6 +11,8 @@ import {
 import { clientMessageSchema } from '@battle/shared/validation';
 import type { Room } from './room.js';
 import type { Identities } from './identity.js';
+import type { ProfileStore } from './profiles.js';
+import { profileFor } from './standings.js';
 import { RoomCapacityError, type RoomManager } from './rooms.js';
 import { config } from './config.js';
 import { TokenBuckets, type LimiterOptions } from './limiter.js';
@@ -76,6 +78,7 @@ export class Gateway {
     private readonly rooms: RoomManager,
     createLimit: LimiterOptions | undefined = undefined,
     private readonly identities: Identities | null = null,
+    private readonly profiles: ProfileStore | null = null,
   ) {
     this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
     this.createLimiter = new TokenBuckets(createLimit ?? defaultCreateLimit());
@@ -242,6 +245,16 @@ export class Gateway {
           const token = this.identities.issue();
           session.identity = this.identities.verify(token);
           send(session.socket, { t: 'identity', token });
+        }
+        if (session.identity && this.profiles) {
+          // The front page can greet a returning player by rank rather than
+          // waiting for a match to tell them.
+          const card = profileFor(this.profiles, session.identity, '', now);
+          const { rating, matchesPlayed, wins, losses, draws, streak, bestStreak, history } = card;
+          send(session.socket, {
+            t: 'profile',
+            profile: { rating, matchesPlayed, wins, losses, draws, streak, bestStreak, history },
+          });
         }
         if (session.room && session.playerId && session.identity) {
           session.room.identify(session.playerId, session.identity, now);

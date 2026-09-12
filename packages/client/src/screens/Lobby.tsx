@@ -6,7 +6,7 @@ import {
   type PublicMatchState,
   type PublicProfile,
 } from '@battle/shared';
-import { RatingLine } from '../components/Rating.jsx';
+import { RatingLine, Stakes } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
@@ -47,6 +47,7 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
               <span className="lobby__who">{you?.name ?? 'You'}</span>
               <RatingLine profile={standings[youId]} delta={undefined} />
             </span>
+            <Stakes you={standings[youId]} them={standings[opponent.id]} />
             <span className="lobby__side lobby__side--them">
               <span className="lobby__who">{opponent.name}</span>
               <RatingLine profile={standings[opponent.id]} delta={undefined} />

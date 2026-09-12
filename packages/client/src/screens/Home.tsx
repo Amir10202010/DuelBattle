@@ -4,8 +4,11 @@ import {
   ROOM_CODE_LENGTH,
   extractRoomCode,
   getChallenge,
+  isPlaced,
   isValidRoomCode,
   normalizeRoomCode,
+  tierFor,
+  type PublicProfile,
 } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import { recoverableSession, rememberedName } from '../net/store.js';
@@ -18,6 +21,8 @@ interface HomeProps {
   joining: boolean;
   error: string | null;
   offline: boolean;
+  /** Null until the server has recognised this browser, and for a first visit. */
+  profile: PublicProfile | null;
 }
 
 const STEPS = [
@@ -40,7 +45,7 @@ const SHOWCASE = [
 
 const MARQUEE = ['See it', 'Grab it', 'Show it', 'Win it', 'Rematch'];
 
-export function Home({ store, invitedCode, joining, error, offline }: HomeProps) {
+export function Home({ store, invitedCode, joining, error, offline, profile }: HomeProps) {
   const [name, setName] = useState(rememberedName);
   const [code, setCode] = useState(invitedCode ?? '');
   const [mode, setMode] = useState<'choose' | 'join'>(invitedCode ? 'join' : 'choose');
@@ -94,7 +99,21 @@ export function Home({ store, invitedCode, joining, error, offline }: HomeProps)
         <span className="wordmark">
           Duel<span className="wordmark__half">Battle</span>
         </span>
-        <span className="landing__barnote">Two players. One prompt. Your room.</span>
+        {/* A returning player is greeted by rank rather than by a tagline they
+            have already read. */}
+        {profile && profile.matchesPlayed > 0 ? (
+          <span className="landing__rank">
+            <span className="landing__ranktier">
+              {isPlaced(profile.matchesPlayed) ? tierFor(profile.rating).name : 'Placing'}
+            </span>
+            <span className="landing__rankvalue mono">{profile.rating}</span>
+            <span className="landing__rankrecord">
+              {profile.wins}W &middot; {profile.losses}L
+            </span>
+          </span>
+        ) : (
+          <span className="landing__barnote">Two players. One prompt. Your room.</span>
+        )}
       </header>
 
       <section className="hero">

@@ -115,6 +115,7 @@ export function App() {
           joining={snapshot.joining}
           error={snapshot.joinError}
           offline={snapshot.status === 'offline'}
+          profile={snapshot.profile}
         />
       )}
 

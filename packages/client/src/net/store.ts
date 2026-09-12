@@ -31,6 +31,8 @@ export interface StoreSnapshot {
   /** Shown inline on the home screen, e.g. a bad room code. */
   joinError: string | null;
   latencyMs: number | null;
+  /** Your own card, known as soon as the server recognises this browser. */
+  profile: PublicProfile | null;
   /** Ratings for the people in this room, once the server has said. */
   standings: Record<string, PublicProfile>;
   /** What the match just finished did to those ratings. Null until one does. */
@@ -173,6 +175,7 @@ function rememberName(name: string): void {
 }
 
 const EMPTY: StoreSnapshot = {
+  profile: null,
   standings: {},
   lastRatings: null,
   status: 'connecting',
@@ -369,6 +372,9 @@ export class MatchStore {
         return;
       case 'identity':
         rememberIdentity(message.token);
+        return;
+      case 'profile':
+        this.patch({ profile: message.profile });
         return;
       case 'standings':
         this.patch({ standings: message.players, lastRatings: message.lastMatch });

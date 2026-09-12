@@ -62,6 +62,35 @@
   color: var(--paper-muted);
 }
 
+/* A returning player's standing, in the space a tagline they have already read
+   used to occupy. */
+.landing__rank {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.landing__ranktier {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: var(--lime);
+  color: var(--on-lime);
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+}
+
+.landing__rankvalue {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.landing__rankrecord {
+  font-size: 12px;
+  color: var(--paper-muted);
+}
+
 /* Hero --------------------------------------------------------------- */
 
 .hero {
@@ -631,6 +660,7 @@
 
 .lobby__standings {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   margin-top: var(--space-3);
@@ -658,6 +688,44 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+
+/*
+ * What the match is worth, before it is played.
+ *
+ * Centred between the two names on purpose: it belongs to the gap, the same
+ * way the VS badge does, because it is a fact about the pairing rather than
+ * about either player.
+ */
+.stakes {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 12px;
+  text-align: center;
+}
+
+.stakes__label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.stakes__win {
+  color: var(--lime);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stakes__loss {
+  color: var(--bad);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stakes__sep {
+  color: var(--text-faint);
 }
 
 /* Profile card ------------------------------------------------------- */

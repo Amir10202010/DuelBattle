@@ -102,9 +102,12 @@ export function createApp(options: AppOptions = {}): App {
   });
 
   const server = createHttpServer({ clientDir: options.clientDir ?? config.clientDir, rooms });
-  const gateway = options.roomCreateLimit
-    ? new Gateway(rooms, options.roomCreateLimit, identities)
-    : new Gateway(rooms, undefined, identities);
+  const gateway = new Gateway(
+    rooms,
+    options.roomCreateLimit,
+    identities ?? null,
+    profiles ?? null,
+  );
 
   server.on('upgrade', (req, socket, head) => {
     let pathname: string;

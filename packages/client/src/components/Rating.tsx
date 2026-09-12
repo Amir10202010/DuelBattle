@@ -3,6 +3,7 @@ import {
   STARTING_RATING,
   isPlaced,
   nextTier,
+  ratingChange,
   tierFor,
   type MatchRecord,
   type PublicProfile,
@@ -37,6 +38,49 @@ export const RatingLine = memo(function RatingLine({
         </span>
       )}
       <span className="ratingline__tier">{placed ? tierFor(rating).name : 'Placing'}</span>
+    </p>
+  );
+});
+
+/**
+ * What this match is worth, before it is played.
+ *
+ * The same function the server will use afterwards, which is the only reason
+ * it is safe to show: a preview that disagrees with the result would be worse
+ * than no preview at all. Placement ratings move so fast that quoting a number
+ * for them would be misleading, so those are left unquoted.
+ */
+export const Stakes = memo(function Stakes({
+  you,
+  them,
+}: {
+  you: PublicProfile | undefined;
+  them: PublicProfile | undefined;
+}) {
+  if (!you || !them) return null;
+  if (!isPlaced(you.matchesPlayed) || !isPlaced(them.matchesPlayed)) {
+    // "Counts double" would be a nice line and a false one: placement K is 40
+    // against a settled 24, which is not double anything.
+    return <p className="stakes dim">Still placing — results move you faster than they will later.</p>;
+  }
+
+  const win = ratingChange(
+    { rating: you.rating, matchesPlayed: you.matchesPlayed },
+    { rating: them.rating, matchesPlayed: them.matchesPlayed },
+    'win',
+  );
+  const loss = ratingChange(
+    { rating: you.rating, matchesPlayed: you.matchesPlayed },
+    { rating: them.rating, matchesPlayed: them.matchesPlayed },
+    'loss',
+  );
+
+  return (
+    <p className="stakes">
+      <span className="stakes__label">On the line</span>
+      <span className="stakes__win">+{win}</span>
+      <span className="stakes__sep">/</span>
+      <span className="stakes__loss">{loss}</span>
     </p>
   );
 });

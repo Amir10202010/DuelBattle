@@ -235,6 +235,12 @@ export type ServerMessage =
    */
   | { t: 'identity'; token: string }
   /**
+   * Your own card, sent as soon as the server knows who you are — before any
+   * room, so the front page can greet a returning player by rank rather than
+   * waiting for a match to tell them.
+   */
+  | { t: 'profile'; profile: PublicProfile }
+  /**
    * Ratings for the people in this room, and what the match just finished did
    * to them. `lastMatch` is null until a match ends, and null again on a
    * rematch: it describes one result, not a running total.
