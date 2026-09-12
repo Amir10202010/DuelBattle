@@ -1,51 +1,75 @@
 /*
  * Battle's visual language.
  *
- * The room is the game, so the camera feed is always the brightest thing on
- * screen and the interface is a dark, hairline-thin frame around it. Colour is
- * rationed: two player accents, one positive, one negative, and nothing else.
- * Corners are nearly square and surfaces are flat — the depth in this design
- * comes from contrast and spacing, not from blur or glow.
+ * Two rooms, one palette. The page you arrive on is paper — bright, printed,
+ * confident, the kind of surface a poster is made of. The moment a match
+ * starts the lights go down and the room turns olive-dark, because from then on
+ * the brightest thing on screen has to be the camera feed. The lime runs
+ * through both and is the only colour that ever shouts.
+ *
+ * The dark is deliberately not neutral grey. Grey is what an interface
+ * defaults to; a green-shifted near-black looks like somewhere, and this game
+ * is entirely about somewhere — the room you are sitting in.
+ *
+ * Type does the rest: a condensed face set enormous for anything that is an
+ * announcement, and a plain humanist face for everything you actually read.
+ * Corners stay nearly square and surfaces stay flat. Depth comes from contrast
+ * and spacing, not from blur or glow.
  */
 
 :root {
   color-scheme: dark;
 
-  /* Surfaces, darkest first. */
-  --ink-0: #08080a;
-  --ink-1: #101013;
-  --ink-2: #17171c;
-  --ink-3: #1f1f25;
-  --line: #2a2a31;
-  --line-strong: #3d3d46;
+  /* Surfaces, darkest first. Olive-shifted, never neutral. */
+  --ink-0: #171a16;
+  --ink-1: #1d2219;
+  --ink-2: #242a1f;
+  --ink-3: #2c3326;
+  --line: #373e31;
+  --line-strong: #444f38;
   /* For a control whose boundary is the only thing that says it is a control:
-     a text field has no label inside it, so at --line's 1.33:1 against the
-     surfaces either side of it there is nothing to see. 3.06:1 on --ink-1 and
-     3.22:1 on --ink-0, which is what WCAG asks of a component boundary. */
-  --line-control: #60606a;
+     a text field has no label inside it, and --line at 1.5:1 against the
+     surfaces either side of it is not a boundary anybody can see. Measured at
+     3.00:1 on the lightest surface here, which is what WCAG asks of one. */
+  --line-control: #6f7e60;
 
   /* Text, brightest first. */
-  --text: #f2f2f0;
-  --text-dim: #9e9ea8;
-  /* Light enough to clear 4.5:1 on every surface in this palette. The eyebrow
-     labels use it at 11px, which is exactly where a dimmer grey stops being
-     readable across a room. */
-  --text-faint: #80808c;
+  --text: #f4f6ed;
+  --text-dim: #a6b29a;
+  /* Measured at 4.51:1 on the lightest surface in this palette, so it clears AA
+     everywhere it is used. The eyebrow labels set it at 11px, which is exactly
+     where a dimmer grey stops being readable across a room. */
+  --text-faint: #8f9c84;
 
-  /* Seat accents. Seat 0 is always warm, seat 1 always cool — never swapped. */
-  --seat-a: #ff8a3d;
-  --seat-b: #3ad1e0;
-  --seat-a-soft: rgba(255, 138, 61, 0.14);
-  --seat-b-soft: rgba(58, 209, 224, 0.14);
+  /* The one loud colour, and what is legible on top of it. */
+  --lime: #d9f65a;
+  --lime-bright: #e6ff79;
+  --on-lime: #273015;
+  --lime-soft: rgba(217, 246, 90, 0.14);
 
-  --good: #57d98a;
-  --bad: #ff5c5c;
+  /* The paper half, for the page you arrive on. */
+  --paper: #fafbf6;
+  --paper-2: #f0f2e9;
+  --paper-line: #dce0d5;
+  --paper-ink: #191c19;
+  --paper-muted: #60665c;
+  --coral: #ee5a43;
+  --coral-ink: #fff8ed;
+
+  /* Seat accents. Seat 0 is always the lime, seat 1 always the coral — never
+     swapped, so "the bright one is me" survives every screen. */
+  --seat-a: #d9f65a;
+  --seat-b: #ff8a6b;
+  --seat-a-soft: rgba(217, 246, 90, 0.14);
+  --seat-b-soft: rgba(255, 138, 107, 0.14);
+
+  --good: #a8e05f;
+  --bad: #ff6f5e;
   --warn: #ffc861;
 
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
-  /* Display and UI share a stack; the distinction is weight, tracking and case. */
-  --font-display: var(--font-ui);
+  --font-ui: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  /* Condensed, so a prompt can be set enormous and still fit on a phone. */
+  --font-display: 'Barlow Condensed', 'DM Sans', Impact, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   --r-sm: 3px;
@@ -204,17 +228,18 @@ select {
   cursor: not-allowed;
 }
 
+/* The one loud colour belongs to the one button that matters. */
 .btn--primary {
-  --btn-bg: var(--text);
-  --btn-fg: var(--ink-0);
-  --btn-border: var(--text);
+  --btn-bg: var(--lime);
+  --btn-fg: var(--on-lime);
+  --btn-border: var(--lime);
   font-weight: 750;
 }
 
 .btn--primary:hover:not(:disabled) {
-  --btn-bg: #ffffff;
-  --btn-border: #ffffff;
-  background: #ffffff;
+  --btn-bg: var(--lime-bright);
+  --btn-border: var(--lime-bright);
+  background: var(--lime-bright);
 }
 
 .btn--ghost {
