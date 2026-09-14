@@ -34,7 +34,7 @@ export class RoomManager {
     return this.rooms.size;
   }
 
-  create(now: number): Room {
+  create(now: number, ranked = false): Room {
     if (this.rooms.size >= this.options.maxRooms) {
       // Try to make space before giving up; a full table is usually stale rooms.
       this.sweep(now);
@@ -46,6 +46,7 @@ export class RoomManager {
       const code = generateRoomCode(CODE_RANDOM);
       if (this.rooms.has(code)) continue;
       const room = new Room(code, now, {
+        ranked,
         ...(this.options.judge ? { judge: this.options.judge } : {}),
         ...(this.options.profiles ? { profiles: this.options.profiles } : {}),
       });
@@ -62,11 +63,16 @@ export class RoomManager {
     return this.rooms.get(code);
   }
 
+  hasActiveIdentity(identity: string): boolean {
+    return [...this.rooms.values()].some((room) => room.ranked && room.hasActiveIdentity(identity));
+  }
+
   /** Drops rooms that nobody has been in for a while, and very old ones. */
   sweep(now: number): number {
     let removed = 0;
     for (const [code, room] of this.rooms) {
-      if (!room.isCollectable(now, this.options.emptyRoomTtlMs, this.options.maxRoomAgeMs)) continue;
+      if (!room.isCollectable(now, this.options.emptyRoomTtlMs, this.options.maxRoomAgeMs))
+        continue;
       this.rooms.delete(code);
       removed++;
     }

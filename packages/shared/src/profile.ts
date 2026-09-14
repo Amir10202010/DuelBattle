@@ -2,6 +2,11 @@ import type { MatchResult } from './rating.js';
 
 /** One finished match, as it reads on a profile card. */
 export interface MatchRecord {
+  forfeited?: boolean;
+  topicIds?: string[];
+  id?: string;
+  dailyBonus?: number;
+  categories?: string[];
   at: number;
   opponentName: string;
   result: MatchResult;
@@ -75,6 +80,7 @@ export interface RatingDelta {
  * pretending they are the same number.
  */
 export interface MatchRewards {
+  dailyBonus?: number;
   xp: number;
   /** Level before and after, so a level-up can be announced. */
   levelBefore: number;
@@ -98,14 +104,7 @@ export const AVATAR_COLORS: readonly string[] = [
 ];
 
 /** The shapes an avatar shape index picks from. Drawn by the client as SVG. */
-export const AVATAR_SHAPES: readonly string[] = [
-  'bolt',
-  'disc',
-  'wedge',
-  'grid',
-  'ring',
-  'cross',
-];
+export const AVATAR_SHAPES: readonly string[] = ['bolt', 'disc', 'wedge', 'grid', 'ring', 'cross'];
 
 export function defaultAvatar(): Avatar {
   return { shape: 0, color: 0 };

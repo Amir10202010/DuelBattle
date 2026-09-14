@@ -58,9 +58,16 @@ export function nextRating(
   result: MatchResult,
 ): number {
   const expected = expectedScore(player.rating, opponent.rating);
-  const k = kFactor(player.matchesPlayed, player.rating);
-  const moved = player.rating + k * (scoreOf(result) - expected);
-  return Math.max(RATING_FLOOR, Math.round(moved));
+  const k = Math.min(
+    kFactor(player.matchesPlayed, player.rating),
+    kFactor(opponent.matchesPlayed, opponent.rating),
+  );
+  const raw = k * (scoreOf(result) - expected);
+  const delta = Math.sign(raw) * Math.round(Math.abs(raw));
+  return (
+    player.rating +
+    Math.max(RATING_FLOOR - player.rating, Math.min(opponent.rating - RATING_FLOOR, delta))
+  );
 }
 
 /** What this result is worth, for showing before or after a match. */

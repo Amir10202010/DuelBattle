@@ -1,122 +1,158 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { useState } from 'react';
-import {
-  ACHIEVEMENTS,
-  STARTING_RATING,
-  TOTAL_ACHIEVEMENT_XP,
-  achievementOrder,
-  type AchievementGroup,
-  type PublicProfile,
-} from '@battle/shared';
-
-/**
- * What the game noticed.
- *
- * Locked ones are shown with what they ask for rather than as question marks: a
- * hidden award is a thing nobody plays towards, and every one of these is
- * something you could decide to go and do this evening. The ones that count up
- * carry a bar, because "fifty matches" with no idea how many you have played is
- * a number rather than a goal.
- */
-const GROUPS: { id: AchievementGroup | 'all'; label: string }[] = [
-  { id: 'all', label: 'Everything' },
-  { id: 'first', label: 'First steps' },
-  { id: 'habit', label: 'Habit' },
-  { id: 'streak', label: 'Streaks' },
-  { id: 'dominance', label: 'Dominance' },
-  { id: 'craft', label: 'Craft' },
-  { id: 'ladder', label: 'The ladder' },
-];
-
+import { Check, LockKeyhole, Sparkles, Gift } from 'lucide-react';
+import { ACHIEVEMENTS, achievementOrder, type PublicProfile } from '@battle/shared';
+import { RewardArt } from '../components/GameArt.jsx';
+const FILTERS = ['All', 'Achievements', 'Ranks', 'Streaks', 'Special', 'Locked'] as const;
 export function Awards({ profile }: { profile: PublicProfile | null }) {
-  const [group, setGroup] = useState<AchievementGroup | 'all'>('all');
-
-  const stats = {
-    rating: profile?.rating ?? STARTING_RATING,
-    peakRating: profile?.peakRating ?? STARTING_RATING,
-    matchesPlayed: profile?.matchesPlayed ?? 0,
-    wins: profile?.wins ?? 0,
-    losses: profile?.losses ?? 0,
-    draws: profile?.draws ?? 0,
-    streak: profile?.streak ?? 0,
-    bestStreak: profile?.bestStreak ?? 0,
-    xp: profile?.xp ?? 0,
-  };
-  const held = new Set(profile?.achievements ?? []);
-  const ordered = achievementOrder(stats, [...held]).filter(
-    (award) => group === 'all' || award.group === group,
-  );
+  useUiPreferences();
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]>('All');
+  if (!profile) return null;
+  const held = new Set(profile.achievements);
+  const ordered = achievementOrder(profile, [...held]).filter((a) => {
+    if (filter === 'Locked') return !held.has(a.id);
+    if (filter === 'Ranks') return a.group === 'ladder';
+    if (filter === 'Streaks') return a.group === 'streak';
+    if (filter === 'Special') return a.rarity === 'legendary' || a.group === 'craft';
+    if (filter === 'Achievements') return a.group !== 'ladder' && a.group !== 'streak';
+    return true;
+  });
   const earnedXp = ACHIEVEMENTS.filter((a) => held.has(a.id)).reduce((sum, a) => sum + a.xp, 0);
-
   return (
-    <main className="page page--awards">
-      <header className="page__head">
-        <p className="eyebrow">Awards</p>
-        <h1 className="page__title display">
-          {held.size} of {ACHIEVEMENTS.length}.
-        </h1>
-        <p className="page__lede">
-          Every one of these is something that happens to you in a match, not a chore with a badge
-          on it. They pay XP, and XP is the number that only ever goes up.
-        </p>
-      </header>
-
-      <div className="awards__meter">
-        <div className="climb__track">
-          <div
-            className="climb__fill"
-            style={{ width: `${Math.round((held.size / ACHIEVEMENTS.length) * 100)}%` }}
-          />
+    <main className="page">
+      <header className="page-heading">
+        <div>
+          <span className="eyebrow">{tr('The collection')}</span>
+          <h1>{tr('Little moments. Lasting rewards.')}</h1>
+          <p>{tr('Make the play. Earn the badge. Every unlock is yours to keep.')}</p>
         </div>
-        <p className="awards__xp mono">
-          {earnedXp.toLocaleString('en-GB')} / {TOTAL_ACHIEVEMENT_XP.toLocaleString('en-GB')} XP
-          earned from awards
-        </p>
-      </div>
-
-      <div className="tabs tabs--wrap" role="tablist" aria-label="Award groups">
-        {GROUPS.map((option) => (
-          <button
-            key={option.id}
-            role="tab"
-            type="button"
-            aria-selected={group === option.id}
-            className={`tabs__tab ${group === option.id ? 'is-active' : ''}`}
-            onClick={() => setGroup(option.id)}
+        <span className="status-tag">
+          <Gift size={15} /> {tr(held.size)}
+          {' / '}
+          {tr(ACHIEVEMENTS.length)}
+          {tr(' collected')}
+        </span>
+      </header>
+      <section className="collection-banner">
+        <div className="collection-banner__art">
+          <RewardArt group="dominance" rarity="legendary" />
+        </div>
+        <div>
+          <span className="eyebrow">{tr('Your trophy cabinet')}</span>
+          <h2>
+            {tr(held.size ? `${held.size} reasons to play again.` : 'A little empty. For now.')}
+          </h2>
+          <p>
+            {tr(earnedXp.toLocaleString())}
+            {tr(' bonus XP earned from achievements.')}
+          </p>
+          <div
+            className="progress-track"
+            role="progressbar"
+            aria-label={tr('Collection completed')}
+            aria-valuenow={held.size}
+            aria-valuemin={0}
+            aria-valuemax={ACHIEVEMENTS.length}
           >
-            {option.label}
+            <i style={{ width: `${(held.size / ACHIEVEMENTS.length) * 100}%` }} />
+          </div>
+        </div>
+        <span className="collection-fraction">
+          <b>{tr(held.size.toString().padStart(2, '0'))}</b>
+          {'/'}
+          {tr(ACHIEVEMENTS.length)}
+        </span>
+      </section>
+      <div className="filter-row" role="group" aria-label={tr('Filter rewards')}>
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            className={`filter ${f === filter ? 'is-active' : ''}`}
+            aria-pressed={f === filter}
+            onClick={() => setFilter(f)}
+          >
+            {tr(f)}
+            {f === 'Locked' && <LockKeyhole size={13} />}
           </button>
         ))}
       </div>
-
-      <ul className="awards">
+      <ul className="reward-grid">
         {ordered.map((award) => {
           const has = held.has(award.id);
-          const step = !has ? award.progress?.(stats) : undefined;
+          const progress = award.progress?.(profile);
           return (
             <li
               key={award.id}
-              className={`award award--${award.rarity} ${has ? 'is-held' : 'is-locked'}`}
+              className={`reward-card reward-card--${award.rarity} ${has ? 'is-unlocked' : ''}`}
             >
-              <div className="award__head">
-                <h2 className="award__name">{award.name}</h2>
-                <span className="award__xp mono">{award.xp} XP</span>
+              <div className="reward-card__top">
+                <span className="rarity">{tr(award.rarity)}</span>
+                {has ? (
+                  <Check size={16} aria-label={tr('Unlocked')} />
+                ) : (
+                  <LockKeyhole size={14} aria-label={tr('Locked')} />
+                )}
               </div>
-              <p className="award__what">{award.description}</p>
-              {step && step.need > 1 && (
-                <div className="award__progress">
-                  <span className="award__bar" aria-hidden="true">
-                    <i style={{ width: `${Math.round((step.have / step.need) * 100)}%` }} />
-                  </span>
-                  <span className="award__count mono">
-                    {step.have}/{step.need}
-                  </span>
-                </div>
-              )}
-              <span className="award__rarity">{has ? 'Unlocked' : award.rarity}</span>
+              <RewardArt group={award.group} rarity={award.rarity} locked={!has} />
+              <h2>{tr(award.name)}</h2>
+              <p>{tr(award.description)}</p>
+              <div className="reward-card__bottom">
+                <span>
+                  <Sparkles size={13} />
+                  {' +'}
+                  {tr(award.xp)}
+                  {tr(' XP')}
+                </span>
+                <span>
+                  {tr(
+                    has
+                      ? 'Collected'
+                      : progress
+                        ? `${progress.have} / ${progress.need}`
+                        : 'In one match',
+                  )}
+                </span>
+              </div>
+              <div
+                className="progress-track"
+                role="progressbar"
+                aria-label={tr(`${award.name} progress`)}
+                aria-valuenow={
+                  has
+                    ? 100
+                    : progress
+                      ? Math.min(100, Math.round((progress.have / progress.need) * 100))
+                      : 0
+                }
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <i
+                  style={{
+                    width: `${has ? 100 : progress ? Math.min(100, (progress.have / progress.need) * 100) : 0}%`,
+                  }}
+                />
+              </div>
             </li>
           );
         })}
       </ul>
+      {!ordered.length && (
+        <div className="empty">
+          <Sparkles size={30} />
+          <h2>{tr('Collection complete.')}</h2>
+          <p>{tr('You have unlocked every reward in this category.')}</p>
+          <button className="btn" onClick={() => setFilter('All')}>
+            {tr('View all rewards')}
+          </button>
+        </div>
+      )}
+      <p className="page-note">
+        <Check size={14} />
+        {tr(
+          ' Rewards are granted automatically after eligible ranked battles. No claim button, no missed XP.',
+        )}
+      </p>
     </main>
   );
 }

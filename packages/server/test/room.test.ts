@@ -393,11 +393,7 @@ describe('memory', () => {
 
     const second = h.r1.state.round!;
     h.room.tick(h.r1.state.phaseEndsAt!);
-    h.room.handle(
-      h.p1,
-      { t: 'submit', roundId: second.id, image: heldObjectFrame(BLUE) },
-      40_000,
-    );
+    h.room.handle(h.p1, { t: 'submit', roundId: second.id, image: heldObjectFrame(BLUE) }, 40_000);
     expect(h.room.retainedEvidenceRounds).toBeLessThanOrEqual(1);
   });
 });
@@ -510,7 +506,7 @@ describe('a round the AI referee takes', () => {
             confidence: 0.9,
             fulfillment: i === 1 ? 60 : 0,
             presentation: i === 1 ? 20 : 0,
-            objects: [],
+            objects: i === 1 ? ['poster'] : [],
             reason: i === 1 ? 'A poster of a face.' : 'Nothing with a face is visible.',
             score: i === 1 ? 80 : 0,
           })),
@@ -591,7 +587,7 @@ describe('what a finished match is worth', () => {
 
   function ratedRoom(): Rated {
     const store = new MemoryProfileStore();
-    const room = new Room('RATE1', 0, { profiles: store, pool: AUTO_ONLY });
+    const room = new Room('RATE1', 0, { profiles: store, pool: AUTO_ONLY, ranked: true });
     const a = room.join('Ada', 0);
     const b = room.join('Grace', 0);
     const p1 = a.playerId!;
@@ -700,7 +696,14 @@ describe('what a finished match is worth', () => {
     room.handle(a.playerId!, { t: 'cameraReady', ready: true }, 0);
     room.handle(b.playerId!, { t: 'cameraReady', ready: true }, 0);
 
-    playThrough({ room, p1: a.playerId!, p2: b.playerId!, r1, r2, store: new MemoryProfileStore() });
+    playThrough({
+      room,
+      p1: a.playerId!,
+      p2: b.playerId!,
+      r1,
+      r2,
+      store: new MemoryProfileStore(),
+    });
     expect(r1.state.phase).toBe('matchResult');
     expect(r1.ofType('standings')).toHaveLength(0);
   });

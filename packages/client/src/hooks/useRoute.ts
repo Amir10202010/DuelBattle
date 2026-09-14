@@ -8,12 +8,30 @@ import { extractRoomCode } from '@battle/shared';
  * the camera, the socket, the fullscreen layout — is different enough that it
  * gets its own branch rather than a slot in this list.
  */
-export const PAGES = ['home', 'play', 'leaderboard', 'profile', 'ranks', 'awards', 'settings'] as const;
+export const PAGES = [
+  'home',
+  'dashboard',
+  'login',
+  'register',
+  'onboarding',
+  'recover',
+  'play',
+  'leaderboard',
+  'profile',
+  'ranks',
+  'awards',
+  'settings',
+] as const;
 
 export type Page = (typeof PAGES)[number];
 
 const PATHS: Record<Page, string> = {
   home: '/',
+  dashboard: '/home',
+  login: '/login',
+  register: '/register',
+  onboarding: '/onboarding',
+  recover: '/recover',
   play: '/play',
   leaderboard: '/leaderboard',
   profile: '/profile',
@@ -76,6 +94,7 @@ export function useRoute(): Route & { go: (path: string) => void } {
     // popstate, which is right, but a pushed navigation is a new document as
     // far as the reader is concerned.
     window.scrollTo(0, 0);
+    document.querySelector('.shell')?.scrollTo(0, 0);
   }, []);
 
   return { ...route, go };

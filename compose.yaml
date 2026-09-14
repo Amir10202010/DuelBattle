@@ -1,0 +1,52 @@
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      ALLOWED_ORIGINS: https://${DOMAIN:?Set DOMAIN in .env}
+      TRUST_PROXY: '1'
+      DATA_DIR: /app/data
+      CLIENT_DIR: /app/packages/client/dist
+      MAX_ROOMS: ${MAX_ROOMS:-100}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - game-data:/app/data
+    expose:
+      - '8787'
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      game:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  game-data:
+  caddy-data:
+  caddy-config:

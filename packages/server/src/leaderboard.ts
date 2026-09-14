@@ -24,6 +24,8 @@ export function isBoardKind(value: unknown): value is BoardKind {
 }
 
 export interface BoardEntry {
+  movement: number;
+  recent: ('win' | 'loss' | 'draw')[];
   /** 1-based, and stable within one response. */
   position: number;
   name: string;
@@ -38,6 +40,7 @@ export interface BoardEntry {
 }
 
 export interface Board {
+  offset: number;
   kind: BoardKind;
   entries: BoardEntry[];
   /** How many records qualify, so a page of ten can say what it is ten of. */
@@ -63,8 +66,11 @@ function compare(kind: BoardKind, a: PlayerProfile, b: PlayerProfile): number {
   }
 }
 
-function entry(profile: PlayerProfile, position: number): BoardEntry {
+function entry(profile: PlayerProfile, position: number, kind: BoardKind): BoardEntry {
   return {
+    movement:
+      kind === 'rating' && profile.previousPosition ? profile.previousPosition - position : 0,
+    recent: profile.history.slice(0, 5).map((r) => r.result),
     position,
     name: profile.name,
     avatar: profile.avatar,
@@ -94,16 +100,38 @@ export function buildBoard(
   kind: BoardKind,
   viewerId: string | null,
   limit = BOARD_PAGE,
+  offset = 0,
 ): Board {
-  const ranked = store.all().filter(qualifies).sort((a, b) => compare(kind, a, b));
+  offset = Math.max(0, Math.min(100000, Math.floor(offset)));
+  limit = Math.max(1, Math.min(100, Math.floor(limit)));
+  if (store.rankedPage) {
+    let page = store.rankedPage(kind, viewerId, offset, limit);
+    if (page.total > 0 && offset >= page.total) {
+      offset = Math.floor((page.total - 1) / limit) * limit;
+      page = store.rankedPage(kind, viewerId, offset, limit);
+    }
+    return {
+      kind,
+      offset,
+      total: page.total,
+      entries: page.profiles.map((p, i) => entry(p, offset + i + 1, kind)),
+      you: page.own ? entry(page.own.profile, page.own.position, kind) : null,
+    };
+  }
+  const ranked = store
+    .all()
+    .filter(qualifies)
+    .sort((a, b) => compare(kind, a, b));
 
-  const entries = ranked.slice(0, Math.max(1, Math.min(100, limit))).map((p, i) => entry(p, i + 1));
+  const entries = ranked
+    .slice(offset, offset + limit)
+    .map((p, i) => entry(p, offset + i + 1, kind));
 
   let you: BoardEntry | null = null;
   if (viewerId) {
     const index = ranked.findIndex((p) => p.id === viewerId);
-    if (index >= 0) you = entry(ranked[index]!, index + 1);
+    if (index >= 0) you = entry(ranked[index]!, index + 1, kind);
   }
 
-  return { kind, entries, total: ranked.length, you };
+  return { kind, offset, entries, total: ranked.length, you };
 }

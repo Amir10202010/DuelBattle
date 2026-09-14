@@ -20,7 +20,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -45,7 +45,7 @@ jobs:
       # serves the app, not just that the pieces compile.
       - name: Smoke test the production server
         run: |
-          CLIENT_DIR=packages/client/dist PORT=8787 node packages/server/dist/index.js &
+          NODE_ENV=production DATA_DIR=$(mktemp -d) CLIENT_DIR=packages/client/dist PORT=8787 node packages/server/dist/index.js &
           server=$!
           trap 'kill $server' EXIT
           for i in $(seq 1 30); do
@@ -53,4 +53,5 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:8787/healthz | tee /dev/stderr | grep -q '"ok":true'
+          curl -fsS http://127.0.0.1:8787/readyz | grep -q '"ready":true'
           curl -fsS http://127.0.0.1:8787/ | grep -q '<div id="root">'

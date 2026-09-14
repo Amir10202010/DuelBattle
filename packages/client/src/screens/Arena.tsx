@@ -1,6 +1,10 @@
+import { Celebration, roundStreak } from '../components/Celebration.jsx';
+import { Camera, Check, Timer } from 'lucide-react';
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   colorSwatch,
+  customChallenge,
   detectorColors,
   getChallenge,
   opponentIdOf,
@@ -30,8 +34,9 @@ interface ArenaProps {
 }
 
 export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps) {
+  useUiPreferences();
   const round = match.round;
-  const challenge = round ? getChallenge(round.challengeId) ?? null : null;
+  const challenge = currentChallenge(match);
   const you = match.players[youId] ?? null;
   const opponentId = opponentIdOf(match, youId);
   const opponent = opponentOf(match, youId);
@@ -57,14 +62,22 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     setSubmitting(false);
   }, [round?.id, match.phase]);
 
+  // A lost acknowledgement or rejected image must leave a way to try again.
+  // Duplicate accepted submissions remain rejected by the authoritative server.
+  useEffect(() => {
+    if (!submitting || locked) return;
+    const timeout = window.setTimeout(() => setSubmitting(false), 2500);
+    return () => window.clearTimeout(timeout);
+  }, [submitting, locked]);
+
   const lockIn = useCallback(() => {
-    if (!round || !isChallenge || locked || submitting) return;
+    if (!round || !isChallenge || done || submitting) return;
     const image = evidenceCapture.current.toDataUrl(camera.videoRef.current, EVIDENCE_QUALITY);
     if (!image) return;
     setSubmitting(true);
     sound.play('lockIn');
     store.submit(round.id, image);
-  }, [round, isChallenge, locked, submitting, camera.videoRef, store]);
+  }, [round, isChallenge, done, submitting, camera.videoRef, store]);
 
   useEffect(() => {
     if (!isChallenge || done) return;
@@ -79,7 +92,8 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     return () => window.removeEventListener('keydown', onKey);
   }, [isChallenge, done, lockIn]);
 
-  const selfState = match.phase === 'roundResult' ? resultState(match, youId) : done ? 'locked' : 'live';
+  const selfState =
+    match.phase === 'roundResult' ? resultState(match, youId) : done ? 'locked' : 'live';
   const peerState =
     match.phase === 'roundResult'
       ? resultState(match, opponentId)
@@ -109,6 +123,9 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
                 <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
               )}
               {isChallenge && (locked || passed) && <LockedBadge passed={passed} />}
+              {selfState === 'won' && round && (
+                <Celebration key={round.id} streak={roundStreak(match.history, youId)} />
+              )}
             </>
           }
         >
@@ -121,8 +138,11 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           state={peerState}
           overlay={
             <>
-              {(match.phase === 'judging' || match.phase === 'roundResult') && round && opponentId && (
-                <EvidenceShot image={evidence[`${round.id}:${opponentId}`]} />
+              {(match.phase === 'judging' || match.phase === 'roundResult') &&
+                round &&
+                opponentId && <EvidenceShot image={evidence[`${round.id}:${opponentId}`]} />}
+              {peerState === 'won' && round && (
+                <Celebration key={round.id} streak={roundStreak(match.history, opponentId)} />
               )}
               {isChallenge && (opponent?.submitted || opponent?.passed) && (
                 <LockedBadge them passed={Boolean(opponent?.passed)} />
@@ -162,6 +182,13 @@ function resultState(match: PublicMatchState, playerId: string | null): 'won' | 
 
 type Detection = ReturnType<typeof useLocalDetection>;
 
+function currentChallenge(match: PublicMatchState) {
+  const id = match.round?.challengeId;
+  if (!id) return null;
+  const custom = match.customChallenges.find((c) => c.id === id);
+  return getChallenge(id) ?? (custom ? customChallenge(custom.id, custom.prompt) : null);
+}
+
 function PromptBand({
   match,
   now,
@@ -174,8 +201,9 @@ function PromptBand({
   /** Hidden once you have committed: the reading no longer changes anything. */
   showMeter: boolean;
 }) {
+  useUiPreferences();
   const round = match.round;
-  const challenge = round ? getChallenge(round.challengeId) : null;
+  const challenge = currentChallenge(match);
   const hidden = match.phase === 'countdown';
 
   // What a full timer bar means, taken from the match rather than assumed.
@@ -196,15 +224,26 @@ function PromptBand({
     <header className={`prompt ${hidden ? 'prompt--hidden' : ''}`}>
       <div className="prompt__meta">
         <span className="eyebrow">
-          Round {round?.number ?? 1} · first to {match.settings.winTarget}
+          {tr('Round')} {round?.number ?? 1}
+          {tr(' · first to ')}
+          {tr(match.settings.winTarget)}
         </span>
         {!hidden && round && <JudgeBadge judging={round.judging} />}
       </div>
 
       <h1 className="prompt__text display">
-        {hidden ? 'Get ready' : challenge?.prompt ?? '…'}
+        {hidden
+          ? tr('Get ready')
+          : challenge && match.customChallenges.some((c) => c.id === challenge.id)
+            ? challenge.prompt
+            : tr(challenge?.prompt ?? '…')}
       </h1>
-      {!hidden && challenge?.hint && <p className="prompt__hint dim">{challenge.hint}</p>}
+      {!hidden && challenge?.hint && (
+        <details className="prompt-help" key={round?.id}>
+          <summary>{tr('Hint')}</summary>
+          <p>{tr(challenge.hint)}</p>
+        </details>
+      )}
 
       {match.phase !== 'countdown' && (
         <TimerBar
@@ -235,16 +274,18 @@ function PromptBand({
  */
 /** Who is deciding this round, said plainly before it starts. */
 function JudgeBadge({ judging }: { judging: RoundJudging }) {
+  useUiPreferences();
   if (judging === 'auto') {
-    return <span className="badge badge--auto">Camera decides this one</span>;
+    return <span className="badge badge--auto">{tr('Camera decides this one')}</span>;
   }
   if (judging === 'ai') {
-    return <span className="badge badge--ai">The AI judge decides this one</span>;
+    return <span className="badge badge--ai">{tr('The AI judge decides this one')}</span>;
   }
-  return <span className="badge badge--peer">Your opponent decides this one</span>;
+  return <span className="badge badge--peer">{tr('Your opponent decides this one')}</span>;
 }
 
 function DetectionMeter({ detection, detector }: { detection: Detection; detector: DetectorSpec }) {
+  useUiPreferences();
   const matched = detection.result?.matched ?? false;
   const progress = detection.result?.progress ?? 0;
   const colors = detectorColors(detector);
@@ -264,21 +305,27 @@ function DetectionMeter({ detection, detector }: { detection: Detection; detecto
       <div className="meter__track">
         <div
           className={`meter__fill ${matched ? 'is-hit' : ''}`}
-          style={{ width: `${Math.round(progress * 100)}%`, background: matched ? 'var(--lime)' : tint }}
+          style={{
+            width: `${Math.round(progress * 100)}%`,
+            background: matched ? 'var(--lime)' : tint,
+          }}
         />
       </div>
-      <span className="meter__label mono">{matched ? 'LOCKED' : `${Math.round(progress * 100)}%`}</span>
+      <span className="meter__label mono">
+        {tr(matched ? 'LOCKED' : `${Math.round(progress * 100)}%`)}
+      </span>
     </div>
   );
 }
 
 function Countdown({ match, now }: { match: PublicMatchState; now: number }) {
+  useUiPreferences();
   const remaining = Math.max(0, (match.phaseEndsAt ?? now) - now);
   const count = Math.ceil(remaining / 1000);
   return (
     <div className="countdown" aria-hidden="true">
       <span key={count} className="countdown__num display">
-        {count > 0 ? count : 'GO'}
+        {tr(count > 0 ? count : 'GO')}
       </span>
     </div>
   );
@@ -289,33 +336,36 @@ function Countdown({ match, now }: { match: PublicMatchState; now: number }) {
  * on without you, which is exactly why this has to be fixable without leaving.
  */
 function CameraTrouble({ camera }: { camera: CameraState }) {
+  useUiPreferences();
   return (
     <div className="trouble" role="alert">
-      <p className="eyebrow">Camera stopped</p>
-      <p className="trouble__text">{camera.message ?? 'The camera is no longer running.'}</p>
+      <p className="eyebrow">{tr('Camera stopped')}</p>
+      <p className="trouble__text">{tr(camera.message ?? 'The camera is no longer running.')}</p>
       <button
         className="btn btn--primary"
         onClick={camera.request}
         disabled={camera.status === 'requesting'}
       >
-        {camera.status === 'requesting' ? 'Asking…' : 'Turn it back on'}
+        {tr(camera.status === 'requesting' ? 'Asking…' : 'Turn it back on')}
       </button>
     </div>
   );
 }
 
 function LockedBadge({ them = false, passed = false }: { them?: boolean; passed?: boolean }) {
+  useUiPreferences();
   const label = passed ? 'Passed' : them ? 'Locked in' : 'You locked in';
   return (
     <div className={`lockedbadge ${passed ? 'lockedbadge--passed' : ''}`}>
-      <span>{label}</span>
+      <span>{tr(label)}</span>
     </div>
   );
 }
 
 function EvidenceShot({ image }: { image: string | undefined }) {
+  useUiPreferences();
   if (!image) return null;
-  return <img className="evidence" src={image} alt="Submitted answer" />;
+  return <img className="evidence" src={image} alt={tr('Submitted answer')} />;
 }
 
 /**
@@ -369,6 +419,7 @@ function ActionRow({
   submitting: boolean;
   onLockIn: () => void;
 }) {
+  useUiPreferences();
   const round = match.round;
 
   if (match.phase === 'challenge' && round) {
@@ -376,10 +427,12 @@ function ActionRow({
       return (
         <div className="actions actions--waiting">
           <p className="actions__note">
-            {passed ? 'Passed. ' : ''}
-            {opponent?.submitted || opponent?.passed
-              ? 'Scoring…'
-              : `Waiting for ${opponent?.name ?? 'your opponent'}…`}
+            {tr(passed ? 'Passed. ' : '')}
+            {tr(
+              opponent?.submitted || opponent?.passed
+                ? 'Scoring…'
+                : `Waiting for ${opponent?.name ?? 'your opponent'}…`,
+            )}
           </p>
         </div>
       );
@@ -394,19 +447,24 @@ function ActionRow({
             className={`btn btn--lg lockin ${matched || !isAuto ? 'lockin--hot' : ''}`}
             onClick={onLockIn}
           >
-            {matched || !isAuto ? 'Lock it in' : 'Lock in anyway'}
+            {matched ? (
+              <Check size={22} aria-hidden="true" />
+            ) : (
+              <Camera size={22} aria-hidden="true" />
+            )}
+            {tr('Snap!')}
           </button>
           <button
             className="btn actions__pass"
             onClick={() => store.pass(round.id)}
-            title="Give up on this round"
+            title={tr('Give up on this round')}
           >
-            Pass
+            {tr('Pass')}
           </button>
         </div>
         <p className="actions__note dim">
-          {matched ? 'The camera has it. Be quick.' : aimingHint(detector, round.judging)}
-          <span className="actions__key"> Space</span>
+          {tr(matched ? 'The camera has it. Be quick.' : aimingHint(detector, round.judging))}
+          <span className="actions__key">{tr(' Space')}</span>
         </p>
       </div>
     );
@@ -415,7 +473,7 @@ function ActionRow({
   if (match.phase === 'judging' && round?.aiPending) {
     return (
       <div className="actions actions--waiting">
-        <p className="actions__note">The AI judge is looking at both answers…</p>
+        <p className="actions__note">{tr('The AI judge is looking at both answers…')}</p>
       </div>
     );
   }
@@ -431,7 +489,9 @@ function ActionRow({
       return (
         <div className="actions actions--waiting">
           <p className="actions__note">
-            The camera settled {opponent.name}&rsquo;s answer. Waiting on their verdict for yours…
+            {tr('The camera settled')}
+            {opponent.name}
+            {tr('’s answer. Waiting on their verdict for yours…')}
           </p>
         </div>
       );
@@ -439,7 +499,9 @@ function ActionRow({
     return (
       <div className="actions actions--judging">
         <p className="actions__question">
-          Does <strong>{opponent.name}</strong>&rsquo;s answer count?
+          {tr('Does')}
+          <strong>{opponent.name}</strong>
+          {tr('’s answer count?')}
         </p>
         <div className="actions__votes">
           <button
@@ -447,20 +509,22 @@ function ActionRow({
             disabled={alreadyVoted}
             onClick={() => store.vote(round.id, opponent.id, false)}
           >
-            No
+            {tr('No')}
           </button>
           <button
             className="btn btn--lg vote vote--yes"
             disabled={alreadyVoted}
             onClick={() => store.vote(round.id, opponent.id, true)}
           >
-            Yes
+            {tr('Yes')}
           </button>
         </div>
         <p className="actions__note dim">
-          {alreadyVoted
-            ? 'Verdict in. Waiting for theirs…'
-            : 'Say no and the round counts for nobody — you included.'}
+          {tr(
+            alreadyVoted
+              ? 'Verdict in. Waiting for theirs…'
+              : 'Say no and the round counts for nobody — you included.',
+          )}
         </p>
       </div>
     );
@@ -476,12 +540,24 @@ function ActionRow({
           ? 'No score'
           : `${opponent?.name ?? 'Opponent'} takes it`;
     return (
-      <div className={`actions actions--result result--${outcome.winnerId === youId ? 'win' : outcome.winnerId ? 'loss' : 'draw'}`}>
-        <p className="actions__headline display">{headline}</p>
-        <p className="actions__note dim">
-          {yours?.note}
-          {yours?.elapsedMs != null && ` · ${(yours.elapsedMs / 1000).toFixed(1)}s`}
-        </p>
+      <div
+        className={`actions actions--result result--${outcome.winnerId === youId ? 'win' : outcome.winnerId ? 'loss' : 'draw'}`}
+      >
+        <p className="actions__headline display">{tr(headline)}</p>
+        <div className="actions__note dim">
+          {yours?.elapsedMs != null && (
+            <span className="round-result-time">
+              <Timer size={14} aria-hidden="true" />
+              {(yours.elapsedMs / 1000).toFixed(1)} {tr('sec')}
+            </span>
+          )}
+          {yours?.note && (
+            <details className="prompt-help">
+              <summary>{tr('Why this result?')}</summary>
+              <p>{tr(yours.note)}</p>
+            </details>
+          )}
+        </div>
       </div>
     );
   }

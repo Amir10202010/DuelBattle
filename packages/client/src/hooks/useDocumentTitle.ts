@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { useEffect, useRef } from 'react';
 import { opponentIdOf, opponentOf, type PublicMatchState } from '@battle/shared';
 
@@ -38,18 +39,19 @@ function titleFor(match: PublicMatchState | null, youId: string | null): string 
  * nothing except making the browser chrome flicker.
  */
 export function useDocumentTitle(match: PublicMatchState | null, youId: string | null): void {
+  const { locale } = useUiPreferences();
   const original = useRef(document.title);
 
   useEffect(() => {
     const apply = () => {
       const wanted = document.visibilityState === 'hidden' ? titleFor(match, youId) : null;
-      document.title = wanted ? `${wanted} — Battle` : original.current || DEFAULT_TITLE;
+      document.title = wanted ? `${tr(wanted)} — DuelBattle` : tr(DEFAULT_TITLE);
     };
 
     apply();
     document.addEventListener('visibilitychange', apply);
     return () => document.removeEventListener('visibilitychange', apply);
-  }, [match, youId]);
+  }, [match, youId, locale]);
 
   useEffect(() => {
     const title = original.current || DEFAULT_TITLE;

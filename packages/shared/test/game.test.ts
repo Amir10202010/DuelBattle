@@ -96,7 +96,9 @@ describe('joining', () => {
     let s = createMatch('ABCDE', 0);
     const ctx = ctxAt(0);
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
-    expect(expectError(s, { type: 'join', playerId: 'p2', name: '  aDa ' }, ctx)).toBe('name-taken');
+    expect(expectError(s, { type: 'join', playerId: 'p2', name: '  aDa ' }, ctx)).toBe(
+      'name-taken',
+    );
   });
 
   it('treats a repeat join from a known player as a reconnect', () => {
@@ -198,9 +200,17 @@ describe('auto rounds', () => {
     const startedAt = s.round!.startedAt;
     const won = { matched: true, confidence: 1, reason: 'ok' };
 
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: won }, ctxAt(startedAt + 3_000));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: won },
+      ctxAt(startedAt + 3_000),
+    );
     // Sixty milliseconds later — which used to be "ran out of time".
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: won }, ctxAt(startedAt + 3_060));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: won },
+      ctxAt(startedAt + 3_060),
+    );
 
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.reason).toBe('faster');
@@ -235,13 +245,25 @@ describe('auto rounds', () => {
     // A near-simultaneous pair: the server clock, not the client, decides.
     s = apply(
       s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: false, confidence: 0.1, reason: 'no' } },
+      {
+        type: 'submit',
+        playerId: 'p1',
+        roundId,
+        evidenceId: 'a',
+        auto: { matched: false, confidence: 0.1, reason: 'no' },
+      },
       ctxAt(started + 1_000),
     );
     expect(s.phase).toBe('challenge');
     s = apply(
       s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: { matched: true, confidence: 0.9, reason: 'yes' } },
+      {
+        type: 'submit',
+        playerId: 'p2',
+        roundId,
+        evidenceId: 'b',
+        auto: { matched: true, confidence: 0.9, reason: 'yes' },
+      },
       ctxAt(started + 1_200),
     );
     expect(s.round?.outcome?.winnerId).toBe('p2');
@@ -251,8 +273,28 @@ describe('auto rounds', () => {
     let s = intoChallenge(seatedMatch(0));
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: false, confidence: 0, reason: 'no' } }, ctxAt(started + 900));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: { matched: false, confidence: 0, reason: 'no' } }, ctxAt(started + 950));
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p1',
+        roundId,
+        evidenceId: 'a',
+        auto: { matched: false, confidence: 0, reason: 'no' },
+      },
+      ctxAt(started + 900),
+    );
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p2',
+        roundId,
+        evidenceId: 'b',
+        auto: { matched: false, confidence: 0, reason: 'no' },
+      },
+      ctxAt(started + 950),
+    );
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBeNull();
     expect(s.round?.outcome?.reason).toBe('both-failed');
@@ -272,7 +314,17 @@ describe('auto rounds', () => {
     let s = intoChallenge(seatedMatch(0));
     const roundId = s.round!.id;
     const ctx = ctxAt(s.round!.startedAt + 500);
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: false, confidence: 0, reason: 'no' } }, ctx);
+    s = apply(
+      s,
+      {
+        type: 'submit',
+        playerId: 'p1',
+        roundId,
+        evidenceId: 'a',
+        auto: { matched: false, confidence: 0, reason: 'no' },
+      },
+      ctx,
+    );
     expect(expectError(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a2' }, ctx)).toBe(
       'already-submitted',
     );
@@ -281,14 +333,22 @@ describe('auto rounds', () => {
   it('rejects a submission aimed at a stale round', () => {
     const s = intoChallenge(seatedMatch(0));
     expect(
-      expectError(s, { type: 'submit', playerId: 'p1', roundId: 'nope', evidenceId: 'a' }, ctxAt(5_000)),
+      expectError(
+        s,
+        { type: 'submit', playerId: 'p1', roundId: 'nope', evidenceId: 'a' },
+        ctxAt(5_000),
+      ),
     ).toBe('wrong-round');
   });
 
   it('rejects a submission from someone who is not in the room', () => {
     const s = intoChallenge(seatedMatch(0));
     expect(
-      expectError(s, { type: 'submit', playerId: 'ghost', roundId: s.round!.id, evidenceId: 'a' }, ctxAt(5_000)),
+      expectError(
+        s,
+        { type: 'submit', playerId: 'ghost', roundId: s.round!.id, evidenceId: 'a' },
+        ctxAt(5_000),
+      ),
     ).toBe('not-in-room');
   });
 });
@@ -311,12 +371,32 @@ describe('a round that falls back to peer judging mid-way', () => {
         { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: read },
         ctxAt(started + 1_000, autoPool),
       );
-      s = apply(s, { type: 'downgradeJudging', roundId, reason: 'unreadable' }, ctxAt(started + 1_500, autoPool));
-      s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, autoPool));
+      s = apply(
+        s,
+        { type: 'downgradeJudging', roundId, reason: 'unreadable' },
+        ctxAt(started + 1_500, autoPool),
+      );
+      s = apply(
+        s,
+        { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+        ctxAt(started + 2_000, autoPool),
+      );
     } else {
-      s = apply(s, { type: 'downgradeJudging', roundId, reason: 'unreadable' }, ctxAt(started + 500, autoPool));
-      s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, autoPool));
-      s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 2_500, autoPool));
+      s = apply(
+        s,
+        { type: 'downgradeJudging', roundId, reason: 'unreadable' },
+        ctxAt(started + 500, autoPool),
+      );
+      s = apply(
+        s,
+        { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+        ctxAt(started + 2_000, autoPool),
+      );
+      s = apply(
+        s,
+        { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+        ctxAt(started + 2_500, autoPool),
+      );
     }
     return { state: s, roundId, started };
   }
@@ -387,9 +467,17 @@ describe('peer rounds', () => {
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
     expect(s.round?.judging).toBe('peer');
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
     expect(s.phase).toBe('challenge');
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
     expect(s.phase).toBe('judging');
   });
 
@@ -397,11 +485,27 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
+      ctxAt(started + 3_000, pool),
+    );
     expect(s.phase).toBe('judging');
-    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true }, ctxAt(started + 3_500, pool));
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true },
+      ctxAt(started + 3_500, pool),
+    );
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBe('p1');
     expect(s.round?.outcome?.reason).toBe('faster');
@@ -412,10 +516,26 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_100, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
+      ctxAt(started + 3_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
+      ctxAt(started + 3_100, pool),
+    );
 
     expect(s.round?.outcome?.winnerId).toBeNull();
     expect(s.round?.outcome?.reason).toBe('vetoed');
@@ -429,10 +549,26 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctxAt(started + 3_100, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
+      ctxAt(started + 3_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
+      ctxAt(started + 3_100, pool),
+    );
 
     expect(s.round?.outcome?.perPlayer.p2?.valid).toBe(true);
     expect(s.players.p2?.validAnswers).toBe(1);
@@ -443,10 +579,26 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false }, ctxAt(started + 3_000, pool));
-    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false }, ctxAt(started + 3_100, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
+      ctxAt(started + 3_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false },
+      ctxAt(started + 3_100, pool),
+    );
 
     expect(s.round?.outcome?.winnerId).toBeNull();
     expect(s.round?.outcome?.reason).toBe('vetoed');
@@ -456,8 +608,16 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
     s = tick(s, ctxAt(s.phaseEndsAt, pool));
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBe('p1');
@@ -475,13 +635,21 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
     expect(s.phase).toBe('judging');
     const ctx = ctxAt(started + 5_000, pool);
-    expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p1', approve: true }, ctx)).toBe(
-      'cannot-vote-for-self',
-    );
+    expect(
+      expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p1', approve: true }, ctx),
+    ).toBe('cannot-vote-for-self');
   });
 
   it('settles without judging when only one of them answered', () => {
@@ -490,7 +658,11 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
     s = tick(s, ctxAt(s.phaseEndsAt, pool));
 
     expect(s.phase).toBe('roundResult');
@@ -501,13 +673,25 @@ describe('peer rounds', () => {
     let s = intoChallenge(seatedMatch(0, pool), pool);
     const roundId = s.round!.id;
     const started = s.round!.startedAt;
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(started + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAt(started + 2_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(started + 1_000, pool),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAt(started + 2_000, pool),
+    );
     const ctx = ctxAt(started + 3_000, pool);
     s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctx);
-    expect(expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false }, ctx)).toBe(
-      'already-voted',
-    );
+    expect(
+      expectError(
+        s,
+        { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false },
+        ctx,
+      ),
+    ).toBe('already-voted');
   });
 });
 
@@ -654,7 +838,11 @@ describe('disconnects', () => {
     let s = intoChallenge(seatedMatch(0));
     s = apply(s, { type: 'setConnected', playerId: 'p2', connected: false }, ctxAt(5_000));
     expect(
-      expectError(s, { type: 'submit', playerId: 'p1', roundId: s.round!.id, evidenceId: 'a' }, ctxAt(6_000)),
+      expectError(
+        s,
+        { type: 'submit', playerId: 'p1', roundId: s.round!.id, evidenceId: 'a' },
+        ctxAt(6_000),
+      ),
     ).toBe('match-paused');
   });
 
@@ -742,7 +930,6 @@ describe('invariants', () => {
   });
 });
 
-
 describe('the series', () => {
   function playMatch(state: MatchState, winner: 'p1' | 'p2'): MatchState {
     let s = state;
@@ -810,7 +997,6 @@ describe('the series', () => {
   });
 });
 
-
 describe('prompts the players write themselves', () => {
   function add(state: MatchState, playerId: string, prompt: string, id: string): MatchState {
     return apply(state, { type: 'addChallenge', playerId, prompt, id }, ctxAt(100));
@@ -833,7 +1019,11 @@ describe('prompts the players write themselves', () => {
   it('refuses one mid-match, so nobody adds a round they are set up to win', () => {
     const s = intoChallenge(seatedMatch(0));
     expect(
-      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c1' }, ctxAt(5_000)),
+      expectError(
+        s,
+        { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c1' },
+        ctxAt(5_000),
+      ),
     ).toBe('wrong-phase');
   });
 
@@ -842,12 +1032,20 @@ describe('prompts the players write themselves', () => {
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctxAt(0));
     s = add(s, 'p1', 'SHOW A CAT', 'c1');
     expect(
-      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c2' }, ctxAt(0)),
+      expectError(
+        s,
+        { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c2' },
+        ctxAt(0),
+      ),
     ).toBe('duplicate-prompt');
 
     for (let i = 1; i < 4; i++) s = add(s, 'p1', `PROMPT NUMBER ${i}`, `c${i + 1}`);
     expect(
-      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'ONE TOO MANY', id: 'cx' }, ctxAt(0)),
+      expectError(
+        s,
+        { type: 'addChallenge', playerId: 'p1', prompt: 'ONE TOO MANY', id: 'cx' },
+        ctxAt(0),
+      ),
     ).toBe('deck-full');
   });
 
@@ -859,9 +1057,9 @@ describe('prompts the players write themselves', () => {
     for (let i = 0; i < 4; i++) s = add(s, 'p1', `ADA PROMPT ${i}`, `a${i}`);
 
     // Ada has used hers; Grace has not touched the deck.
-    expect(expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'ONE MORE', id: 'ax' }, ctx)).toBe(
-      'deck-full',
-    );
+    expect(
+      expectError(s, { type: 'addChallenge', playerId: 'p1', prompt: 'ONE MORE', id: 'ax' }, ctx),
+    ).toBe('deck-full');
     s = add(s, 'p2', 'GRACE PROMPT', 'g1');
     expect(s.customChallenges).toHaveLength(5);
   });
@@ -929,7 +1127,6 @@ describe('prompts the players write themselves', () => {
   });
 });
 
-
 describe('match length', () => {
   function lobby(): MatchState {
     let s = createMatch('ABCDE', 0);
@@ -964,9 +1161,9 @@ describe('match length', () => {
 
   it('refuses to move the finish line mid-match', () => {
     const s = intoChallenge(seatedMatch(0));
-    expect(expectError(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 5 }, ctxAt(5_000))).toBe(
-      'wrong-phase',
-    );
+    expect(
+      expectError(s, { type: 'setWinTarget', playerId: 'p1', winTarget: 5 }, ctxAt(5_000)),
+    ).toBe('wrong-phase');
   });
 
   it('actually decides the match at the chosen length', () => {
@@ -1012,7 +1209,6 @@ describe('match length', () => {
     expect(s.settings.winTarget).toBe(5);
   });
 });
-
 
 describe('passing on a round', () => {
   it('ends the round early when both players give up', () => {
@@ -1088,13 +1284,19 @@ describe('passing on a round', () => {
       ctx,
     );
     expect(s.phase).toBe('challenge');
-    expect(expectError(s, { type: 'pass', playerId: 'p1', roundId }, ctx)).toBe('already-submitted');
+    expect(expectError(s, { type: 'pass', playerId: 'p1', roundId }, ctx)).toBe(
+      'already-submitted',
+    );
   });
 
   it('is refused while the match is paused or between rounds', () => {
     let s = intoChallenge(seatedMatch(0));
     const roundId = s.round!.id;
-    const paused = apply(s, { type: 'setConnected', playerId: 'p2', connected: false }, ctxAt(5_000));
+    const paused = apply(
+      s,
+      { type: 'setConnected', playerId: 'p2', connected: false },
+      ctxAt(5_000),
+    );
     expect(expectError(paused, { type: 'pass', playerId: 'p1', roundId }, ctxAt(6_000))).toBe(
       'match-paused',
     );
@@ -1114,7 +1316,11 @@ describe('passing on a round', () => {
     const roundId = s.round!.id;
     const startedAt = s.round!.startedAt;
 
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(startedAt + 1_000, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(startedAt + 1_000, pool),
+    );
     s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_500, pool));
 
     expect(s.phase).toBe('roundResult');
@@ -1129,7 +1335,11 @@ describe('passing on a round', () => {
     const startedAt = s.round!.startedAt;
 
     s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_000, pool));
-    s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAt(startedAt + 1_500, pool));
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAt(startedAt + 1_500, pool),
+    );
 
     expect(s.phase).toBe('roundResult');
     expect(s.round?.outcome?.winnerId).toBe('p1');
@@ -1163,8 +1373,16 @@ describe('a round an AI referee takes', () => {
   function bothAnswer(state: MatchState): MatchState {
     const roundId = state.round!.id;
     const started = state.round!.startedAt;
-    let s = apply(state, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' }, ctxAi(started + 1_000));
-    s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' }, ctxAi(started + 2_000));
+    let s = apply(
+      state,
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      ctxAi(started + 1_000),
+    );
+    s = apply(
+      s,
+      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
+      ctxAi(started + 2_000),
+    );
     return s;
   }
 
@@ -1258,14 +1476,14 @@ describe('a round an AI referee takes', () => {
   });
 
   it('does not punish anybody when the referee never answers at all', () => {
-    // The machinery failing is not the players' fault: the deadline passes and
-    // both answers stand, so the round is decided by who was faster.
+    // Unverified evidence cannot become a valid answer through a timeout.
     const s = bothAnswer(seated());
     const settled = tick(s, ctxAi(s.phaseEndsAt));
 
     expect(settled.phase).toBe('roundResult');
-    expect(settled.round?.outcome?.winnerId).toBe('p1');
-    expect(settled.round?.outcome?.perPlayer.p2?.valid).toBe(true);
+    expect(settled.round?.outcome?.winnerId).toBeNull();
+    expect(settled.round?.outcome?.reason).toBe('verification-unavailable');
+    expect(settled.round?.outcome?.perPlayer.p2?.valid).toBe(false);
   });
 
   it('ignores a verdict for a round that has already moved on', () => {
@@ -1300,9 +1518,17 @@ describe('whether a match counts for rating', () => {
       const roundId = s.round!.id;
       const started = s.round!.startedAt;
       const win = { matched: true, confidence: 1, reason: 'ok' };
-      s = apply(s, { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: win }, ctxAt(started + 1_000, pool));
+      s = apply(
+        s,
+        { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: win },
+        ctxAt(started + 1_000, pool),
+      );
       if (round < answeredByP2) {
-        s = apply(s, { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: win }, ctxAt(started + 2_000, pool));
+        s = apply(
+          s,
+          { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b', auto: win },
+          ctxAt(started + 1_200, pool),
+        );
       }
       s = tick(s, ctxAt(s.phaseEndsAt, pool));
       if (s.phase === 'roundResult') s = tick(s, ctxAt(s.phaseEndsAt, pool));

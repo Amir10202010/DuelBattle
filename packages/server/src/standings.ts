@@ -101,7 +101,9 @@ function advance(
     opponentRating: opponent.rating,
   };
 
-  const earned = newlyEarned({ profile: settled, match: summary }, settled.achievements);
+  const earned = summary.forfeited
+    ? []
+    : newlyEarned({ profile: settled, match: summary }, settled.achievements);
   const xp =
     matchXp({
       result,
@@ -109,11 +111,22 @@ function advance(
       validAnswers: contestant.summary.validAnswers,
       streak,
     }) + earned.reduce((sum, a) => sum + a.xp, 0);
+  const today = new Date(at).toISOString().slice(0, 10);
+  const dailyBonus =
+    summary.forfeited ||
+    profile.history.some(
+      (r) => (r.dailyBonus ?? 0) > 0 && new Date(r.at).toISOString().slice(0, 10) === today,
+    )
+      ? 0
+      : 75;
+  const totalXp = summary.forfeited ? 0 : xp + dailyBonus;
 
   const levelBefore = levelFor(settled.xp).level;
-  const levelAfter = levelFor(settled.xp + xp).level;
+  const levelAfter = levelFor(settled.xp + totalXp).level;
 
   const record: MatchRecord = {
+    forfeited: summary.forfeited ?? false,
+    topicIds: summary.topicIds ?? [],
     at,
     opponentName: opponent.name,
     result,
@@ -121,12 +134,14 @@ function advance(
     ratingAfter: after,
     yourScore: scores.mine,
     theirScore: scores.theirs,
-    xp,
+    xp: totalXp,
+    dailyBonus,
+    categories: contestant.summary.categories ?? [],
   };
 
   const updated: PlayerProfile = {
     ...settled,
-    xp: settled.xp + xp,
+    xp: settled.xp + totalXp,
     achievements: [...settled.achievements, ...earned.map((a) => a.id)],
     history: [record, ...profile.history].slice(0, HISTORY_KEPT),
   };
@@ -137,7 +152,8 @@ function advance(
     after,
     change: after - before,
     rewards: {
-      xp,
+      xp: totalXp,
+      dailyBonus,
       levelBefore,
       levelAfter,
       unlocked: earned.map((a) => a.id),
@@ -159,25 +175,66 @@ export function recordMatch(
   a: Contestant,
   b: Contestant,
   at: number,
+  matchId?: string,
+  winnerOverride?: string,
 ): Record<string, RatingUpdate> {
-  const before = (who: Contestant): PlayerProfile => ({
-    ...(store.get(who.id) ?? blankProfile(who.id, at)),
-    name: who.name,
-  });
+  if (
+    a.id === b.id ||
+    !Number.isInteger(a.score) ||
+    !Number.isInteger(b.score) ||
+    a.score < 0 ||
+    b.score < 0
+  ) {
+    throw new Error('Invalid match contestants');
+  }
+  const settle = () => {
+    if (matchId && store.claimMatch && !store.claimMatch(matchId, a.id, b.id, at)) return {};
+    const before = (who: Contestant): PlayerProfile => ({
+      ...(store.get(who.id) ?? blankProfile(who.id, at)),
+      name: who.name,
+      ...(store.rankedPage
+        ? { previousPosition: store.rankedPage('rating', who.id, 0, 0).own?.position ?? 0 }
+        : {}),
+    });
 
-  const profileA = before(a);
-  const profileB = before(b);
+    const profileA = before(a);
+    const profileB = before(b);
 
-  const updateA = advance(profileA, profileB, a, resultOf(a.score, b.score), { mine: a.score, theirs: b.score }, at);
-  const updateB = advance(profileB, profileA, b, resultOf(b.score, a.score), { mine: b.score, theirs: a.score }, at);
+    if (winnerOverride && winnerOverride !== a.id && winnerOverride !== b.id)
+      throw new Error('Invalid winner');
+    const updateA = advance(
+      profileA,
+      profileB,
+      a,
+      winnerOverride ? (winnerOverride === a.id ? 'win' : 'loss') : resultOf(a.score, b.score),
+      { mine: a.score, theirs: b.score },
+      at,
+    );
+    const updateB = advance(
+      profileB,
+      profileA,
+      b,
+      winnerOverride ? (winnerOverride === b.id ? 'win' : 'loss') : resultOf(b.score, a.score),
+      { mine: b.score, theirs: a.score },
+      at,
+    );
 
-  store.save(updateA.profile);
-  store.save(updateB.profile);
-  return { [a.id]: updateA, [b.id]: updateB };
+    store.save(updateA.profile);
+    store.save(updateB.profile);
+    return { [a.id]: updateA, [b.id]: updateB };
+  };
+  return store.transaction ? store.transaction(settle) : settle();
 }
 
 /** Reads a profile without creating one, for showing a card before a match. */
-export function profileFor(store: ProfileStore, id: string, name: string, at: number): PlayerProfile {
+export function profileFor(
+  store: ProfileStore,
+  id: string,
+  name: string,
+  at: number,
+): PlayerProfile {
   const existing = store.get(id);
-  return existing ? { ...existing, name: name || existing.name } : { ...blankProfile(id, at), name };
+  return existing
+    ? { ...existing, name: name || existing.name }
+    : { ...blankProfile(id, at), name };
 }

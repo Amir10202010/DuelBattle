@@ -6,6 +6,8 @@ import type { RoomManager } from './rooms.js';
 import { config } from './config.js';
 import { TokenBuckets, type LimiterOptions } from './limiter.js';
 import { log } from './log.js';
+import type { AuthService } from './auth.js';
+import { authHttp } from './authHttp.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -24,6 +26,7 @@ const MIME: Record<string, string> = {
 export interface HttpOptions {
   clientDir: string;
   rooms: RoomManager;
+  auth?: AuthService;
 }
 
 /**
@@ -68,17 +71,39 @@ const DOCUMENT_HEADERS: Record<string, string> = {
 export function createHttpServer(options: HttpOptions): Server {
   const clientRoot = options.clientDir ? resolve(options.clientDir) : '';
   const lookupLimiter = new TokenBuckets(LOOKUP_LIMIT);
+  const authentication = options.auth ? authHttp(options.auth) : null;
 
-  return createServer((req, res) => {
-    void handle(req, res, options, clientRoot, lookupLimiter).catch((err) => {
-      log.error('request failed', {
-        url: req.url,
-        error: err instanceof Error ? err.stack ?? err.message : String(err),
+  return createServer(
+    {
+      requestTimeout: 15_000,
+      headersTimeout: 10_000,
+      keepAliveTimeout: 5_000,
+      maxHeaderSize: 16_384,
+    },
+    (req, res) => {
+      res.setHeader('x-content-type-options', 'nosniff');
+      if (config.nodeEnv === 'production')
+        res.setHeader('strict-transport-security', 'max-age=31536000');
+      let path: string;
+      try {
+        path = new URL(req.url ?? '/', 'http://localhost').pathname;
+      } catch {
+        json(res, 400, { error: 'Invalid request URL.' });
+        return;
+      }
+      void (async () => {
+        if (authentication && (await authentication(req, res, path, clientKey(req)))) return;
+        await handle(req, res, options, clientRoot, lookupLimiter);
+      })().catch(() => {
+        log.error('request failed', {
+          path,
+        });
+        if (!res.headersSent)
+          json(res, 503, { error: 'We could not save that right now. Try again shortly.' });
+        else res.end();
       });
-      if (!res.headersSent) json(res, 500, { error: 'internal' });
-      else res.end();
-    });
-  });
+    },
+  );
 }
 
 async function handle(
@@ -97,6 +122,19 @@ async function handle(
 
   if (url.pathname === '/healthz') {
     json(res, 200, { ok: true, ...options.rooms.stats(), uptimeSec: Math.round(process.uptime()) });
+    return;
+  }
+  if (url.pathname === '/readyz') {
+    try {
+      options.auth?.db.sql.prepare('SELECT 1').get();
+      json(res, 200, { ready: true });
+    } catch {
+      json(res, 503, { ready: false });
+    }
+    return;
+  }
+  if (!options.auth && url.pathname === '/api/auth/session') {
+    json(res, 200, { account: null, profile: null, serverTime: Date.now() });
     return;
   }
 
@@ -130,7 +168,7 @@ async function handle(
     return;
   }
 
-  if (!clientRoot) {
+  if (!clientRoot || url.pathname.startsWith('/api/')) {
     json(res, 404, { error: 'not-found' });
     return;
   }
@@ -164,7 +202,11 @@ async function serveStatic(
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'content-length': stat.size,
     // Vite fingerprints assets, so everything but the entry document is immutable.
-    'cache-control': isEntry ? 'no-cache' : 'public, max-age=31536000, immutable',
+    'cache-control': isEntry
+      ? 'no-cache'
+      : pathname.startsWith('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=3600',
     'x-content-type-options': 'nosniff',
     ...(isEntry ? DOCUMENT_HEADERS : {}),
   });
@@ -172,7 +214,9 @@ async function serveStatic(
     res.end();
     return;
   }
-  createReadStream(filePath).pipe(res);
+  createReadStream(filePath)
+    .on('error', () => res.destroy())
+    .pipe(res);
 }
 
 function clientKey(req: IncomingMessage): string {

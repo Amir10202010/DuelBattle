@@ -175,3 +175,24 @@ describe('the gate', () => {
     expect(check.ok && check.topic.difficulty).toBe(2);
   });
 });
+
+it('keeps editorial metadata and rejects unsafe physical or personal-data prompts', () => {
+  for (const topic of TOPICS) {
+    expect(topic.language).toBe('en');
+    expect(topic.expectedResponseType).toBe('photo');
+    expect(topic.qualityScore).toBeGreaterThanOrEqual(70);
+    expect(topic.evaluationCriteria.length).toBeGreaterThan(0);
+    expect(topic.safetyStatus).toBe('screened');
+  }
+  for (const prompt of [
+    'SHOW ME A KNIFE',
+    'HOLD UP YOUR PASSPORT',
+    'BRING A BANK CARD, NUMBERS HIDDEN',
+    'SHOW ME A CREDIT CARD',
+  ]) {
+    expect(validateTopic({ prompt }, new Set())).toMatchObject({
+      ok: false,
+      reason: 'needs-something-not-here',
+    });
+  }
+});

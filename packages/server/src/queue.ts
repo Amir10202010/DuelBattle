@@ -14,6 +14,8 @@
  */
 
 export interface Waiting {
+  mode?: 'ranked' | 'casual';
+  recentOpponents?: string[];
   /** Identifies the socket, so a queue entry can be withdrawn. */
   key: string;
   /** Who this browser is, when it has proved it. Two tabs must not meet. */
@@ -89,6 +91,13 @@ export class MatchQueue {
         // One browser holding both seats is not a match, it is a rating
         // laundering machine — and the standings refuse to record it anyway.
         if (one.identity && two.identity && one.identity === two.identity) continue;
+        if ((one.mode ?? 'casual') !== (two.mode ?? 'casual')) continue;
+        if (
+          (one.recentOpponents?.includes(two.identity ?? '') ||
+            two.recentOpponents?.includes(one.identity ?? '')) &&
+          Math.min(now - one.joinedAt, now - two.joinedAt) < 30_000
+        )
+          continue;
 
         const gap = Math.abs(one.rating - two.rating);
         if (gap > windowFor(one, now) || gap > windowFor(two, now)) continue;

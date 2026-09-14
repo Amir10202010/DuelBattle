@@ -1,118 +1,123 @@
-import {
-  DIVISIONS_PER_TIER,
-  PLACEMENT_MATCHES,
-  STARTING_RATING,
-  TIERS,
-  isPlaced,
-  rankFor,
-  demotionRisk,
-  nextRank,
-  type PublicProfile,
-} from '@battle/shared';
-
-/**
- * The ladder, explained once so it never has to be explained again.
- *
- * A progression system nobody can read is a number that goes up. What makes
- * this one a ladder is that a player can see every rung, see which one they are
- * on, and know exactly what moves them between two of them — including
- * downwards, which is the half most games are coy about and the half that makes
- * the rest of it mean anything.
- */
+import { tr, useUiPreferences } from '../i18n/index.js';
+import { ChevronRight, ShieldCheck } from 'lucide-react';
+import { TIERS, isPlaced, rankFor, nextRank, type PublicProfile } from '@battle/shared';
+import { RankEmblem } from '../components/GameArt.jsx';
 export function Ranks({ profile }: { profile: PublicProfile | null }) {
-  const rating = profile?.rating ?? STARTING_RATING;
-  const placed = profile ? isPlaced(profile.matchesPlayed) : false;
-  const here = rankFor(rating);
-  const up = nextRank(rating);
-  const down = demotionRisk(rating);
-
+  useUiPreferences();
+  if (!profile) return null;
+  const here = rankFor(profile.rating);
+  const up = nextRank(profile.rating);
+  const placed = isPlaced(profile.matchesPlayed);
   return (
-    <main className="page page--ranks">
-      <header className="page__head">
-        <p className="eyebrow">Ranks</p>
-        <h1 className="page__title display">Eight rungs, three steps each.</h1>
-        <p className="page__lede">
-          Everybody starts at {STARTING_RATING}, partway up rather than at the bottom — so there is
-          somewhere to fall as well as somewhere to climb. Win and the number moves up, lose and it
-          moves down, and the rung you are standing on is simply the one your rating clears.
-        </p>
-      </header>
-
-      {profile && (
-        <section className="youare">
-          <p className="eyebrow">You are here</p>
-          <p className="youare__rank display">{placed ? here.label : 'Still placing'}</p>
-          <p className="youare__rating mono">{rating}</p>
-          <div className="climb__track">
-            <div className="climb__fill" style={{ width: `${Math.round(here.progress * 100)}%` }} />
-          </div>
-          <p className="youare__note dim">
-            {!placed
-              ? `${Math.max(0, PLACEMENT_MATCHES - profile.matchesPlayed)} more matches and the number stops being a guess.`
-              : up
-                ? `${up.pointsAway} points to ${up.rank.label}${down ? `, ${down.pointsAway} above dropping to ${down.rank.label}` : ''}.`
-                : 'There is nothing above this.'}
+    <main className="page">
+      <header className="page-heading">
+        <div>
+          <span className="eyebrow">{tr('The rank journey')}</span>
+          <h1>{tr('A reputation you can earn.')}</h1>
+          <p>
+            {tr(
+              'Eight original tiers. Three divisions below the summit. Your next step is always in sight.',
+            )}
           </p>
-        </section>
-      )}
-
-      <ol className="ladder" aria-label="The ranks">
-        {[...TIERS].reverse().map((tier, index) => {
-          const top = index === 0;
-          const standing = tier.name === here.tier.name && placed;
-          const next = TIERS[TIERS.indexOf(tier) + 1];
+        </div>
+        <span className="status-tag">
+          <ShieldCheck size={15} />
+          {tr(' Skill decides')}
+        </span>
+      </header>
+      <section className="rank-journey">
+        <RankEmblem rating={profile.rating} placing={!placed} size={115} />
+        <div>
+          <span className="eyebrow">{tr('Current standing')}</span>
+          <h2>{tr(placed ? here.label : 'Placement in progress')}</h2>
+          <p>
+            {tr(
+              placed
+                ? up
+                  ? `${up.pointsAway} MMR until ${tr(up.rank.label)}`
+                  : 'Welcome to the summit.'
+                : `${profile.matchesPlayed}/5 matches completed. Every player starts at 1000 MMR.`,
+            )}
+          </p>
+        </div>
+        <strong>
+          {tr(profile.rating)}
+          <small>{tr('MMR')}</small>
+        </strong>
+      </section>
+      <ol className="rank-grid" aria-label={tr('Rank ladder')}>
+        {TIERS.map((tier, i) => {
+          const active = tier.name === here.tier.name && placed;
+          const earned = placed && profile.peakRating >= tier.floor;
+          const ceiling = TIERS[i + 1]?.floor;
           return (
-            <li key={tier.name} className={`rung ${standing ? 'is-here' : ''} ${top ? 'is-apex' : ''}`}>
-              <span className="rung__band" aria-hidden="true" />
-              <div className="rung__body">
-                <h2 className="rung__name">{tier.name}</h2>
-                <p className="rung__range mono">
-                  {tier.floor}
-                  {next ? `–${next.floor - 1}` : '+'}
-                </p>
-                <p className="rung__blurb dim">{tier.blurb}</p>
+            <li
+              key={tier.name}
+              className={`rank-tier ${active ? 'is-current' : ''} ${earned ? 'is-earned' : ''}`}
+            >
+              <div className="rank-tier__top">
+                <span>
+                  {'0'}
+                  {tr(i + 1)}
+                </span>
+                <span>
+                  {tr(active ? 'YOUR RANK' : i === 7 ? 'THE SUMMIT' : earned ? 'REACHED' : 'AHEAD')}
+                </span>
               </div>
-              <span className="rung__divisions">
-                {top ? 'no divisions' : `${DIVISIONS_PER_TIER} divisions`}
+              <RankEmblem rating={tier.floor} size={116} />
+              <h2>{tr(tier.name)}</h2>
+              <p>{tr(tier.blurb)}</p>
+              <span className="rank-range">
+                {tr(tier.floor)}
+                {tr(ceiling ? `–${ceiling - 1}` : '+')}
+                {tr(' MMR')}
               </span>
-              {standing && <span className="rung__you">you</span>}
+              <div
+                className="division-marks"
+                aria-label={tr(i === 7 ? 'Apex tier' : 'Divisions three to one')}
+              >
+                {i === 7 ? (
+                  <span>{tr('APEX')}</span>
+                ) : (
+                  <>
+                    <span>{tr('III')}</span>
+                    <ChevronRight size={12} />
+                    <span>{tr('II')}</span>
+                    <ChevronRight size={12} />
+                    <span>{tr('I')}</span>
+                  </>
+                )}
+              </div>
             </li>
           );
         })}
       </ol>
-
-      <section className="explain">
+      <section className="rank-rules">
         <article>
-          <h2 className="explain__title">How the number moves</h2>
+          <span>{'01'}</span>
+          <h3>{tr('Win your way up')}</h3>
           <p>
-            Ordinary Elo, and it is zero-sum: whatever you take, your opponent loses. Beating
-            somebody far below you is worth almost nothing and losing to them is expensive, which is
-            what stops the ladder rewarding anybody for picking on beginners. An upset pays properly.
+            {tr(
+              'Elo measures performance against your opponent. A win against a stronger rival earns more. Five placement matches unlock your leaderboard position.',
+            )}
           </p>
         </article>
         <article>
-          <h2 className="explain__title">Placement</h2>
+          <span>{'02'}</span>
+          <h3>{tr('Know the stakes')}</h3>
           <p>
-            The first {PLACEMENT_MATCHES} matches move you roughly twice as fast, so finding your
-            level takes an evening rather than a month. Until they are done your rating is labelled
-            a guess and you are not on the leaderboard.
+            {tr(
+              'Cross a division boundary to move up or down. Your profile shows the drop line before you play. Earned achievements and XP never disappear.',
+            )}
           </p>
         </article>
         <article>
-          <h2 className="explain__title">Promotion and demotion</h2>
+          <span>{'03'}</span>
+          <h3>{tr('Keep it fair')}</h3>
           <p>
-            There are no hidden shields and no grace matches. Cross the line going up and you are
-            promoted the same match; cross it going down and you are demoted the same match. What
-            the game owes you instead is warning, which is why the drop line is on your profile
-            before you play, not after.
-          </p>
-        </article>
-        <article>
-          <h2 className="explain__title">Which matches count</h2>
-          <p>
-            Only ones both of you actually played: not abandoned, and both of you answering at least
-            half the rounds. Two seats sharing one browser are not recorded at all. A rating you can
-            inflate with a second tab is not a rating.
+            {tr(
+              'Only verified ranked matches count. Both players must participate. After three rewarded matches with the same rival in 24 hours, find a new opponent.',
+            )}
           </p>
         </article>
       </section>

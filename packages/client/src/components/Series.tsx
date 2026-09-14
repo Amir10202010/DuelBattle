@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { memo } from 'react';
 import { opponentIdOf, opponentOf, type PublicMatchState } from '@battle/shared';
 
@@ -12,7 +13,7 @@ export function seriesLine(match: PublicMatchState, youId: string): string | nul
   const opponentId = opponentIdOf(match, youId);
   const opponent = opponentOf(match, youId);
   const mine = match.series[youId] ?? 0;
-  const theirs = opponentId ? match.series[opponentId] ?? 0 : 0;
+  const theirs = opponentId ? (match.series[opponentId] ?? 0) : 0;
   const played = mine + theirs;
 
   if (played === 0) return null;
@@ -34,7 +35,8 @@ export const SeriesLine = memo(function SeriesLine({
   youId: string;
   className?: string;
 }) {
+  useUiPreferences();
   const line = seriesLine(match, youId);
   if (!line) return null;
-  return <p className={`series ${className}`}>{line}</p>;
+  return <p className={`series ${className}`}>{tr(line)}</p>;
 });

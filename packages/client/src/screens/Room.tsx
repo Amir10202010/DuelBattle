@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { useEffect, useRef } from 'react';
 import { opponentOf, type PublicMatchState } from '@battle/shared';
 import type { MatchStore, StoreSnapshot } from '../net/store.js';
@@ -32,6 +33,7 @@ interface RoomProps {
 }
 
 export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAnother }: RoomProps) {
+  useUiPreferences();
   const cameraReady = camera.status === 'ready';
   const connected = snapshot.status === 'open';
 
@@ -63,25 +65,31 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
   // the clock and your opponent's view is a worse outcome than the fault itself,
   // and you cannot fix what you cannot see the consequences of.
   const matchRunning = match.phase !== 'lobby' && match.phase !== 'matchResult';
-  if (!cameraReady && !matchRunning) {
+  if (!cameraReady && match.phase === 'lobby') {
     return <CameraGate camera={camera} roomCode={match.roomCode} onLeave={onLeave} />;
   }
 
   const opponent = opponentOf(match, youId);
 
   return (
-    <div className="room">
+    <div className="room" id="main-content" role="main">
       <Announcer match={match} youId={youId} />
       <header className="room__bar">
-        <span className="room__code mono" title="Room code">
-          {match.roomCode}
+        <span className="room__code mono" title={tr('Room code')}>
+          {tr(match.roomCode)}
         </span>
-        <span className="room__phase eyebrow">{phaseLabel(match)}</span>
+        <span className="room__phase eyebrow">{tr(phaseLabel(match))}</span>
         <div className="room__right">
           <ConnectionBadge status={snapshot.status} latencyMs={snapshot.latencyMs} />
           <MuteButton />
-          <button className="btn btn--ghost room__leave" onClick={onLeave}>
-            Leave
+          <button
+            className="btn btn--ghost room__leave"
+            onClick={onLeave}
+            title={tr(
+              match.ranked && matchRunning ? 'Leaving can count as a ranked loss' : 'Leave room',
+            )}
+          >
+            {tr(match.ranked && matchRunning ? 'Forfeit' : 'Leave')}
           </button>
         </div>
       </header>

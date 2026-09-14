@@ -1,0 +1,380 @@
+/* Gameplay feedback follows server results. All motion is finite and decorative. */
+.stage--won {
+  border-color: #ffac44;
+  box-shadow: 0 0 0 2px #ffac4438;
+}
+.stage--won .stage__bar {
+  background: #4f2b13;
+  color: #fff2d3;
+}
+.stage--won .stage__dot {
+  background: #ffbc55;
+}
+.celebration {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.celebration__fire {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.celebration__fire i {
+  position: absolute;
+  bottom: -18%;
+  left: calc(var(--i) * 12% - 8%);
+  width: 24%;
+  height: 58%;
+  border-radius: 70% 10% 55% 45%;
+  background: linear-gradient(0deg, #ff702ddd, #ffbf4d99 55%, #ffe5a300);
+  transform-origin: 50% 100%;
+  opacity: 0;
+  animation: winner-flame 1.5s cubic-bezier(0.2, 0.65, 0.35, 1) calc(var(--i) * 28ms) 1 both;
+}
+.celebration__fire i:nth-child(even) {
+  height: 74%;
+  background: linear-gradient(0deg, #ff8a32cc, #ffd17466 55%, #ffda6f00);
+}
+.celebration__badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: max-content;
+  max-width: 90%;
+  padding: 12px 20px;
+  color: #fff0ba;
+  background: #442711ed;
+  border: 1px solid #ffba52;
+  border-radius: 18px;
+  box-shadow: 0 8px 30px #0005;
+  animation: winner-badge 550ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.celebration__badge strong {
+  font: 800 42px/1 var(--font-ui);
+  letter-spacing: -2px;
+}
+.celebration__badge span {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.celebration__sparks {
+  position: absolute;
+  inset: 0;
+}
+.celebration__sparks i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 11px;
+  border-radius: 2px;
+  background: #ffcc65;
+  opacity: 0;
+  animation: winner-spark 950ms ease-out calc(var(--i) * 15ms) both;
+}
+.celebration__sparks i:nth-child(3n) {
+  background: #ff8460;
+}
+.celebration--finale {
+  position: relative;
+  width: 190px;
+  height: 125px;
+  margin: -15px auto 0;
+}
+.celebration--finale .celebration__badge {
+  border-radius: 25px;
+  padding: 18px;
+  transform: translate(-50%, -50%) rotate(-6deg);
+}
+.celebration--finale .celebration__fire i {
+  bottom: 0;
+}
+.over__side.is-winner .over__number {
+  color: var(--lime);
+  animation: score-pop 550ms cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.over .over__actions {
+  margin: 24px 0;
+  flex-wrap: wrap;
+}
+.over__actions .btn--primary {
+  min-width: min(250px, 100%);
+  min-height: 56px;
+  font-size: 17px;
+}
+.over__actions .btn--ghost {
+  flex-basis: 100%;
+}
+.over-details {
+  margin: 24px 0;
+  border-top: 1px solid var(--line);
+}
+.over-details > summary {
+  padding: 18px 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.over .unrated-result {
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+}
+.over .unrated-result p {
+  margin: 5px 0;
+}
+.mode-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 22px;
+}
+.mode-card {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid var(--line-control);
+  border-radius: 12px;
+  background: var(--ink-1);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color 150ms,
+    transform 150ms,
+    background 150ms;
+}
+.mode-card > svg {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+.mode-card span {
+  display: grid;
+  gap: 4px;
+}
+.mode-card small {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.mode-card.is-active {
+  border-color: var(--lime);
+  background: var(--lime-soft);
+  box-shadow: inset 0 0 0 1px var(--lime);
+}
+.mode-card.is-active > svg {
+  color: var(--lime);
+}
+.mode-card:active,
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.mode-card[aria-disabled='true'] {
+  opacity: 0.65;
+}
+.mode-picker ~ .option--match {
+  margin-top: 0;
+}
+.prompt-help {
+  margin: 8px auto 0;
+  max-width: 560px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.prompt-help summary {
+  cursor: pointer;
+  width: fit-content;
+  margin: auto;
+  padding: 5px 10px;
+}
+.prompt-help p {
+  line-height: 1.5;
+  margin: 6px 0;
+}
+.actions__row .lockin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.lockin--hot {
+  animation: ready-bump 400ms ease-out;
+}
+.actions--waiting .actions__note::before {
+  content: '';
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+  border-radius: 50%;
+  background: var(--lime);
+  margin-right: 9px;
+}
+.round-result-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.compact-rules {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+  margin: 16px auto;
+  max-width: 500px;
+}
+.compact-rules summary {
+  cursor: pointer;
+}
+.compact-rules p {
+  line-height: 1.65;
+}
+html[data-theme='light'] .battle-banner p,
+html[data-theme='light'] .battle-banner .eyebrow,
+html[data-theme='light'] .battle-banner__note {
+  color: var(--text-dim);
+}
+html[data-theme='light'] .player-cover {
+  background: #e8efd9;
+}
+@keyframes winner-flame {
+  0% {
+    opacity: 0;
+    transform: translateY(80%) scaleY(0.3) rotate(var(--lean));
+  }
+  22% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.8;
+    transform: translateY(-2%) scaleY(1.1) rotate(var(--lean));
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(20%) scaleY(0.65) rotate(var(--lean));
+  }
+}
+@keyframes winner-badge {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.4) rotate(-12deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(-3deg);
+  }
+}
+@keyframes winner-spark {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateY(20px) scale(0.3);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateY(105px) rotate(90deg) scale(0.5);
+  }
+}
+@keyframes score-pop {
+  from {
+    transform: scale(0.65);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes ready-bump {
+  50% {
+    transform: scale(1.025);
+  }
+}
+@media (max-width: 520px) {
+  .mode-card {
+    padding: 12px 10px;
+    gap: 8px;
+  }
+  .mode-card strong {
+    font-size: 13px;
+  }
+  .mode-card small {
+    font-size: 10px;
+  }
+  .celebration__badge {
+    padding: 9px 13px;
+  }
+  .celebration__badge strong {
+    font-size: 32px;
+  }
+  .over__actions .btn {
+    width: 100%;
+  }
+  .over .over__score {
+    gap: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .celebration__fire,
+  .celebration__sparks {
+    display: none;
+  }
+  .celebration__badge {
+    animation: none;
+    transform: translate(-50%, -50%);
+  }
+  .over__side.is-winner .over__number,
+  .lockin--hot {
+    animation: none;
+  }
+  .mode-card,
+  .btn {
+    transition: none;
+  }
+  .mode-card:active,
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+.scorestrip__score {
+  animation: score-pop 320ms ease-out;
+}
+.scorestrip__pips .is-earned {
+  animation: ready-bump 400ms ease-out;
+  background: #ffbc55;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scorestrip__score,
+  .scorestrip__pips .is-earned {
+    animation: none;
+  }
+}
+.promotion {
+  animation-delay: 1200ms;
+}
+.payout__award .reward-art {
+  grid-row: auto;
+}
+.payout.is-revealed .payout__award {
+  animation: ready-bump 400ms ease-out 700ms both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .payout.is-revealed .payout__award {
+    animation: none;
+  }
+}

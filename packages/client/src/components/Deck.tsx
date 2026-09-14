@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { useState } from 'react';
 import {
   MAX_CUSTOM_PER_PLAYER,
@@ -29,6 +30,7 @@ const LOCAL_ERROR_COPY: Record<string, string> = {
  * still checks: this is for the player's benefit, not the rule's.
  */
 export function Deck({ store, match, youId }: DeckProps) {
+  useUiPreferences();
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const deck = match.customChallenges;
@@ -47,9 +49,12 @@ export function Deck({ store, match, youId }: DeckProps) {
   };
 
   return (
-    <section className="deck" aria-label="Your own rounds">
+    <section className="deck" aria-label={tr('Your own rounds')}>
       <span className="eyebrow deck__label">
-        Your rounds {mine}/{MAX_CUSTOM_PER_PLAYER}
+        {tr('Your rounds')}
+        {tr(mine)}
+        {'/'}
+        {tr(MAX_CUSTOM_PER_PLAYER)}
       </span>
 
       <ul className="deck__list">
@@ -57,15 +62,15 @@ export function Deck({ store, match, youId }: DeckProps) {
           const mine = entry.authorId === youId;
           return (
             <li key={entry.id} className={`deck__chip ${mine ? 'deck__chip--mine' : ''}`}>
-              <span>{entry.prompt}</span>
+              <span>{tr(entry.prompt)}</span>
               {mine && (
                 <button
                   type="button"
                   className="deck__remove"
-                  aria-label={`Remove "${entry.prompt}"`}
+                  aria-label={tr(`Remove "${entry.prompt}"`)}
                   onClick={() => store.removeChallenge(entry.id)}
                 >
-                  <span aria-hidden="true">×</span>
+                  <span aria-hidden="true">{'×'}</span>
                 </button>
               )}
             </li>
@@ -77,10 +82,10 @@ export function Deck({ store, match, youId }: DeckProps) {
         <input
           className="input deck__input"
           value={draft}
-          placeholder={full ? 'That is your four' : 'Show something…'}
+          placeholder={tr(full ? 'That is your four' : 'Show something…')}
           maxLength={MAX_CUSTOM_PROMPT_LENGTH}
           disabled={full}
-          aria-label="Write a round of your own"
+          aria-label={tr('Write a round of your own')}
           onChange={(e) => {
             setDraft(e.target.value);
             setError(null);
@@ -88,12 +93,12 @@ export function Deck({ store, match, youId }: DeckProps) {
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
         <button className="btn deck__submit" onClick={submit} disabled={full || !draft.trim()}>
-          Add
+          {tr('Add')}
         </button>
       </div>
       {error && (
         <p className="deck__error error-text" role="alert">
-          {error}
+          {tr(error)}
         </p>
       )}
     </section>

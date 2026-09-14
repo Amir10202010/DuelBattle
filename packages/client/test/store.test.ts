@@ -205,6 +205,9 @@ describe('seat ownership', () => {
     connection.deliver({ t: 'joined', roomCode: 'AB12C', playerId: 'p1', token: 'tok-1' });
     store.leave();
 
+    // A state already in flight must not return the player to the room.
+    connection.deliver({ t: 'state', state: publicMatch(), serverTime: 0 });
+
     expect(store.getSnapshot().screen).toBe('home');
     expect(store.getSnapshot().roomCode).toBeNull();
     expect(store.resumeSession('AB12C')).toBe(false);
@@ -263,8 +266,13 @@ describe('errors', () => {
 describe('match traffic', () => {
   it('keeps the latest state', () => {
     const { connection, store } = setup();
+    connection.deliver({ t: 'joined', roomCode: 'AB12C', playerId: 'p1', token: 'tok-1' });
     connection.deliver({ t: 'state', state: publicMatch({ version: 4 }), serverTime: 0 });
-    connection.deliver({ t: 'state', state: publicMatch({ version: 5, phase: 'countdown' }), serverTime: 0 });
+    connection.deliver({
+      t: 'state',
+      state: publicMatch({ version: 5, phase: 'countdown' }),
+      serverTime: 0,
+    });
     expect(store.getSnapshot().match?.version).toBe(5);
     expect(store.getSnapshot().match?.phase).toBe('countdown');
   });
@@ -286,7 +294,12 @@ describe('match traffic', () => {
     const unsubscribe = store.onPeerFrame((image, from) => seen.push(`${from}:${image}`));
 
     const before = store.getSnapshot();
-    connection.deliver({ t: 'peerFrame', playerId: 'p2', image: 'data:image/jpeg;base64,BBB', seq: 1 });
+    connection.deliver({
+      t: 'peerFrame',
+      playerId: 'p2',
+      image: 'data:image/jpeg;base64,BBB',
+      seq: 1,
+    });
 
     expect(seen).toEqual(['p2:data:image/jpeg;base64,BBB']);
     // No new snapshot, so nothing re-renders for a video frame.
@@ -296,6 +309,7 @@ describe('match traffic', () => {
 
   it('notifies subscribers when something actually changes', () => {
     const { connection, store } = setup();
+    connection.deliver({ t: 'joined', roomCode: 'AB12C', playerId: 'p1', token: 'tok-1' });
     let calls = 0;
     store.subscribe(() => calls++);
     connection.deliver({ t: 'state', state: publicMatch(), serverTime: 0 });

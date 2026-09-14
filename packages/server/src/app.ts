@@ -1,7 +1,11 @@
 import type { Server } from 'node:http';
 import { config } from './config.js';
 import { GeminiPhotoJudge, type AiJudge } from './ai/judge.js';
-import { FileProfileStore, type ProfileStore } from './profiles.js';
+import { type ProfileStore } from './profiles.js';
+import { Database } from './database.js';
+import { AuthService } from './auth.js';
+import { VerifiedJudge } from './ai/pipeline.js';
+import { join } from 'node:path';
 import { Identities } from './identity.js';
 import { identitySecret } from './secret.js';
 import { YoloObjectDetector } from './ai/detector.js';
@@ -22,10 +26,12 @@ import { YoloObjectDetector } from './ai/detector.js';
  */
 function buildProfiles(): ProfileStore | undefined {
   if (!config.dataDir) {
+    if (config.nodeEnv === 'production')
+      throw new Error('DATA_DIR is required in production. Mount a writable persistent directory.');
     log.info('ratings disabled', { reason: 'no DATA_DIR configured' });
     return undefined;
   }
-  const store = new FileProfileStore(config.dataDir);
+  const store = new Database(join(config.dataDir, 'battle.sqlite'));
   log.info('ratings enabled', { dir: config.dataDir, profiles: store.size });
   return store;
 }
@@ -53,7 +59,7 @@ function buildJudge(): AiJudge | undefined {
     keys: config.geminiApiKeys.length,
     detector: detector ? 'yolo' : 'none',
   });
-  return judge;
+  return new VerifiedJudge(judge);
 }
 import { Gateway } from './gateway.js';
 import { createHttpServer } from './http.js';
@@ -76,6 +82,7 @@ export interface AppOptions {
   judge?: AiJudge;
   profiles?: ProfileStore;
   identities?: Identities;
+  auth?: AuthService;
 }
 
 export interface App {
@@ -95,6 +102,9 @@ export function createApp(options: AppOptions = {}): App {
   const judge = options.judge ?? buildJudge();
   const profiles = options.profiles ?? buildProfiles();
   const identities = options.identities ?? buildIdentities();
+  const auth =
+    options.auth ??
+    (profiles instanceof Database ? new AuthService(profiles, identities) : undefined);
   const rooms = new RoomManager({
     maxRooms: config.maxRooms,
     emptyRoomTtlMs: config.emptyRoomTtlMs,
@@ -103,12 +113,17 @@ export function createApp(options: AppOptions = {}): App {
     ...(profiles ? { profiles } : {}),
   });
 
-  const server = createHttpServer({ clientDir: options.clientDir ?? config.clientDir, rooms });
+  const server = createHttpServer({
+    clientDir: options.clientDir ?? config.clientDir,
+    rooms,
+    ...(auth ? { auth } : {}),
+  });
   const gateway = new Gateway(
     rooms,
     options.roomCreateLimit,
     identities ?? null,
     profiles ?? null,
+    auth ?? null,
   );
 
   server.on('upgrade', (req, socket, head) => {
@@ -158,7 +173,12 @@ export function createApp(options: AppOptions = {}): App {
       clearInterval(sweeper);
       clearInterval(matchmaker);
       gateway.stop();
-      return new Promise((resolve) => server.close(() => resolve()));
+      return new Promise((resolve) =>
+        server.close(() => {
+          profiles?.close();
+          resolve();
+        }),
+      );
     },
   };
 }

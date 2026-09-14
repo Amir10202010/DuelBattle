@@ -1,7 +1,8 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
+import { useEffect, useState } from 'react';
 import {
   getAchievement,
   getChallenge,
-  levelFor,
   opponentOf,
   rankFor,
   type MatchRewards,
@@ -10,10 +11,14 @@ import {
   type RatingDelta,
   type RoundOutcome,
 } from '@battle/shared';
-import { ProfileCard, RatingLine } from '../components/Rating.jsx';
+import { Celebration } from '../components/Celebration.jsx';
+import { ArrowRight, RotateCcw, Trophy } from 'lucide-react';
+import { RatingLine } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import { SeriesLine } from '../components/Series.jsx';
 import { LevelBar } from '../components/Identity.jsx';
+import { RankEmblem, RewardArt } from '../components/GameArt.jsx';
+import { sound } from '../media/sound.js';
 
 interface MatchOverProps {
   store: MatchStore;
@@ -39,6 +44,8 @@ interface MatchOverProps {
  * last one is worth being able to see.
  */
 function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kind: string } | null {
+  if (outcome.reason === 'verification-unavailable')
+    return { label: 'check unavailable', kind: 'missed' };
   if (outcome.winnerId === youId) return null;
   const mine = outcome.perPlayer[youId];
   if (!mine) return { label: 'no answer', kind: 'missed' };
@@ -81,126 +88,130 @@ export function MatchOver({
   onLeave,
   onFindAnother,
 }: MatchOverProps) {
+  useUiPreferences();
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
-  const winner = match.winnerId ? match.players[match.winnerId] ?? null : null;
-
+  const won = match.winnerId === youId;
   const headline =
     match.endReason === 'abandoned'
-      ? 'Match abandoned'
-      : !winner
-        ? 'Dead heat'
-        : winner.id === youId
-          ? 'You win'
-          : `${winner.name} wins`;
-
-  const subline =
-    match.endReason === 'abandoned'
-      ? 'Your opponent left before the match could finish.'
-      : !winner
-        ? 'Neither of you could pull ahead.'
-        : winner.id === youId
-          ? 'Take the rematch before they figure out your room.'
-          : 'Rematch?';
-
+      ? 'Match ended'
+      : !match.winnerId
+        ? 'Draw'
+        : won
+          ? 'Victory!'
+          : 'Good game';
   return (
     <main className="over">
       <div className="over__head">
-        <p className="eyebrow">Room {match.roomCode}</p>
-        <h1 className={`over__title display ${winner?.id === youId ? 'over__title--win' : ''}`}>
-          {headline}
-        </h1>
-        <p className="over__sub dim">{subline}</p>
+        {won && <Celebration finale />}
+        <h1 className={`over__title display ${won ? 'over__title--win' : ''}`}>{tr(headline)}</h1>
+        {match.endReason === 'forfeit' && (
+          <p className="over__sub dim">{tr(won ? 'Your opponent left.' : 'You left the match.')}</p>
+        )}
         <SeriesLine match={match} youId={youId} className="over__series" />
       </div>
-
       <div className="over__score">
         {match.seats.map((id, seat) => {
-          const player = id ? match.players[id] ?? null : null;
+          const player = id ? (match.players[id] ?? null) : null;
           return (
-            <div key={seat} className={`over__side over__side--seat${seat}`}>
-              <span className="over__name">{player?.name ?? '—'}</span>
-              <span className="over__number display">{player?.score ?? 0}</span>
-              <span className="over__stat dim">
-                {player?.validAnswers ?? 0} valid {player?.validAnswers === 1 ? 'answer' : 'answers'}
+            <div
+              key={seat}
+              className={`over__side over__side--seat${seat} ${id && id === match.winnerId ? 'is-winner' : ''}`}
+            >
+              <span className="over__name">
+                {id && id === match.winnerId && <Trophy size={15} aria-label={tr('Winner')} />}{' '}
+                {player?.name ?? '—'}
               </span>
-              {id && (
+              <span className="over__number display">{player?.score ?? 0}</span>
+              {id && match.ranked && (
                 <RatingLine profile={standings[id]} delta={lastRatings?.[id] ?? undefined} />
               )}
             </div>
           );
         })}
       </div>
-
-      <Payout rewards={rewards} profile={standings[youId]} />
-
-      <Filmstrip match={match} youId={youId} evidence={evidence} />
-
-      <ProfileCard profile={standings[youId]} />
-
-      {match.history.length > 0 && (
-        <ol className="recap" aria-label="Round by round">
-          {match.history.map((outcome) => {
-            const challenge = getChallenge(outcome.challengeId);
-            const winnerName = outcome.winnerId
-              ? match.players[outcome.winnerId]?.name ?? 'Unknown'
-              : 'Nobody';
-            const custom = match.customChallenges.find((c) => c.id === outcome.challengeId);
-            const why = yourOutcome(outcome, youId);
-            return (
-              <li key={outcome.roundNumber} className="recap__row">
-                <span className="recap__num mono">{String(outcome.roundNumber).padStart(2, '0')}</span>
-                <span className="recap__prompt">
-                  {challenge?.prompt ?? custom?.prompt ?? outcome.challengeId}
-                </span>
-                <span
-                  className={`recap__winner ${outcome.winnerId === youId ? 'is-you' : ''} ${
-                    outcome.winnerId === null ? 'is-draw' : ''
-                  }`}
-                >
-                  {winnerName}
-                </span>
-                <span className={`recap__why ${why ? `is-${why.kind}` : ''}`}>
-                  {why?.label ?? 'won it'}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      {/* Nobody should reach the end of a match and have to work out what to do
-          next. If the opponent is still here the obvious thing is another one;
-          if they are not, it is somebody else — and that is now a button rather
-          than an instruction to go and find the front page. */}
       <div className="over__actions">
-        {opponent?.connected ? (
-          <button
-            className="btn btn--primary btn--lg"
-            onClick={() => store.rematch()}
-            disabled={you?.rematchVote}
-          >
-            {you?.rematchVote ? 'Waiting for them…' : 'Play again'}
-          </button>
-        ) : (
-          <button className="btn btn--primary btn--lg" onClick={onFindAnother}>
-            Find another opponent
+        <button
+          className="btn btn--primary btn--lg"
+          onClick={opponent?.connected ? () => store.rematch() : onFindAnother}
+          disabled={Boolean(opponent?.connected && you?.rematchVote)}
+        >
+          <RotateCcw size={19} aria-hidden="true" />
+          {tr(you?.rematchVote && opponent?.connected ? 'Waiting for them…' : 'Play again')}
+        </button>
+        {opponent?.connected && (
+          <button className="btn btn--lg" onClick={onFindAnother}>
+            {tr('New opponent')}
+            <ArrowRight size={17} aria-hidden="true" />
           </button>
         )}
-        <button className="btn btn--lg" onClick={onLeave}>
-          Leave
+        <button className="btn btn--ghost" onClick={onLeave}>
+          {tr('Done for now')}
         </button>
       </div>
-
       {opponent?.rematchVote && !you?.rematchVote && (
         <p className="over__nudge" role="status">
-          {opponent.name} wants another one.
+          {tr(`${opponent.name} wants a rematch.`)}
         </p>
       )}
-      {!opponent?.connected && (
-        <p className="over__nudge dim" role="status">
-          Your opponent has left. The room stays open if they come back.
-        </p>
+      <Payout rewards={rewards} profile={standings[youId]} />
+      {!rewards && (
+        <div className="unrated-result">
+          {match.ranked ? (
+            <details>
+              <summary>{tr('Rating and XP unchanged')}</summary>
+              <p>
+                {tr(
+                  'This match did not qualify for progression. Verification, participation and rematch limits protect both players.',
+                )}
+              </p>
+            </details>
+          ) : (
+            <span>{tr('Just for fun · no rating changes')}</span>
+          )}
+          {!standings[youId] && (
+            <p>
+              <a className="text-link" href="/register">
+                {tr('Unlock ranks and rewards')} →
+              </a>
+            </p>
+          )}
+        </div>
+      )}
+      {match.history.length > 0 && (
+        <details className="over-details">
+          <summary>
+            {tr('Round recap')} · {match.history.length}
+          </summary>
+          <Filmstrip match={match} youId={youId} evidence={evidence} />
+          <ol className="recap" aria-label={tr('Round by round')}>
+            {match.history.map((outcome) => {
+              const challenge = getChallenge(outcome.challengeId);
+              const custom = match.customChallenges.find((c) => c.id === outcome.challengeId);
+              const why = yourOutcome(outcome, youId);
+              return (
+                <li key={outcome.roundNumber} className="recap__row">
+                  <span className="recap__num mono">
+                    {String(outcome.roundNumber).padStart(2, '0')}
+                  </span>
+                  <span className="recap__prompt">
+                    {custom?.prompt ?? tr(challenge?.prompt ?? outcome.challengeId)}
+                  </span>
+                  <span
+                    className={`recap__winner ${outcome.winnerId === youId ? 'is-you' : ''} ${outcome.winnerId === null ? 'is-draw' : ''}`}
+                  >
+                    {outcome.winnerId
+                      ? (match.players[outcome.winnerId]?.name ?? tr('Unknown'))
+                      : tr('Nobody')}
+                  </span>
+                  <span className={`recap__why ${why ? `is-${why.kind}` : ''}`}>
+                    {tr(why?.label ?? 'won it')}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </details>
       )}
     </main>
   );
@@ -222,6 +233,23 @@ function Payout({
   rewards: MatchRewards | null;
   profile: PublicProfile | undefined;
 }) {
+  useUiPreferences();
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (!rewards) return;
+    const xpTimer = window.setTimeout(() => {
+      setRevealed(true);
+      sound.play('xpGain');
+    }, 650);
+    const rewardTimer = window.setTimeout(() => {
+      if (rewards.rankMove === 'promoted') sound.play('rankUp');
+      else if (rewards.unlocked.length) sound.play('reward');
+    }, 1400);
+    return () => {
+      window.clearTimeout(xpTimer);
+      window.clearTimeout(rewardTimer);
+    };
+  }, [rewards]);
   if (!rewards || !profile) return null;
   const levelled = rewards.levelAfter > rewards.levelBefore;
   const unlocked = rewards.unlocked
@@ -229,38 +257,67 @@ function Payout({
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
   return (
-    <section className="payout" aria-label="What this match was worth">
+    <section
+      className={`payout ${revealed ? 'is-revealed' : ''}`}
+      aria-label={tr('What this match was worth')}
+    >
+      {rewards.rankMove === 'promoted' && (
+        <div className="promotion" role="status">
+          <RankEmblem rating={profile.rating} size={100} />
+          <div>
+            <span className="eyebrow">{tr('Rank up')}</span>
+            <h2>{tr(rankFor(profile.rating).label)}</h2>
+          </div>
+        </div>
+      )}
       <div className="payout__head">
-        <span className="payout__xp display">+{rewards.xp}</span>
-        <span className="payout__label">XP</span>
-        {levelled && <span className="payout__level">Level {rewards.levelAfter}</span>}
+        <span className="payout__xp display">
+          {'+'}
+          {tr(rewards.xp)}
+        </span>
+        <span className="payout__label">{tr('XP')}</span>
+        {levelled && (
+          <span className="payout__level">
+            {tr('Level ')}
+            {tr(rewards.levelAfter)}
+          </span>
+        )}
         {rewards.rankMove && (
           <span className={`payout__rank is-${rewards.rankMove}`}>
-            {rewards.rankMove === 'promoted' ? 'Promoted to' : 'Dropped to'}{' '}
-            {rankFor(profile.rating).label}
+            {tr(rewards.rankMove === 'promoted' ? 'Promoted to' : 'Dropped to')}{' '}
+            {tr(rankFor(profile.rating).label)}
           </span>
         )}
       </div>
 
-      <LevelBar xp={profile.xp} />
+      <LevelBar xp={revealed ? profile.xp : Math.max(0, profile.xp - rewards.xp)} />
+      {!!rewards.dailyBonus && (
+        <p className="daily-payout">
+          {tr('Daily challenge complete · +')}
+          {tr(rewards.dailyBonus)}
+          {tr(' XP included')}
+        </p>
+      )}
 
       {unlocked.length > 0 && (
         <ul className="payout__awards">
           {unlocked.map((award) => (
-            <li key={award.id} className={`payout__award payout__award--${award.rarity}`}>
-              <span className="payout__awardname">{award.name}</span>
-              <span className="payout__awardwhat">{award.description}</span>
-              <span className="payout__awardxp mono">+{award.xp}</span>
+            <li
+              key={award.id}
+              className={`payout__award payout__award--${award.rarity}`}
+              title={tr(award.description)}
+            >
+              <RewardArt group={award.group} rarity={award.rarity} />
+              <span className="payout__awardname">{tr(award.name)}</span>
+
+              <span className="payout__awardxp mono">
+                {'+'}
+                {tr(award.xp)}
+              </span>
             </li>
           ))}
         </ul>
       )}
-
-      <p className="payout__foot dim">
-        {levelled
-          ? `Level ${rewards.levelBefore} to ${rewards.levelAfter}. ${levelFor(profile.xp).cost - levelFor(profile.xp).into} XP to the next.`
-          : `${levelFor(profile.xp).cost - levelFor(profile.xp).into} XP to level ${levelFor(profile.xp).level + 1}.`}
-      </p>
     </section>
   );
 }
@@ -281,6 +338,7 @@ function Filmstrip({
   youId: string;
   evidence: Record<string, string>;
 }) {
+  useUiPreferences();
   const shots = match.history
     .filter((outcome) => outcome.winnerId !== null)
     .map((outcome) => ({
@@ -294,19 +352,19 @@ function Filmstrip({
   if (shots.length === 0) return null;
 
   return (
-    <ol className="filmstrip" aria-label="Winning answers">
+    <ol className="filmstrip" aria-label={tr('Winning answers')}>
       {shots.map(({ outcome, image, challenge, custom }) => {
         const winner = outcome.winnerId ? match.players[outcome.winnerId] : undefined;
-        const prompt = challenge?.prompt ?? custom?.prompt ?? '';
+        const prompt = custom?.prompt ?? tr(challenge?.prompt ?? '');
         return (
           <li
             key={outcome.roundId}
             className={`filmstrip__shot ${outcome.winnerId === youId ? 'is-yours' : ''}`}
           >
-            <img src={image} alt={`${winner?.name ?? 'Winner'}: ${prompt}`} loading="lazy" />
+            <img src={image} alt={`${winner?.name ?? tr('Winner')}: ${prompt}`} loading="lazy" />
             <span className="filmstrip__prompt">{prompt}</span>
             <span className="filmstrip__winner">
-              {outcome.winnerId === youId ? 'You' : (winner?.name ?? 'Them')}
+              {outcome.winnerId === youId ? tr('You') : (winner?.name ?? tr('Them'))}
             </span>
           </li>
         );

@@ -14,9 +14,16 @@
  * is the supported case, not an error: the pool in the repository is the game's
  * actual content, and a machine without keys still builds and plays it.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { CHALLENGES, TOPICS, validateTopic, type TopicCandidate } from '@battle/shared';
+import {
+  CHALLENGES,
+  TOPICS,
+  validateTopic,
+  topicMetadata,
+  type TopicCandidate,
+} from '@battle/shared';
+import { z } from 'zod';
 import { config } from '../src/config.js';
 import { GeminiTopicGenerator, TOPIC_REQUESTS, emptyRejections } from '../src/ai/topics.js';
 
@@ -43,10 +50,50 @@ function write(topics: readonly TopicCandidate[]): void {
         `  [${JSON.stringify(t.prompt)}, ${JSON.stringify(t.category)}, ${t.difficulty}, ${t.visual ? 1 : 0}],`,
     )
     .join('\n');
-  writeFileSync(POOL_PATH, `${header()}export const RAW_TOPICS: readonly RawTopic[] = [\n${rows}\n];\n`);
+  writeFileSync(
+    POOL_PATH,
+    `${header()}export const RAW_TOPICS: readonly RawTopic[] = [\n${rows}\n];\n`,
+  );
 }
 
 async function main(): Promise<void> {
+  if (!Number.isInteger(target) || target < 1 || target > 10000)
+    throw new Error('Target must be an integer from 1 to 10000.');
+  const publishPath = arg('publish');
+  if (publishPath) {
+    const proposal = z
+      .object({
+        topics: z
+          .array(
+            z
+              .object({
+                prompt: z.string().max(100),
+                category: z.string().max(40),
+                difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+                visual: z.boolean(),
+                approved: z.boolean(),
+              })
+              .passthrough(),
+          )
+          .max(3000),
+      })
+      .passthrough()
+      .parse(JSON.parse(readFileSync(publishPath, 'utf8')));
+    const taken = new Set([...TOPICS.map((t) => t.prompt), ...CHALLENGES.map((c) => c.prompt)]);
+    const additions: TopicCandidate[] = [];
+    for (const candidate of proposal.topics.filter((t) => t.approved)) {
+      const checked = validateTopic(candidate, taken);
+      if (!checked.ok)
+        throw new Error(`Publication refused: ${checked.reason} (${candidate.prompt})`);
+      taken.add(checked.topic.prompt);
+      additions.push(checked.topic);
+    }
+    if (!dryRun && additions.length) write([...TOPICS, ...additions]);
+    console.log(
+      `${dryRun ? 'Validated' : 'Published'} ${additions.length} reviewed topics. Existing topic IDs are preserved.`,
+    );
+    return;
+  }
   const existing: TopicCandidate[] = TOPICS.map((t) => ({
     prompt: t.prompt,
     category: t.category,
@@ -101,7 +148,9 @@ async function main(): Promise<void> {
       );
     } catch (err) {
       unavailable.push(request.category);
-      console.warn(`${request.category}: unavailable — ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(
+        `${request.category}: unavailable — ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -128,8 +177,27 @@ async function main(): Promise<void> {
     console.log('Dry run: pool.ts left alone.');
     return;
   }
-  write(merged);
-  console.log(`Wrote ${POOL_PATH}`);
+  const output = fileURLToPath(new URL('../../../data/topic-proposals/', import.meta.url));
+  mkdirSync(output, { recursive: true });
+  const path = `${output}${Date.now()}.json`;
+  const existingPrompts = new Set(existing.map((t) => t.prompt));
+  writeFileSync(
+    path,
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        createdAt: new Date().toISOString(),
+        topics: merged
+          .filter((t) => !existingPrompts.has(t.prompt))
+          .map((t) => ({ ...t, ...topicMetadata(t), approved: false })),
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    `Saved proposals to ${path}. Review them, set approved: true for accepted topics, then run with --publish <file>.`,
+  );
 }
 
 await main();

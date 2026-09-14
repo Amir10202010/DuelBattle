@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { memo } from 'react';
 import {
   AVATAR_COLORS,
@@ -27,6 +28,7 @@ export const Avatar = memo(function Avatar({
   /** Used for the initial, and for the label assistive tech reads. */
   name?: string;
 }) {
+  useUiPreferences();
   const { shape, color } = normalizeAvatar(avatar);
   const tint = AVATAR_COLORS[color]!;
   const kind = AVATAR_SHAPES[shape]!;
@@ -36,7 +38,7 @@ export const Avatar = memo(function Avatar({
       className="avatar"
       style={{ width: size, height: size, '--avatar-tint': tint } as React.CSSProperties}
       role="img"
-      aria-label={name ? `${name}'s mark` : 'Player mark'}
+      aria-label={tr(name ? `${name}'s mark` : 'Player mark')}
     >
       <svg viewBox="0 0 48 48" aria-hidden="true">
         <Mark kind={kind} />
@@ -46,6 +48,7 @@ export const Avatar = memo(function Avatar({
 });
 
 function Mark({ kind }: { kind: string }) {
+  useUiPreferences();
   switch (kind) {
     case 'disc':
       return <circle cx="24" cy="24" r="13" />;
@@ -61,7 +64,9 @@ function Mark({ kind }: { kind: string }) {
         </>
       );
     case 'ring':
-      return <path d="M24 8a16 16 0 1 0 0 32 16 16 0 0 0 0-32Zm0 9a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" />;
+      return (
+        <path d="M24 8a16 16 0 1 0 0 32 16 16 0 0 0 0-32Zm0 9a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" />
+      );
     case 'cross':
       return <path d="M19 8h10v11h11v10H29v11H19V29H8V19h11Z" />;
     default:
@@ -85,25 +90,39 @@ export const RankBadge = memo(function RankBadge({
   placed: boolean;
   size?: 'sm' | 'md';
 }) {
+  useUiPreferences();
   const rank = rankFor(rating);
   return (
     <span className={`rankbadge rankbadge--${size} ${placed ? '' : 'rankbadge--placing'}`}>
-      <span className="rankbadge__name">{placed ? rank.label : 'Placing'}</span>
-      <span className="rankbadge__value mono">{rating}</span>
+      <span className="rankbadge__name">{tr(placed ? rank.label : 'Placing')}</span>
+      <span className="rankbadge__value mono">{tr(rating)}</span>
     </span>
   );
 });
 
 /** A level, and how far through it somebody is. */
-export const LevelBar = memo(function LevelBar({ xp, compact = false }: { xp: number; compact?: boolean }) {
+export const LevelBar = memo(function LevelBar({
+  xp,
+  compact = false,
+}: {
+  xp: number;
+  compact?: boolean;
+}) {
+  useUiPreferences();
   const level = levelFor(xp);
   return (
     <div className={`levelbar ${compact ? 'levelbar--compact' : ''}`}>
       <div className="levelbar__head">
-        <span className="levelbar__level">Level {level.level}</span>
+        <span className="levelbar__level">
+          {tr('Level ')}
+          {tr(level.level)}
+        </span>
         {!compact && (
           <span className="levelbar__xp mono">
-            {level.into} / {level.cost} XP
+            {tr(level.into)}
+            {' / '}
+            {tr(level.cost)}
+            {tr('XP')}
           </span>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import type { CameraState, CameraStatus } from '../media/useCamera.js';
 
 /**
@@ -29,6 +30,7 @@ interface CameraGateProps {
  * dialog with no context is the single easiest place to lose a player.
  */
 export function CameraGate({ camera, roomCode, onLeave }: CameraGateProps) {
+  useUiPreferences();
   const busy = camera.status === 'requesting';
   // Anything that is not "about to ask" is something that already failed.
   const failed = camera.status !== 'idle' && camera.status !== 'requesting';
@@ -36,30 +38,33 @@ export function CameraGate({ camera, roomCode, onLeave }: CameraGateProps) {
   return (
     <main className="gate">
       <div className="gate__panel">
-        <p className="eyebrow">Room {roomCode}</p>
+        <p className="eyebrow">
+          {tr('Room ')}
+          {tr(roomCode)}
+        </p>
         <h1 className="display gate__title">
-          {camera.status === 'ready' ? 'Turn on your camera' : TITLES[camera.status]}
+          {tr(camera.status === 'ready' ? 'Turn on your camera' : TITLES[camera.status])}
         </h1>
-        <p className="gate__body dim">{camera.message}</p>
+        <p className="gate__body dim">{tr(camera.message)}</p>
 
         <ul className="gate__facts">
-          <li>Your opponent sees a small live view of your camera. Nobody else does.</li>
-          <li>Snapshots are kept for the round being scored, then dropped.</li>
-          <li>No microphone, no recording, no upload that outlives the match.</li>
+          <li>{tr('Your opponent sees a small live view of your camera. Nobody else does.')}</li>
+          <li>{tr('Snapshots are kept for the round being scored, then dropped.')}</li>
+          <li>{tr('No microphone, no recording, no upload that outlives the match.')}</li>
         </ul>
 
         <div className="gate__actions">
           <button className="btn btn--primary btn--lg" onClick={camera.request} disabled={busy}>
-            {busy ? 'Waiting for permission…' : failed ? 'Try again' : 'Enable camera'}
+            {tr(busy ? 'Waiting for permission…' : failed ? 'Try again' : 'Enable camera')}
           </button>
           <button className="btn btn--ghost" onClick={onLeave}>
-            Leave room
+            {tr('Leave room')}
           </button>
         </div>
 
         {camera.devices.length > 1 && (
           <label className="gate__devices">
-            <span className="eyebrow">Camera</span>
+            <span className="eyebrow">{tr('Camera')}</span>
             <select
               className="input"
               value={camera.deviceId ?? ''}

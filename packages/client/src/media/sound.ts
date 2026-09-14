@@ -6,10 +6,14 @@ export type Cue =
   | 'lockIn'
   | 'opponentLocked'
   | 'roundWin'
+  | 'roundStreak'
   | 'roundLoss'
   | 'roundDraw'
   | 'matchWin'
   | 'matchLoss'
+  | 'xpGain'
+  | 'reward'
+  | 'rankUp'
   | 'opponentJoined';
 
 interface Note {
@@ -31,6 +35,16 @@ interface Note {
  * than timbre, because these are all sub-second cues under a live camera.
  */
 const CUES: Record<Cue, Note[]> = {
+  xpGain: [{ freq: 660, to: 990, at: 0, duration: 0.18, gain: 0.1 }],
+  reward: [
+    { freq: 880, at: 0, duration: 0.12, gain: 0.12 },
+    { freq: 1175, at: 0.12, duration: 0.25, gain: 0.12 },
+  ],
+  rankUp: [
+    { freq: 523, at: 0, duration: 0.15, gain: 0.13 },
+    { freq: 784, at: 0.14, duration: 0.16, gain: 0.13 },
+    { freq: 1047, at: 0.28, duration: 0.35, gain: 0.15 },
+  ],
   // Countdown: three rising blips, so you can hear the round coming.
   tick3: [{ freq: 523, at: 0, duration: 0.09, gain: 0.16 }],
   tick2: [{ freq: 587, at: 0, duration: 0.09, gain: 0.18 }],
@@ -47,10 +61,30 @@ const CUES: Record<Cue, Note[]> = {
     { freq: 392, at: 0, duration: 0.06, gain: 0.12, type: 'triangle' },
     { freq: 392, at: 0.09, duration: 0.06, gain: 0.12, type: 'triangle' },
   ],
+  // A soft impact, bright arpeggio and a short harmonic tail.
   roundWin: [
-    { freq: 523, at: 0, duration: 0.1, gain: 0.2 },
-    { freq: 659, at: 0.08, duration: 0.1, gain: 0.2 },
-    { freq: 784, at: 0.16, duration: 0.22, gain: 0.22 },
+    { freq: 150, to: 65, at: 0, duration: 0.17, gain: 0.17, type: 'triangle' },
+    ...[523.25, 659.25, 783.99, 1046.5].map((freq, i) => ({
+      freq,
+      at: 0.04 + i * 0.085,
+      duration: 0.24,
+      gain: 0.13,
+      type: 'triangle' as const,
+    })),
+    { freq: 1567.98, at: 0.3, duration: 0.44, gain: 0.055 },
+    { freq: 2093, at: 0.31, duration: 0.28, gain: 0.025 },
+  ],
+  roundStreak: [
+    { freq: 165, to: 65, at: 0, duration: 0.2, gain: 0.17, type: 'triangle' },
+    ...[659.25, 783.99, 1046.5, 1318.51].map((freq, i) => ({
+      freq,
+      at: 0.04 + i * 0.075,
+      duration: 0.24,
+      gain: 0.12,
+      type: 'triangle' as const,
+    })),
+    { freq: 1567.98, at: 0.29, duration: 0.4, gain: 0.06 },
+    { freq: 2093, at: 0.3, duration: 0.45, gain: 0.035 },
   ],
   roundLoss: [
     { freq: 392, at: 0, duration: 0.12, gain: 0.16, type: 'triangle' },
@@ -61,10 +95,21 @@ const CUES: Record<Cue, Note[]> = {
     { freq: 440, at: 0.14, duration: 0.14, gain: 0.11, type: 'triangle' },
   ],
   matchWin: [
-    { freq: 523, at: 0, duration: 0.12, gain: 0.2 },
-    { freq: 659, at: 0.1, duration: 0.12, gain: 0.2 },
-    { freq: 784, at: 0.2, duration: 0.12, gain: 0.2 },
-    { freq: 1047, at: 0.3, duration: 0.4, gain: 0.24 },
+    { freq: 130.81, to: 65.4, at: 0, duration: 0.24, gain: 0.17, type: 'triangle' },
+    ...[523.25, 659.25, 783.99, 1046.5, 1318.51].map((freq, i) => ({
+      freq,
+      at: 0.05 + i * 0.105,
+      duration: 0.28,
+      gain: 0.12,
+      type: 'triangle' as const,
+    })),
+    ...[523.25, 783.99, 1046.5, 1567.98].map((freq) => ({
+      freq,
+      at: 0.58,
+      duration: 0.65,
+      gain: 0.06,
+    })),
+    { freq: 2093, at: 0.65, duration: 0.45, gain: 0.025 },
   ],
   matchLoss: [
     { freq: 440, at: 0, duration: 0.14, gain: 0.16, type: 'triangle' },
@@ -81,9 +126,9 @@ const MUTE_KEY = 'battle.muted.v1';
 
 function readMuted(): boolean {
   try {
-    return localStorage.getItem(MUTE_KEY) === '1';
+    return localStorage.getItem(MUTE_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -98,6 +143,14 @@ class SoundBoard {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private muted = readMuted();
+  private listeners = new Set<() => void>();
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+  getMuted = () => this.muted;
 
   get isMuted(): boolean {
     return this.muted;
@@ -105,6 +158,7 @@ class SoundBoard {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
+    for (const listener of this.listeners) listener();
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.01);
     }
@@ -131,7 +185,10 @@ class SoundBoard {
       this.master.gain.value = this.muted ? 0 : 1;
       this.master.connect(this.ctx.destination);
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state === 'suspended')
+      void this.ctx.resume().catch(() => {
+        /* Audio remains optional if the browser blocks playback. */
+      });
   }
 
   play(cue: Cue): void {
@@ -157,6 +214,10 @@ class SoundBoard {
       gain.gain.exponentialRampToValueAtTime(note.gain, start + note.at + 0.008);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + note.at + note.duration);
 
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
       osc.connect(gain);
       gain.connect(master);
       osc.start(start + note.at);

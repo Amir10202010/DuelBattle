@@ -9,11 +9,12 @@
     "packages/client"
   ],
   "engines": {
-    "node": ">=20.11"
+    "node": ">=24.0"
   },
   "scripts": {
     "build": "npm run build -w @battle/shared && npm run build -w @battle/server && npm run build -w @battle/client",
-    "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w @battle/server\" \"npm run dev -w @battle/client\"",
+    "predev": "npm run build -w @battle/shared",
+    "dev": "concurrently -k -n shared,server,client -c yellow,cyan,magenta \"tsc -p packages/shared/tsconfig.json --watch\" \"npm run dev -w @battle/server\" \"npm run dev -w @battle/client\"",
     "typecheck": "tsc -p tsconfig.check.json",
     "lint": "eslint .",
     "test": "vitest run",
@@ -22,14 +23,14 @@
     "topics:generate": "tsx packages/server/scripts/generate-topics.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.13.4",
     "concurrently": "^9.1.0",
     "eslint": "^9.17.0",
     "jsdom": "^29.1.1",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
     "vite": "^6.0.5",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "vite": "$vite"

@@ -56,13 +56,12 @@ describe('nextRating', () => {
     expect(ratingChange(a, b, 'win') + ratingChange(b, a, 'loss')).toBe(0);
   });
 
-  it('moves a new player faster than a settled one', () => {
+  it('uses the conservative shared K factor for mixed experience', () => {
     const rookie = { rating: STARTING_RATING, matchesPlayed: 0 };
     const veteran = { rating: STARTING_RATING, matchesPlayed: 50 };
     const opponent = settled(STARTING_RATING);
-    expect(ratingChange(rookie, opponent, 'win')).toBeGreaterThan(
-      ratingChange(veteran, opponent, 'win'),
-    );
+    expect(ratingChange(rookie, opponent, 'win')).toBe(ratingChange(veteran, opponent, 'win'));
+    expect(ratingChange(rookie, opponent, 'win') + ratingChange(opponent, rookie, 'loss')).toBe(0);
   });
 
   it('moves the top of the ladder slowest of all', () => {

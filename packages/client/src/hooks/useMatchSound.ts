@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { opponentIdOf, opponentOf, type PublicMatchState } from '@battle/shared';
+import { roundStreak } from '../components/Celebration.jsx';
 import { sound } from '../media/sound.js';
 
 /**
@@ -34,7 +35,15 @@ export function useMatchSound(match: PublicMatchState | null, youId: string | nu
 
       if (match.phase === 'roundResult') {
         const winner = match.round?.outcome?.winnerId ?? null;
-        sound.play(winner === youId ? 'roundWin' : winner === null ? 'roundDraw' : 'roundLoss');
+        sound.play(
+          winner === youId
+            ? roundStreak(match.history, youId) > 1
+              ? 'roundStreak'
+              : 'roundWin'
+            : winner === null
+              ? 'roundDraw'
+              : 'roundLoss',
+        );
       }
 
       if (match.phase === 'matchResult' && match.endReason !== 'abandoned') {

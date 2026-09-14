@@ -188,15 +188,11 @@ describe('profiles that survive a restart', () => {
   });
 
   it('leaves an unreadable file alone rather than overwriting it', () => {
-    // Losing every rating in the room to one bad byte, silently, is worse than
-    // starting empty and saying so.
     const dir = tempDir();
     const path = join(dir, 'profiles.json');
     writeFileSync(path, '{ not json at all', 'utf8');
 
-    const store = new FileProfileStore(dir, 0);
-    expect(store.size).toBe(0);
-    store.close();
+    expect(() => new FileProfileStore(dir, 0)).toThrow('Profile data is invalid');
 
     expect(readFileSync(path, 'utf8')).toBe('{ not json at all');
   });
@@ -241,7 +237,11 @@ describe('what a match pays out', () => {
       id,
       name,
       score,
-      summary: { ...plainSummary({ yourScore: score, theirScore: against }), validAnswers: score, ...over },
+      summary: {
+        ...plainSummary({ yourScore: score, theirScore: against }),
+        validAnswers: score,
+        ...over,
+      },
     };
   }
 
@@ -304,11 +304,11 @@ describe('what a match pays out', () => {
     expect(store.get('a')!.history[0]!.xp).toBe(updates.a!.rewards.xp);
   });
 
-  it('notices a match that used every referee it had', () => {
+  it('notices a match spanning three categories', () => {
     const store = new MemoryProfileStore();
     const updates = recordMatch(
       store,
-      played('a', 'A', 3, 1, { wonByJudge: { auto: 1, peer: 1, ai: 1 } }),
+      played('a', 'A', 3, 1, { categories: ['color', 'motion', 'light'] }),
       played('b', 'B', 1, 3),
       at,
     );

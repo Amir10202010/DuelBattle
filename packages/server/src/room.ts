@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import {
   challengeInRoom,
+  allChallengesPool,
+  supportsRussian,
   createMatch,
   randomId,
   reduce,
@@ -25,8 +27,9 @@ import {
   type PlayerId,
   type ServerMessage,
 } from '@battle/shared';
-import { DecodeError, decodeEvidence, verifySubmission } from './verify.js';
+import { decodeEvidence, verifySubmission } from './verify.js';
 import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
+import { validateAssessments } from './ai/pipeline.js';
 import { publicView, type PlayerProfile, type ProfileStore } from './profiles.js';
 import { profileFor, recordMatch } from './standings.js';
 import { log } from './log.js';
@@ -34,6 +37,7 @@ import { log } from './log.js';
 export type Send = (message: ServerMessage) => void;
 
 export interface RoomOptions {
+  ranked?: boolean;
   /** The AI referee, when this deployment has one. Shared across rooms. */
   judge?: AiJudge;
   /** Where ratings live. Shared across rooms; absent means nothing is kept. */
@@ -51,6 +55,7 @@ const BASELINE_MAX_AGE_MS = 4_000;
 
 /** Live frames are relayed at most this often, regardless of what a client sends. */
 const FRAME_RELAY_INTERVAL_MS = 150;
+const RUSSIAN_POOL = allChallengesPool().filter((challenge) => supportsRussian(challenge.prompt));
 
 interface Seat {
   token: string;
@@ -120,6 +125,10 @@ const PROMPT_ERROR_COPY: Record<string, string> = {
  * sockets — so the whole room lifecycle is testable without a network.
  */
 export class Room {
+  private russianTopics = false;
+  useRussianTopics(): void {
+    this.russianTopics = true;
+  }
   readonly code: string;
   private state: MatchState;
   private readonly seats = new Map<PlayerId, Seat>();
@@ -147,7 +156,7 @@ export class Room {
 
   constructor(code: string, now: number, options: RoomOptions = {}) {
     this.code = code;
-    this.state = createMatch(code, now);
+    this.state = { ...createMatch(code, now), ranked: options.ranked ?? false };
     this.emptySince = now;
     this.judge = options.judge;
     this.profiles = options.profiles;
@@ -162,8 +171,20 @@ export class Room {
    */
   identify(playerId: PlayerId, identity: string, now: number): void {
     const seat = this.seats.get(playerId);
-    if (!seat || seat.identity === identity) return;
+    if (!seat || seat.identity === identity || (seat.identity && this.state.phase !== 'lobby'))
+      return;
     seat.identity = identity;
+    if (this.state.phase === 'lobby') {
+      const recent =
+        this.profiles
+          ?.get(identity)
+          ?.history.slice(0, 4)
+          .flatMap((r) => r.topicIds ?? []) ?? [];
+      this.state = {
+        ...this.state,
+        recentChallengeIds: [...new Set([...this.state.recentChallengeIds, ...recent])].slice(-20),
+      };
+    }
     this.sendStandings(now);
   }
 
@@ -213,7 +234,17 @@ export class Room {
     const store = this.profiles;
     this.lastRatings = null;
     this.lastRewards = null;
-    if (!store || !countsForRating(this.state)) return;
+    if (
+      store &&
+      this.state.ranked &&
+      (this.state.endReason === 'forfeit' || this.state.endReason === 'abandoned')
+    ) {
+      for (const [playerId, seat] of this.seats) {
+        if (seat.identity && !this.state.players[playerId]?.connected)
+          store.setQueueCooldown?.(seat.identity, now + 5 * 60_000);
+      }
+    }
+    if (!store || !this.state.ranked || !countsForRating(this.state)) return;
 
     const seated = this.state.seats
       .map((playerId) => (playerId ? this.seats.get(playerId) : undefined))
@@ -245,13 +276,26 @@ export class Room {
         summary: summarise(this.state, b.playerId, a.playerId),
       },
       now,
+      `${this.code}:${this.createdAt}:${this.state.round?.id}`,
+      this.state.endReason === 'forfeit' && this.state.winnerId
+        ? (this.seats.get(this.state.winnerId)?.identity ?? undefined)
+        : undefined,
     );
+
+    if (!updates[a.seat.identity!] || !updates[b.seat.identity!]) {
+      this.broadcast({
+        t: 'toast',
+        kind: 'info',
+        message: 'Rematch limit reached. Find a new rival to earn rating and XP.',
+      });
+      return;
+    }
 
     // Keyed by seat rather than by identity, because that is what a client can
     // match against the players it already knows about.
     this.lastRatings = {
-      [a.playerId]: updates[a.seat.identity!]!,
-      [b.playerId]: updates[b.seat.identity!]!,
+      [a.playerId]: ratingDelta(updates[a.seat.identity!]!),
+      [b.playerId]: ratingDelta(updates[b.seat.identity!]!),
     };
     this.lastRewards = {
       [a.playerId]: updates[a.seat.identity!]!.rewards,
@@ -275,6 +319,10 @@ export class Room {
     return this.state.seats.some((id) => id === null);
   }
 
+  get ranked(): boolean {
+    return this.state.ranked ?? false;
+  }
+
   get phase(): Phase {
     return this.state.phase;
   }
@@ -284,7 +332,7 @@ export class Room {
       now,
       newId: () => randomId(10),
       aiAvailable: Boolean(this.judge),
-      ...(this.pool ? { pool: this.pool } : {}),
+      ...(this.pool ? { pool: this.pool } : this.russianTopics ? { pool: RUSSIAN_POOL } : {}),
     };
   }
 
@@ -305,7 +353,8 @@ export class Room {
     if (error) {
       return {
         ok: false,
-        error: error === 'room-full' ? 'room-full' : error === 'name-taken' ? 'name-taken' : 'rejected',
+        error:
+          error === 'room-full' ? 'room-full' : error === 'name-taken' ? 'name-taken' : 'rejected',
         message: ACTION_ERROR_COPY[error],
       };
     }
@@ -325,10 +374,18 @@ export class Room {
   }
 
   /** Re-attaches an existing seat after a refresh or a dropped connection. */
-  rejoin(token: string, now: number): JoinOutcome {
+  rejoin(token: string, now: number, identity?: string | null): JoinOutcome {
     const playerId = this.tokens.get(token);
     if (!playerId || !this.state.players[playerId]) {
       return { ok: false, error: 'session-expired', message: 'That session has expired.' };
+    }
+    const owner = this.seats.get(playerId)?.identity;
+    if (identity !== undefined && owner && owner !== identity) {
+      return {
+        ok: false,
+        error: 'session-expired',
+        message: 'Sign in to the account that owns this seat.',
+      };
     }
     this.dispatch({ type: 'setConnected', playerId, connected: true }, now);
     return { ok: true, playerId, token };
@@ -340,7 +397,12 @@ export class Room {
     // A second connection for the same seat replaces the first: a refreshed tab
     // should take over rather than fight the stale one for the same player.
     if (seat.send) {
-      seat.send({ t: 'error', code: 'session-expired', message: 'Opened in another tab.', fatal: true });
+      seat.send({
+        t: 'error',
+        code: 'session-expired',
+        message: 'Opened in another tab.',
+        fatal: true,
+      });
     }
     seat.send = send;
     this.emptySince = null;
@@ -363,11 +425,24 @@ export class Room {
   /** Permanently gives up the seat, as opposed to a recoverable disconnect. */
   remove(playerId: PlayerId, now: number): void {
     const seat = this.seats.get(playerId);
-    if (seat) this.tokens.delete(seat.token);
-    this.seats.delete(playerId);
+    if (seat) {
+      this.tokens.delete(seat.token);
+      seat.send = null;
+      seat.lastFrame = null;
+    }
     this.dispatch({ type: 'leave', playerId }, now);
-    if (this.connectedCount === 0) this.emptySince = now;
+    // Settlement needs both authenticated seat identities until the transaction commits.
     this.broadcastIfChanged(now);
+    this.seats.delete(playerId);
+    if (this.connectedCount === 0) this.emptySince = now;
+  }
+
+  hasActiveIdentity(identity: string): boolean {
+    return (
+      this.state.phase !== 'matchResult' &&
+      this.state.phase !== 'lobby' &&
+      [...this.seats.values()].some((seat) => seat.identity === identity)
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -380,10 +455,16 @@ export class Room {
 
     switch (message.t) {
       case 'cameraReady':
-        this.reportError(seat, this.dispatch({ type: 'setCameraReady', playerId, cameraReady: message.ready }, now));
+        this.reportError(
+          seat,
+          this.dispatch({ type: 'setCameraReady', playerId, cameraReady: message.ready }, now),
+        );
         break;
       case 'ready':
-        this.reportError(seat, this.dispatch({ type: 'setReady', playerId, ready: message.ready }, now));
+        this.reportError(
+          seat,
+          this.dispatch({ type: 'setReady', playerId, ready: message.ready }, now),
+        );
         break;
       case 'frame':
         this.onFrame(playerId, seat, message.image, message.seq, now);
@@ -401,7 +482,13 @@ export class Room {
         this.reportError(
           seat,
           this.dispatch(
-            { type: 'vote', playerId, roundId: message.roundId, targetId: message.targetId, approve: message.approve },
+            {
+              type: 'vote',
+              playerId,
+              roundId: message.roundId,
+              targetId: message.targetId,
+              approve: message.approve,
+            },
             now,
           ),
         );
@@ -438,6 +525,14 @@ export class Room {
    * cannot put anything into the deck that the rules would not allow.
    */
   private onAddChallenge(playerId: PlayerId, seat: Seat, raw: string, now: number): void {
+    if (this.state.ranked) {
+      seat.send?.({
+        t: 'error',
+        code: 'rejected',
+        message: 'Custom prompts belong in friendly rooms.',
+      });
+      return;
+    }
     const state = toPublicState(this.state);
     const check = validateCustomPrompt(raw, state.customChallenges, playerId);
     if (!check.ok) {
@@ -480,6 +575,14 @@ export class Room {
     now: number,
   ): void {
     const round = this.state.round;
+    if (round?.submissions[playerId]) {
+      this.reportError(seat, 'already-submitted');
+      return;
+    }
+    if (round?.passes[playerId] !== undefined) {
+      this.reportError(seat, 'already-passed');
+      return;
+    }
     if (!round || round.id !== roundId || this.state.phase !== 'challenge') {
       // Missing the round you were actually playing deserves a better answer
       // than "that is not possible right now".
@@ -496,46 +599,43 @@ export class Room {
     }
 
     let auto: AutoVerdict | undefined;
+    // All photographs, including AI and casual submissions, must decode safely.
+    let decoded: Frame;
+    try {
+      decoded = decodeEvidence(image);
+    } catch {
+      seat.send?.({
+        t: 'error',
+        code: 'bad-message',
+        message: 'That snapshot could not be read. Try again.',
+      });
+      return;
+    }
 
     if (round.judging === 'auto') {
       const challenge = challengeInRoom(this.state, round.challengeId);
       if (!challenge) {
-        log.error('round references an unknown challenge', { roundId, challengeId: round.challengeId });
+        log.error('round references an unknown challenge', {
+          roundId,
+          challengeId: round.challengeId,
+        });
         this.reportError(seat, 'wrong-round');
         return;
       }
-      let frame: Frame;
-      try {
-        frame = decodeEvidence(image);
-      } catch (err) {
-        if (seat.send) {
-          seat.send({
-            t: 'error',
-            code: 'bad-message',
-            message: 'That snapshot could not be read. Try again.',
-          });
-        }
-        log.warn('evidence decode failed', {
-          playerId,
-          error: err instanceof DecodeError ? err.message : String(err),
-        });
-        return;
-      }
-      const baseline = seat.baselineRoundId === round.id ? seat.baseline ?? undefined : undefined;
-      const outcome = verifySubmission(challenge, baseline, frame);
+      const baseline = seat.baselineRoundId === round.id ? (seat.baseline ?? undefined) : undefined;
+      const outcome = verifySubmission(challenge, baseline, decoded);
       if (outcome.kind === 'verdict') {
         auto = outcome.verdict;
       } else {
         // We cannot decide this one ourselves, so we say so and hand the round
         // to the opponent rather than inventing a verdict.
-        this.dispatch(
-          { type: 'downgradeJudging', roundId: round.id, reason: outcome.kind },
-          now,
-        );
+        this.dispatch({ type: 'downgradeJudging', roundId: round.id, reason: outcome.kind }, now);
         this.broadcast({
           t: 'toast',
           kind: 'warn',
-          message: 'Camera check unavailable — your opponent judges this round.',
+          message: this.state.ranked
+            ? 'Camera check unavailable. This match will not change rating or XP.'
+            : 'Camera check unavailable — your opponent judges this friendly round.',
         });
       }
     }
@@ -573,7 +673,11 @@ export class Room {
 
     this.onPhaseChanged(now);
 
-    const payload: ServerMessage = { t: 'state', state: toPublicState(this.state), serverTime: now };
+    const payload: ServerMessage = {
+      t: 'state',
+      state: toPublicState(this.state),
+      serverTime: now,
+    };
     this.broadcast(payload);
   }
 
@@ -593,7 +697,18 @@ export class Room {
       this.deliverEvidence(round.id, 'result');
     }
     if (phase === 'matchResult' && this.lastPhase !== 'matchResult') {
-      this.settleRatings(now);
+      try {
+        this.settleRatings(now);
+      } catch {
+        this.lastRatings = null;
+        this.lastRewards = null;
+        log.error('match persistence failed', { room: this.code });
+        this.broadcast({
+          t: 'toast',
+          kind: 'warn',
+          message: 'This result could not be saved. Your previous rating and XP are safe.',
+        });
+      }
       this.sendStandings(now);
     }
     if (phase === 'lobby' && this.lastPhase === 'matchResult') {
@@ -650,10 +765,19 @@ export class Room {
     void judge
       .judge({ challenge, photos, signal: AbortSignal.timeout(budget) })
       .then((assessments) => {
+        const validated = validateAssessments(
+          assessments,
+          photos.map((p) => p.playerId),
+        );
+        this.profiles?.auditEvaluation?.(
+          roundId,
+          { version: 1, status: 'verified', challengeId: challenge.id, assessments: validated },
+          Date.now(),
+        );
         const verdicts: Record<PlayerId, AutoVerdict> = {};
-        for (const assessment of assessments) {
+        for (const assessment of validated) {
           verdicts[assessment.playerId] = {
-            matched: assessment.score > 0,
+            matched: assessment.valid,
             confidence: assessment.confidence,
             reason: assessment.reason,
           };
@@ -661,13 +785,22 @@ export class Room {
         return verdicts;
       })
       .catch((err: unknown) => {
+        try {
+          this.profiles?.auditEvaluation?.(
+            roundId,
+            { version: 1, status: 'unavailable', challengeId: challenge.id },
+            Date.now(),
+          );
+        } catch {
+          log.error('evaluation audit unavailable', { room: this.code });
+        }
         if (err instanceof JudgeUnavailable) {
           log.info('ai judge unavailable', { room: this.code, reason: err.publicReason });
         } else {
           // Never the upstream body: it carries key material and a photograph.
           log.warn('ai judge failed', {
             room: this.code,
-            error: err instanceof Error ? err.message : 'unknown',
+            errorType: err instanceof Error ? err.name : 'unknown',
           });
         }
         return null;
@@ -810,7 +943,8 @@ function summarise(
         const other = outcome.perPlayer[opponentId];
         if (other?.valid && other.elapsedMs !== null) {
           const margin = other.elapsedMs - ours;
-          if (margin >= 0) closestWinMs = closestWinMs === null ? margin : Math.min(closestWinMs, margin);
+          if (margin >= 0)
+            closestWinMs = closestWinMs === null ? margin : Math.min(closestWinMs, margin);
         }
       }
     } else if (outcome.winnerId === opponentId) {
@@ -821,6 +955,15 @@ function summarise(
 
   const player = state.players[playerId];
   return {
+    forfeited: state.endReason === 'forfeit' && state.winnerId !== playerId,
+    topicIds: state.history.map((r) => r.challengeId),
+    categories: [
+      ...new Set(
+        state.history
+          .map((r) => challengeInRoom(state, r.challengeId)?.category)
+          .filter((c): c is NonNullable<typeof c> => Boolean(c)),
+      ),
+    ],
     yourScore: player?.score ?? 0,
     theirScore: state.players[opponentId]?.score ?? 0,
     validAnswers: player?.validAnswers ?? 0,
@@ -834,4 +977,8 @@ function summarise(
     seriesLength: Object.values(state.series).reduce((sum, n) => sum + n, 0),
     wentTheDistance: state.history.length >= state.settings.maxRounds,
   };
+}
+
+function ratingDelta(value: RatingDelta): RatingDelta {
+  return { before: value.before, after: value.after, change: value.change };
 }

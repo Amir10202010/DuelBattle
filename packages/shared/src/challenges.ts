@@ -105,15 +105,36 @@ export const CHALLENGES: readonly Challenge[] = [
   // ---- Colour: objective, instant, and the backbone of the pacing. ----
   color('color-red', 'SHOW SOMETHING RED', 'red', 1, SHORT),
   color('color-blue', 'SHOW SOMETHING BLUE', 'blue', 1, SHORT),
-  color('color-green', 'TOUCH SOMETHING GREEN', 'green', 1, SHORT, 'Bring it to the camera while you touch it.'),
+  color(
+    'color-green',
+    'TOUCH SOMETHING GREEN',
+    'green',
+    1,
+    SHORT,
+    'Bring it to the camera while you touch it.',
+  ),
   color('color-yellow', 'SHOW SOMETHING YELLOW', 'yellow', 2, SHORT),
   color('color-white', 'SHOW SOMETHING WHITE', 'white', 1, SHORT),
   color('color-black', 'SHOW SOMETHING BLACK', 'black', 1, SHORT),
   color('color-orange', 'SHOW SOMETHING ORANGE', 'orange', 2, NORMAL),
   color('color-purple', 'SHOW SOMETHING PURPLE', 'purple', 3, NORMAL),
   color('color-pink', 'SHOW SOMETHING PINK', 'pink', 3, NORMAL),
-  color('color-red-fill', 'FILL YOUR SCREEN WITH RED', 'red', 2, SHORT, 'Get it right up to the lens.'),
-  color('color-blue-fill', 'FILL YOUR SCREEN WITH BLUE', 'blue', 2, SHORT, 'Get it right up to the lens.'),
+  color(
+    'color-red-fill',
+    'FILL YOUR SCREEN WITH RED',
+    'red',
+    2,
+    SHORT,
+    'Get it right up to the lens.',
+  ),
+  color(
+    'color-blue-fill',
+    'FILL YOUR SCREEN WITH BLUE',
+    'blue',
+    2,
+    SHORT,
+    'Get it right up to the lens.',
+  ),
 
   // ---- Physical: no colour involved, still decided by the camera. ----
   auto(
@@ -186,50 +207,140 @@ export const CHALLENGES: readonly Challenge[] = [
   ),
 
   // ---- Objects: quick scavenger hunts, judged by your opponent. ----
-  peer('obj-face', 'SHOW SOMETHING WITH A FACE', 'object', 2, NORMAL, ['object', 'face'], 'A toy, a poster, a mug — not your own face.'),
-  peer('obj-letter-b', 'SHOW SOMETHING STARTING WITH THE LETTER B', 'object', 2, NORMAL, ['object', 'letter']),
-  peer('obj-letter-s', 'SHOW SOMETHING STARTING WITH THE LETTER S', 'object', 2, NORMAL, ['object', 'letter']),
+  peer(
+    'obj-face',
+    'SHOW SOMETHING WITH A FACE',
+    'object',
+    2,
+    NORMAL,
+    ['object', 'face'],
+    'A toy, a poster, a mug — not your own face.',
+  ),
+  peer('obj-letter-b', 'SHOW SOMETHING STARTING WITH THE LETTER B', 'object', 2, NORMAL, [
+    'object',
+    'letter',
+  ]),
+  peer('obj-letter-s', 'SHOW SOMETHING STARTING WITH THE LETTER S', 'object', 2, NORMAL, [
+    'object',
+    'letter',
+  ]),
   peer('obj-round', 'SHOW SOMETHING PERFECTLY ROUND', 'object', 2, NORMAL, ['object', 'shape']),
-  peer('obj-cheap', 'FIND SOMETHING THAT COSTS LESS THAN $5', 'object', 2, NORMAL, ['object', 'value']),
-  peer('obj-expensive', 'SHOW THE MOST EXPENSIVE THING WITHIN REACH', 'object', 2, NORMAL, ['object', 'value']),
-  peer('obj-useless', 'SHOW THE MOST USELESS THING IN YOUR ROOM', 'object', 1, NORMAL, ['object', 'funny']),
-  peer('obj-soft', 'SHOW SOMETHING SOFTER THAN A PILLOW', 'object', 2, NORMAL, ['object', 'texture']),
+  peer('obj-cheap', 'FIND SOMETHING THAT COSTS LESS THAN $5', 'object', 2, NORMAL, [
+    'object',
+    'value',
+  ]),
+  peer('obj-expensive', 'SHOW THE MOST EXPENSIVE THING WITHIN REACH', 'object', 2, NORMAL, [
+    'object',
+    'value',
+  ]),
+  peer('obj-useless', 'SHOW THE MOST USELESS THING IN YOUR ROOM', 'object', 1, NORMAL, [
+    'object',
+    'funny',
+  ]),
+  peer('obj-soft', 'SHOW SOMETHING SOFTER THAN A PILLOW', 'object', 2, NORMAL, [
+    'object',
+    'texture',
+  ]),
   peer('obj-tiny', 'SHOW THE SMALLEST THING YOU OWN', 'object', 2, NORMAL, ['object', 'size']),
-  peer('obj-heavy', 'SHOW THE HEAVIEST THING IN THE ROOM', 'object', 2, NORMAL, ['object', 'size'], 'Point the camera at it. No need to pick it up.'),
-  peer('obj-battery', 'SHOW SOMETHING THAT NEEDS A BATTERY', 'object', 2, NORMAL, ['object', 'tech']),
+  peer(
+    'obj-heavy',
+    'SHOW THE HEAVIEST THING IN THE ROOM',
+    'object',
+    2,
+    NORMAL,
+    ['object', 'size'],
+    'Point the camera at it. No need to pick it up.',
+  ),
+  peer('obj-battery', 'SHOW SOMETHING THAT NEEDS A BATTERY', 'object', 2, NORMAL, [
+    'object',
+    'tech',
+  ]),
   peer('obj-broken', 'SHOW SOMETHING THAT IS BROKEN', 'object', 3, NORMAL, ['object', 'story']),
-  peer('obj-written', 'SHOW SOMETHING WITH YOUR HANDWRITING ON IT', 'object', 3, NORMAL, ['object', 'story']),
+  peer('obj-written', 'SHOW SOMETHING WITH YOUR HANDWRITING ON IT', 'object', 3, NORMAL, [
+    'object',
+    'story',
+  ]),
   peer('obj-liquid', 'SHOW SOMETHING YOU CAN DRINK', 'object', 1, SHORT, ['object']),
-  peer('obj-smell', 'SHOW THE BEST-SMELLING THING IN THE ROOM', 'object', 2, NORMAL, ['object', 'funny']),
-  peer('obj-book', 'SHOW A BOOK AND READ ONE LINE OUT LOUD', 'action', 3, LONG, ['object', 'voice']),
+  peer('obj-smell', 'SHOW THE BEST-SMELLING THING IN THE ROOM', 'object', 2, NORMAL, [
+    'object',
+    'funny',
+  ]),
+  peer('obj-book', 'SHOW A BOOK OPEN TO ANY PAGE', 'action', 3, LONG, ['object', 'visual']),
 
   // ---- Stories: the reason anyone plays this with a friend. ----
   peer('story-older', 'FIND SOMETHING OLDER THAN YOU', 'story', 3, LONG, ['story', 'time']),
   peer('story-mom', 'FIND SOMETHING YOUR MOM GAVE YOU', 'story', 3, LONG, ['story', 'family']),
-  peer('story-travel', 'SHOW SOMETHING FROM ANOTHER COUNTRY', 'story', 3, LONG, ['story', 'travel']),
+  peer('story-travel', 'SHOW SOMETHING FROM ANOTHER COUNTRY', 'story', 3, LONG, [
+    'story',
+    'travel',
+  ]),
   peer('story-regret', 'SHOW A PURCHASE YOU REGRET', 'story', 2, LONG, ['story', 'funny']),
-  peer('story-gift', 'SHOW SOMETHING YOU WOULD NEVER THROW AWAY', 'story', 3, LONG, ['story', 'sentimental']),
-  peer('story-year', 'SHOW SOMETHING YOU HAVE HAD FOR 5+ YEARS', 'story', 3, LONG, ['story', 'time']),
-  peer('story-embarrassing', 'SHOW THE THING YOU WOULD HIDE FROM A GUEST', 'story', 2, LONG, ['story', 'funny']),
+  peer('story-gift', 'SHOW SOMETHING YOU WOULD NEVER THROW AWAY', 'story', 3, LONG, [
+    'story',
+    'sentimental',
+  ]),
+  peer('story-year', 'SHOW SOMETHING YOU HAVE HAD FOR 5+ YEARS', 'story', 3, LONG, [
+    'story',
+    'time',
+  ]),
+  peer('story-embarrassing', 'SHOW THE THING YOU WOULD HIDE FROM A GUEST', 'story', 2, LONG, [
+    'story',
+    'funny',
+  ]),
   peer('story-unused', 'SHOW SOMETHING YOU HAVE NEVER USED', 'story', 2, LONG, ['story', 'funny']),
   peer('story-return', 'SHOW SOMETHING YOU MEANT TO RETURN', 'story', 3, LONG, ['story', 'funny']),
-  peer('story-fixed', 'SHOW SOMETHING YOU HAVE FIXED YOURSELF', 'story', 3, LONG, ['story', 'pride']),
+  peer('story-fixed', 'SHOW SOMETHING YOU HAVE FIXED YOURSELF', 'story', 3, LONG, [
+    'story',
+    'pride',
+  ]),
   peer('story-phone', 'SHOW SOMETHING OLDER THAN YOUR PHONE', 'story', 2, LONG, ['story', 'time']),
 
   // ---- Actions: get people out of their chair. ----
   peer('act-hands', 'SHOW BOTH HANDS, PALMS TO THE CAMERA', 'action', 1, SHORT, ['action', 'body']),
-  peer('act-blue-head', 'PUT SOMETHING BLUE ON YOUR HEAD', 'action', 2, NORMAL, ['action', 'color', 'blue']),
-  peer('act-hat', 'WEAR SOMETHING THAT IS NOT A HAT AS A HAT', 'action', 2, NORMAL, ['action', 'funny']),
-  peer('act-stack', 'STACK THREE THINGS ON TOP OF EACH OTHER', 'action', 3, LONG, ['action', 'build']),
+  peer('act-blue-head', 'PUT SOMETHING BLUE ON YOUR HEAD', 'action', 2, NORMAL, [
+    'action',
+    'color',
+    'blue',
+  ]),
+  peer('act-hat', 'WEAR SOMETHING THAT IS NOT A HAT AS A HAT', 'action', 2, NORMAL, [
+    'action',
+    'funny',
+  ]),
+  peer('act-stack', 'STACK THREE THINGS ON TOP OF EACH OTHER', 'action', 3, LONG, [
+    'action',
+    'build',
+  ]),
   peer('act-behind', 'SHOW WHAT IS BEHIND YOU RIGHT NOW', 'action', 1, SHORT, ['action', 'room']),
-  peer('act-pocket', 'EMPTY YOUR POCKETS ON CAMERA', 'action', 2, NORMAL, ['action', 'reveal']),
-  peer('act-impression', 'DO AN IMPRESSION OF YOUR OPPONENT', 'action', 2, NORMAL, ['action', 'funny', 'voice']),
-  peer('act-furthest', 'TOUCH THE FURTHEST WALL AND COME BACK', 'action', 3, NORMAL, ['action', 'move']),
+  peer('act-pocket', 'SHOW ONE SAFE THING FROM YOUR POCKET', 'action', 2, NORMAL, [
+    'action',
+    'reveal',
+  ]),
+  peer('act-impression', "MIME YOUR OPPONENT'S LAST MOVE", 'action', 2, NORMAL, [
+    'action',
+    'funny',
+  ]),
+  peer('act-furthest', 'TOUCH A NEARBY WALL AND COME BACK', 'action', 3, NORMAL, [
+    'action',
+    'move',
+  ]),
 
   // ---- Wildcards: rare, high-variance, memorable. ----
-  peer('wild-swap', 'SHOW SOMETHING THAT PROVES WHAT TIME IT IS', 'wildcard', 3, NORMAL, ['wildcard']),
-  peer('wild-three-red', 'SHOW THREE RED THINGS AT ONCE', 'wildcard', 3, NORMAL, ['wildcard', 'color']),
-  peer('wild-noise', 'SHOW SOMETHING THAT MAKES A NOISE', 'wildcard', 2, NORMAL, ['wildcard', 'sound'], 'Make it, so they can hear it.'),
+  peer('wild-swap', 'SHOW SOMETHING THAT PROVES WHAT TIME IT IS', 'wildcard', 3, NORMAL, [
+    'wildcard',
+  ]),
+  peer('wild-three-red', 'SHOW THREE RED THINGS AT ONCE', 'wildcard', 3, NORMAL, [
+    'wildcard',
+    'color',
+  ]),
+  peer(
+    'wild-noise',
+    'SHOW SOMETHING THAT MAKES A NOISE',
+    'wildcard',
+    2,
+    NORMAL,
+    ['wildcard', 'sound'],
+    'Show the object clearly. No sound is needed.',
+  ),
 ];
 
 /**
@@ -287,6 +398,7 @@ let promptSet: Set<string> | null = null;
  * model that claimed to would be guessing with confidence.
  */
 const AI_VERIFIABLE: ReadonlySet<string> = new Set([
+  'obj-book',
   'obj-face',
   'obj-letter-b',
   'obj-letter-s',
@@ -341,11 +453,7 @@ export type CustomPromptError =
  * caps at 46px, and a lower-case one would read as a different kind of thing.
  */
 export function normalizeCustomPrompt(input: string): string {
-  return input
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toUpperCase()
-    .slice(0, MAX_CUSTOM_PROMPT_LENGTH);
+  return input.replace(/\s+/g, ' ').trim().toUpperCase().slice(0, MAX_CUSTOM_PROMPT_LENGTH);
 }
 
 export function validateCustomPrompt(
@@ -365,10 +473,10 @@ export function validateCustomPrompt(
   if (input.trim().length > MAX_CUSTOM_PROMPT_LENGTH) return { ok: false, error: 'too-long' };
   // Letters, digits and ordinary sentence punctuation. Anything else is either
   // a rendering problem at 46px or an attempt to be clever with the layout.
-  if (!/^[A-Z0-9 '’\-.,!?$&+:()]+$/.test(prompt)) {
+  if (!/^[\p{L}\p{N} '’\-.,!?$&+:()]+$/u.test(prompt)) {
     return { ok: false, error: 'unsupported-characters' };
   }
-  if (!/[A-Z]/.test(prompt)) return { ok: false, error: 'too-short' };
+  if (!/\p{L}/u.test(prompt)) return { ok: false, error: 'too-short' };
   if (existing.some((c) => c.prompt === prompt)) return { ok: false, error: 'duplicate' };
   if (promptExists(prompt)) return { ok: false, error: 'duplicate' };
 
@@ -416,7 +524,8 @@ export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): 
 
     if (c.prompt !== promptKey) problems.push(`${c.id}: prompt must be upper case`);
     if (c.prompt.length > 48) problems.push(`${c.id}: prompt too long to render large`);
-    if (c.judging === 'auto' && !c.detector) problems.push(`${c.id}: auto round without a detector`);
+    if (c.judging === 'auto' && !c.detector)
+      problems.push(`${c.id}: auto round without a detector`);
     for (const target of colorTargets(c.detector)) {
       if (!isColorKey(target)) problems.push(`${c.id}: unknown colour "${target}"`);
       else if (!c.prompt.toLowerCase().includes(target)) {
@@ -425,12 +534,14 @@ export function validateCatalog(challenges: readonly Challenge[] = CHALLENGES): 
         problems.push(`${c.id}: prompt does not name the colour it tests for ("${target}")`);
       }
     }
-    if (c.judging === 'peer' && c.detector) problems.push(`${c.id}: peer round must not carry a detector`);
+    if (c.judging === 'peer' && c.detector)
+      problems.push(`${c.id}: peer round must not carry a detector`);
     if (c.judging === 'auto' && AI_VERIFIABLE.has(c.id)) {
       // A round the camera already settles has nothing to ask a model.
       problems.push(`${c.id}: an auto round does not need an AI referee`);
     }
-    if (c.durationMs < 10_000 || c.durationMs > 60_000) problems.push(`${c.id}: implausible duration`);
+    if (c.durationMs < 10_000 || c.durationMs > 60_000)
+      problems.push(`${c.id}: implausible duration`);
     if (c.tags.length === 0) problems.push(`${c.id}: needs at least one tag`);
   }
 
@@ -496,8 +607,7 @@ export function pickChallenge(opts: PickOptions): Challenge {
   if (candidates.length === 0) candidates = [...pool];
 
   const recent = opts.recentModes ?? [];
-  const lastTwoArePeer =
-    recent.length >= 2 && recent.slice(-2).every((m) => m === 'peer');
+  const lastTwoArePeer = recent.length >= 2 && recent.slice(-2).every((m) => m === 'peer');
 
   if (opts.roundNumber <= 1 || lastTwoArePeer) {
     const autos = candidates.filter((c) => c.judging === 'auto');

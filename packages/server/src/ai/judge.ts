@@ -64,7 +64,7 @@ Score fulfillment from 0 to 70 (how completely the visible answer fits the promp
 from 0 to 30 (how clearly and, for creative prompts, inventively the answer is presented).
 A clear ordinary object can earn full marks; expensive objects and camera hardware give no advantage.
 Set valid=false if the requested answer is missing, unsafe, obscured, or cannot be visually established.
-Confidence is confidence that the requested answer is visibly demonstrated, not confidence in a rejection.
+Confidence is confidence in your assessment, including a rejection. If evidence is ambiguous, use low confidence.
 Give each supplied slot exactly one assessment, and never invent an absent participant or photo.
 Local YOLO detections, when supplied, are fallible hints. They only cover a limited object vocabulary.
 Check the photos yourself; a missing YOLO detection does not mean the object is absent.
@@ -77,7 +77,9 @@ const envelopeSchema = z.object({
       z.object({
         finishReason: z.literal('STOP'),
         content: z.object({
-          parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() })),
+          parts: z.array(
+            z.object({ text: z.string().optional(), thought: z.boolean().optional() }),
+          ),
         }),
       }),
     )
@@ -246,12 +248,14 @@ export class GeminiPhotoJudge implements AiJudge {
         this.keys.disable(key);
         continue;
       }
+      if (response.status >= 500 && attempt < 2) {
+        tried.delete(key);
+        continue;
+      }
       return response;
     }
 
-    throw new JudgeUnavailable(
-      'The AI judge is out of quota. Your opponent decides this one.',
-    );
+    throw new JudgeUnavailable('The AI judge is out of quota. Your opponent decides this one.');
   }
 
   private readVerdict(
@@ -266,8 +270,7 @@ export class GeminiPhotoJudge implements AiJudge {
 
     return response.json().then((raw) => {
       const body = envelopeSchema.parse(raw);
-      const text = body.candidates[0]!.content.parts
-        .filter((p) => !p.thought)
+      const text = body.candidates[0]!.content.parts.filter((p) => !p.thought)
         .map((p) => p.text ?? '')
         .join('');
       const { assessments } = judgeResponseSchema.parse(JSON.parse(text));

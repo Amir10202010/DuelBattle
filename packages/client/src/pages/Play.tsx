@@ -1,5 +1,6 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link2, Radar, Users } from 'lucide-react';
+import { Link2, Radar, Users, Zap, Trophy } from 'lucide-react';
 import {
   MAX_NAME_LENGTH,
   ROOM_CODE_LENGTH,
@@ -13,6 +14,7 @@ import type { MatchStore, QueueState } from '../net/store.js';
 import { recoverableSession, rememberedName } from '../net/store.js';
 import { describeLookup, useRoomLookup } from '../hooks/useRoomLookup.js';
 import { useNow } from '../hooks/useNow.js';
+import { rememberedMode, rememberMode, type PlayMode } from '../net/playMode.js';
 import { RankBadge } from '../components/Identity.jsx';
 
 interface PlayProps {
@@ -39,6 +41,12 @@ interface PlayProps {
  * one arrived through the link anyway and is already past this screen.
  */
 export function Play({ store, invitedCode, joining, error, offline, queue, profile }: PlayProps) {
+  useUiPreferences();
+  const [playMode, setPlayMode] = useState<PlayMode>(() => (profile ? rememberedMode() : 'casual'));
+  const chooseMode = (value: PlayMode) => {
+    setPlayMode(value);
+    rememberMode(value);
+  };
   const [name, setName] = useState(() => profile?.name || rememberedName());
   const [mode, setMode] = useState<'pick' | 'code'>(invitedCode ? 'code' : 'pick');
   const [code, setCode] = useState(invitedCode ?? '');
@@ -77,28 +85,36 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
     run();
   };
 
-  const find = guard(() => store.findMatch(trimmed));
+  const find = guard(() => store.findMatch(trimmed, profile ? playMode : 'casual'));
   const open = guard(() => store.createRoom(trimmed));
   const join = guard(() => {
     if (!isValidRoomCode(code)) return;
     store.joinRoom(code, trimmed);
   });
 
-  if (queue) return <Searching queue={queue} profile={profile} onCancel={() => store.cancelFind()} />;
+  if (queue)
+    return (
+      <Searching
+        queue={queue}
+        profile={(queue.mode ?? playMode) === 'ranked' ? profile : null}
+        onCancel={() => store.cancelFind()}
+      />
+    );
 
   return (
     <main className="page page--play">
       <header className="page__head">
-        <p className="eyebrow">Play</p>
-        <h1 className="page__title display">Find somebody to beat.</h1>
+        <p className="eyebrow">{tr('Choose your next rivalry')}</p>
+        <h1 className="page__title display">{tr('Your next move.')}</h1>
         <p className="page__lede">
-          Two players, two cameras, one prompt at a time. Everything you need to win is already
-          within arm&rsquo;s reach.
+          {tr(
+            'Two players, two cameras, one prompt at a time. Everything you need to win is already within arm’s reach.',
+          )}
         </p>
       </header>
 
-      <div className="field field--name">
-        <label htmlFor={nameId}>Your name</label>
+      <div className="field field--name" hidden={Boolean(profile)}>
+        <label htmlFor={nameId}>{tr('Your name')}</label>
         <input
           id={nameId}
           ref={nameRef}
@@ -106,7 +122,7 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
           value={name}
           maxLength={MAX_NAME_LENGTH}
           autoComplete="nickname"
-          placeholder="Who are you?"
+          placeholder={tr('Who are you?')}
           onChange={(e) => {
             setName(e.target.value);
             store.clearJoinError();
@@ -114,61 +130,113 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
           onKeyDown={(e) => e.key === 'Enter' && (mode === 'code' ? join() : find())}
         />
         {touched && !nameOk && (
-          <p className="error-text">Pick a name so your opponent knows who won.</p>
+          <p className="error-text">{tr('Pick a name so your opponent knows who won.')}</p>
         )}
       </div>
 
       {recoverable && (
         <div className="resume">
           <p className="resume__text">
-            This browser was in room {invitedCode} as <strong>{recoverable.name}</strong>.
+            {tr('This browser was in room')}
+            {tr(invitedCode)}
+            {tr(' as ')}
+            <strong>{recoverable.name}</strong>
+            {'.'}
           </p>
           <button
             className="btn btn--block"
             disabled={busy}
             onClick={() => invitedCode && store.recoverSession(invitedCode)}
           >
-            Take that seat back
+            {tr('Take that seat back')}
           </button>
         </div>
       )}
 
+      <div className="mode-picker" role="group" aria-label={tr('Game mode')}>
+        <button
+          className={`mode-card ${playMode === 'casual' ? 'is-active' : ''}`}
+          aria-pressed={playMode === 'casual'}
+          onClick={() => chooseMode('casual')}
+        >
+          <Zap size={24} aria-hidden="true" />
+          <span>
+            <strong>{tr('Quick play')}</strong>
+            <small>{tr('Just for fun')}</small>
+          </span>
+        </button>
+        {profile ? (
+          <button
+            className={`mode-card ${playMode === 'ranked' ? 'is-active' : ''}`}
+            aria-pressed={playMode === 'ranked'}
+            onClick={() => chooseMode('ranked')}
+          >
+            <Trophy size={24} aria-hidden="true" />
+            <span>
+              <strong>{tr('Ranked')}</strong>
+              <small>{tr('Rating · XP · rewards')}</small>
+            </span>
+          </button>
+        ) : (
+          <a className="mode-card" href="/register">
+            <Trophy size={24} aria-hidden="true" />
+            <span>
+              <strong>{tr('Ranked')}</strong>
+              <small>{tr('Create an account to play')}</small>
+            </span>
+          </a>
+        )}
+      </div>
       <section className="option option--primary">
         <div className="option__head">
           <Radar size={18} aria-hidden="true" />
-          <h2 className="option__title">Quick match</h2>
+          <h2 className="option__title">
+            {tr(playMode === 'ranked' && profile ? 'Ranked duel' : 'Quick play')}
+          </h2>
         </div>
         <p className="option__body">
-          We pair you with whoever is closest to your rating. It counts towards your rank.
+          {tr(
+            playMode === 'ranked' && profile
+              ? 'Win rounds. Climb the ranks.'
+              : 'Just play. No rating to lose.',
+          )}
         </p>
         <button className="btn btn--primary btn--lg btn--block" onClick={find} disabled={busy}>
-          Find an opponent
+          {tr('Let’s play')}
+          <Zap size={18} aria-hidden="true" />
         </button>
       </section>
 
       <section className="option">
         <div className="option__head">
           <Users size={18} aria-hidden="true" />
-          <h2 className="option__title">Play a friend</h2>
+          <h2 className="option__title">{tr('Play a friend')}</h2>
         </div>
         {mode === 'pick' ? (
           <>
             <p className="option__body">
-              Open a private room and send them the link. Nobody else can get in.
+              {tr(
+                'Share a private room link. Add your own prompts and settle the rivalry. No rating or XP changes.',
+              )}
             </p>
             <div className="option__actions">
               <button className="btn btn--block" onClick={open} disabled={busy}>
-                {joining ? 'Opening a room…' : 'Open a room'}
+                {tr(joining ? 'Opening a room…' : 'Open a room')}
               </button>
-              <button className="btn btn--ghost btn--block" onClick={() => setMode('code')} disabled={busy}>
-                <Link2 size={15} aria-hidden="true" /> I have a code
+              <button
+                className="btn btn--ghost btn--block"
+                onClick={() => setMode('code')}
+                disabled={busy}
+              >
+                <Link2 size={15} aria-hidden="true" />
+                {tr('I have a code')}
               </button>
             </div>
           </>
         ) : (
           <>
             <div className="field">
-              <label htmlFor={codeId}>Room code</label>
+              <label htmlFor={codeId}>{tr('Room code')}</label>
               <input
                 id={codeId}
                 className="input input--code"
@@ -177,13 +245,15 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck={false}
-                placeholder="ABCDE"
+                placeholder={tr('ABCDE')}
                 enterKeyHint="go"
                 onChange={(e) => {
                   // Pasting the whole invite link is at least as likely as
                   // typing five characters, so accept either.
                   const raw = e.target.value;
-                  setCode(extractRoomCode(raw) ?? normalizeRoomCode(raw).slice(0, ROOM_CODE_LENGTH));
+                  setCode(
+                    extractRoomCode(raw) ?? normalizeRoomCode(raw).slice(0, ROOM_CODE_LENGTH),
+                  );
                   store.clearJoinError();
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && join()}
@@ -192,7 +262,7 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
             {/* A specific answer beats live validation guessing at one. */}
             {lookupNote && !error && (
               <p className={`lookup lookup--${lookup.state}`} role="status" aria-live="polite">
-                {lookupNote}
+                {tr(lookupNote)}
               </p>
             )}
             <div className="option__actions">
@@ -201,10 +271,14 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
                 onClick={join}
                 disabled={busy || !isValidRoomCode(code) || lookup.state === 'full'}
               >
-                {joining ? 'Joining…' : 'Join the battle'}
+                {tr(joining ? 'Joining…' : 'Join the battle')}
               </button>
-              <button className="btn btn--ghost btn--block" onClick={() => setMode('pick')} disabled={busy}>
-                Back
+              <button
+                className="btn btn--ghost btn--block"
+                onClick={() => setMode('pick')}
+                disabled={busy}
+              >
+                {tr('Back')}
               </button>
             </div>
           </>
@@ -213,12 +287,12 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
 
       {error && (
         <p className="error-text" role="alert">
-          {error}
+          {tr(error)}
         </p>
       )}
       {offline && (
         <p className="error-text" role="status">
-          Can&rsquo;t reach the server. Retrying…
+          {tr('Can’t reach the server. Retrying…')}
         </p>
       )}
     </main>
@@ -243,6 +317,7 @@ function Searching({
   profile: PublicProfile | null;
   onCancel: () => void;
 }) {
+  useUiPreferences();
   const now = useNow(1_000);
   const seconds = Math.max(0, Math.floor((now - queue.since) / 1000));
   const alone = queue.waiting <= 1;
@@ -255,42 +330,54 @@ function Searching({
           <i />
           <i />
         </div>
-        <p className="eyebrow">Looking for an opponent</p>
+        <p className="eyebrow">{tr('Looking for an opponent')}</p>
         <h1 className="searching__title display">
-          {alone ? 'Nobody else is waiting yet.' : 'Finding somebody your size.'}
+          {tr(alone ? 'Nobody else is waiting yet.' : 'Finding somebody your size.')}
         </h1>
         <p className="searching__body dim">
-          {alone
-            ? 'You are first in the queue. The moment somebody else presses play, you are in.'
-            : `${queue.waiting} waiting. The search widens the longer you are here, so it will not run forever.`}
+          {tr(
+            alone
+              ? 'You are first in the queue. The moment somebody else presses play, you are in.'
+              : `${queue.waiting} waiting. The skill range widens as you wait.`,
+          )}
         </p>
 
         <dl className="searching__stats">
           <div>
-            <dt>In the queue</dt>
-            <dd className="mono">{queue.waiting}</dd>
+            <dt>{tr('In the queue')}</dt>
+            <dd className="mono">{tr(queue.waiting)}</dd>
           </div>
           <div>
-            <dt>Your place</dt>
-            <dd className="mono">{queue.position || '—'}</dd>
+            <dt>{tr('Your place')}</dt>
+            <dd className="mono">{tr(queue.position || '—')}</dd>
           </div>
           <div>
-            <dt>Waiting</dt>
+            <dt>{tr('Waiting')}</dt>
             <dd className="mono">
-              {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+              {tr(Math.floor(seconds / 60))}
+              {':'}
+              {tr(String(seconds % 60).padStart(2, '0'))}
             </dd>
           </div>
         </dl>
 
         {profile && profile.matchesPlayed > 0 && (
           <p className="searching__rank">
-            Matching around <RankBadge rating={profile.rating} placed={isPlaced(profile.matchesPlayed)} size="sm" />
+            {tr('Matching around')}
+            <RankBadge rating={profile.rating} placed={isPlaced(profile.matchesPlayed)} size="sm" />
           </p>
         )}
 
         <button className="btn btn--lg" onClick={onCancel}>
-          Stop looking
+          {tr('Stop looking')}
         </button>
+        {seconds >= 30 && (
+          <p className="queue-tip">
+            {tr(
+              'Quiet arena? Cancel and invite a friend to a private room. Matches start when another player is available.',
+            )}
+          </p>
+        )}
       </div>
     </main>
   );

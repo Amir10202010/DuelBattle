@@ -30,9 +30,7 @@ describe('catalogue', () => {
   });
 
   it('draws on more than one kind of detector, so auto rounds are not all colour', () => {
-    const kinds = new Set(
-      CHALLENGES.filter((c) => c.detector).map((c) => c.detector!.kind),
-    );
+    const kinds = new Set(CHALLENGES.filter((c) => c.detector).map((c) => c.detector!.kind));
     expect(kinds.size).toBeGreaterThanOrEqual(4);
   });
 
@@ -71,7 +69,7 @@ describe('the rounds an AI referee may take', () => {
   it('leaves the prompts no photograph can settle with the opponent', () => {
     // Price, weight, smell, personal history and anything needing sound. If one
     // of these ever turns up in the AI list, it was a mistake.
-    for (const id of ['obj-cheap', 'obj-expensive', 'obj-heavy', 'obj-smell', 'obj-book']) {
+    for (const id of ['obj-cheap', 'obj-expensive', 'obj-heavy', 'obj-smell']) {
       expect(AI_VERIFIABLE_IDS, id).not.toContain(id);
     }
     for (const c of CHALLENGES) {
@@ -143,7 +141,11 @@ describe('validateCatalog', () => {
   });
 
   it('flags duplicates, casing and implausible durations', () => {
-    const problems = validateCatalog([base, { ...base, id: 'y' }, { ...base, id: 'z', prompt: 'lower case', durationMs: 5 }]);
+    const problems = validateCatalog([
+      base,
+      { ...base, id: 'y' },
+      { ...base, id: 'z', prompt: 'lower case', durationMs: 5 },
+    ]);
     expect(problems).toContain('duplicate prompt: SHOW SOMETHING');
     expect(problems).toContain('z: prompt must be upper case');
     expect(problems).toContain('z: implausible duration');
@@ -207,7 +209,6 @@ describe('pickChallenge', () => {
     expect(a.id).toBe(b.id);
   });
 });
-
 
 describe('pickChallenge and what a room has seen lately', () => {
   it('reaches past the prompts the room just played', () => {

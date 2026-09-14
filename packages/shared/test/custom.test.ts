@@ -7,6 +7,11 @@ import {
 } from '../src/challenges.js';
 
 describe('normalizeCustomPrompt', () => {
+  it('accepts a Russian custom prompt while retaining the same validation', () => {
+    const result = validateCustomPrompt('Покажи синий шарф', []);
+    expect(result).toMatchObject({ ok: true, prompt: 'ПОКАЖИ СИНИЙ ШАРФ' });
+    expect(validateCustomPrompt('Покажи\u202Eшарф', []).ok).toBe(false);
+  });
   it('sets prompts the way every other prompt in the game is set', () => {
     expect(normalizeCustomPrompt('  show me  your   oldest mug ')).toBe('SHOW ME YOUR OLDEST MUG');
   });
@@ -23,7 +28,11 @@ describe('validateCustomPrompt', () => {
   });
 
   it('allows the punctuation people actually type', () => {
-    for (const prompt of ["SHOW YOUR MUM'S FAVOURITE THING", 'SHOW SOMETHING UNDER $5', 'WHY NOT?']) {
+    for (const prompt of [
+      "SHOW YOUR MUM'S FAVOURITE THING",
+      'SHOW SOMETHING UNDER $5',
+      'WHY NOT?',
+    ]) {
       expect(validateCustomPrompt(prompt, []).ok, prompt).toBe(true);
     }
   });

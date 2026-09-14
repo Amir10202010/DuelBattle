@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS: MatchSettings = {
   suddenDeathRounds: 4,
   countdownMs: 3200,
   judgingMs: 15_000,
-  roundResultMs: 5_500,
+  roundResultMs: 3_200,
   disconnectGraceMs: 45_000,
 };
 
@@ -109,6 +109,7 @@ export type RoundReason =
   | 'both-failed'
   | 'both-perfect-tie'
   | 'no-submissions'
+  | 'verification-unavailable'
   /** Somebody rejected an answer, which voids the round for both players. */
   | 'vetoed';
 
@@ -140,6 +141,7 @@ export interface RoundOutcome {
 export type RoundJudging = JudgingMode | 'ai';
 
 export interface RoundState {
+  voided?: boolean;
   id: string;
   number: number;
   challengeId: string;
@@ -160,9 +162,16 @@ export interface RoundState {
   outcome: RoundOutcome | null;
 }
 
-export type MatchEndReason = 'target-reached' | 'rounds-exhausted' | 'draw' | 'abandoned';
+export type MatchEndReason =
+  | 'target-reached'
+  | 'rounds-exhausted'
+  | 'draw'
+  | 'abandoned'
+  | 'forfeit';
 
 export interface MatchState {
+  pauseUsedMs?: number;
+  ranked?: boolean;
   roomCode: string;
   createdAt: number;
   settings: MatchSettings;
@@ -210,6 +219,7 @@ export interface CustomChallenge {
 }
 
 export interface EngineContext {
+  ranked?: boolean;
   now: number;
   random?: RandomSource;
   /** Injected so round ids are deterministic in tests. */
@@ -274,9 +284,7 @@ export type ActionError =
   | 'no-such-prompt'
   | 'bad-setting';
 
-export type Result =
-  | { ok: true; state: MatchState }
-  | { ok: false; error: ActionError };
+export type Result = { ok: true; state: MatchState } | { ok: false; error: ActionError };
 
 export function createMatch(
   roomCode: string,
@@ -331,11 +339,13 @@ export function opponentIdOf(state: SeatedState<unknown>, playerId: PlayerId): P
 
 export function opponentOf<P>(state: SeatedState<P>, playerId: PlayerId): P | null {
   const other = opponentIdOf(state, playerId);
-  return other ? state.players[other] ?? null : null;
+  return other ? (state.players[other] ?? null) : null;
 }
 
 export function isMatchActive(phase: Phase): boolean {
-  return phase === 'countdown' || phase === 'challenge' || phase === 'judging' || phase === 'roundResult';
+  return (
+    phase === 'countdown' || phase === 'challenge' || phase === 'judging' || phase === 'roundResult'
+  );
 }
 
 function bump(state: MatchState): MatchState {
@@ -393,6 +403,7 @@ function setWinTarget(
   state: MatchState,
   action: Extract<Action, { type: 'setWinTarget' }>,
 ): Result {
+  if (state.ranked) return { ok: false, error: 'bad-setting' };
   if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
   if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
   const length = MATCH_LENGTHS.find((l) => l.winTarget === action.winTarget);
@@ -425,10 +436,7 @@ function addChallenge(
   const theirs = state.customChallenges.filter((c) => c.authorId === action.playerId).length;
   if (theirs >= MAX_CUSTOM_PER_PLAYER) return { ok: false, error: 'deck-full' };
   const prompt = action.prompt;
-  if (
-    state.customChallenges.some((c) => c.prompt === prompt) ||
-    promptExists(prompt)
-  ) {
+  if (state.customChallenges.some((c) => c.prompt === prompt) || promptExists(prompt)) {
     return { ok: false, error: 'duplicate-prompt' };
   }
 
@@ -483,6 +491,19 @@ function aiFinished(
   if (!state.round.aiPending) return { ok: true, state };
 
   if (!action.verdicts) {
+    if (state.ranked)
+      return {
+        ok: true,
+        state: bump(
+          resolveRound(
+            {
+              ...state,
+              round: { ...state.round, aiPending: false, voided: true },
+            },
+            ctx,
+          ),
+        ),
+      };
     return {
       ok: true,
       state: bump({
@@ -507,9 +528,7 @@ function aiFinished(
   // owed a vote the round is over.
   return {
     ok: true,
-    state: bump(
-      awaitingVerdict(next, next.round!).length === 0 ? resolveRound(next, ctx) : next,
-    ),
+    state: bump(awaitingVerdict(next, next.round!).length === 0 ? resolveRound(next, ctx) : next),
   };
 }
 
@@ -521,7 +540,13 @@ function downgradeJudging(state: MatchState, roundId: string): Result {
   if (state.round.judging === 'peer') return { ok: true, state };
   return {
     ok: true,
-    state: bump({ ...state, round: { ...state.round, judging: 'peer' } }),
+    state: bump({
+      ...state,
+      round: {
+        ...state.round,
+        ...(state.ranked ? { voided: true } : { judging: 'peer' as const }),
+      },
+    }),
   };
 }
 
@@ -574,12 +599,22 @@ function join(state: MatchState, playerId: PlayerId, name: string, ctx: EngineCo
     rematchVote: false,
   };
 
-  return { ok: true, state: bump({ ...state, seats, players: { ...state.players, [playerId]: player } }) };
+  return {
+    ok: true,
+    state: bump({ ...state, seats, players: { ...state.players, [playerId]: player } }),
+  };
 }
 
 function leave(state: MatchState, playerId: PlayerId, ctx: EngineContext): Result {
   const player = state.players[playerId];
   if (!player) return { ok: false, error: 'not-in-room' };
+  if (state.ranked && isMatchActive(state.phase)) {
+    const disconnected = {
+      ...state,
+      players: { ...state.players, [playerId]: { ...player, connected: false } },
+    };
+    return { ok: true, state: bump(endMatch(disconnected, 'forfeit', ctx)) };
+  }
 
   const players = { ...state.players };
   delete players[playerId];
@@ -617,6 +652,9 @@ function setConnected(
 ): Result {
   const player = state.players[playerId];
   if (!player) return { ok: false, error: 'not-in-room' };
+  if (connected && state.ranked && state.pauseDeadline !== null && ctx.now >= state.pauseDeadline) {
+    return { ok: true, state: bump(endMatch(state, 'forfeit', ctx)) };
+  }
   if (player.connected === connected) return { ok: true, state };
 
   const players = { ...state.players, [playerId]: { ...player, connected } };
@@ -635,7 +673,9 @@ function pauseIfNeeded(state: MatchState, ctx: EngineContext): MatchState {
   return {
     ...state,
     pausedAt: ctx.now,
-    pauseDeadline: ctx.now + state.settings.disconnectGraceMs,
+    pauseDeadline:
+      ctx.now +
+      Math.max(0, state.settings.disconnectGraceMs - (state.ranked ? (state.pauseUsedMs ?? 0) : 0)),
   };
 }
 
@@ -647,9 +687,8 @@ function resume(state: MatchState, ctx: EngineContext): MatchState {
   const frozenFor = Math.max(0, ctx.now - state.pausedAt);
   return {
     ...state,
-    round: state.round
-      ? { ...state.round, startedAt: state.round.startedAt + frozenFor }
-      : null,
+    pauseUsedMs: (state.pauseUsedMs ?? 0) + frozenFor,
+    round: state.round ? { ...state.round, startedAt: state.round.startedAt + frozenFor } : null,
     phaseEndsAt: Number.isFinite(state.phaseEndsAt)
       ? state.phaseEndsAt + frozenFor
       : state.phaseEndsAt,
@@ -658,7 +697,12 @@ function resume(state: MatchState, ctx: EngineContext): MatchState {
   };
 }
 
-function setReady(state: MatchState, playerId: PlayerId, ready: boolean, ctx: EngineContext): Result {
+function setReady(
+  state: MatchState,
+  playerId: PlayerId,
+  ready: boolean,
+  ctx: EngineContext,
+): Result {
   if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
   const player = state.players[playerId];
   if (!player) return { ok: false, error: 'not-in-room' };
@@ -686,6 +730,10 @@ function submit(
   if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
   if (state.round.submissions[action.playerId]) return { ok: false, error: 'already-submitted' };
 
+  if (state.round.passes[action.playerId] !== undefined)
+    return { ok: false, error: 'already-passed' };
+  if (ctx.now > state.phaseEndsAt) return { ok: false, error: 'wrong-phase' };
+
   const submission: Submission = {
     playerId: action.playerId,
     submittedAt: ctx.now,
@@ -705,7 +753,10 @@ function submit(
 
   if (everyoneAnswered) {
     next = closeChallenge(next, ctx);
-  } else if (round.judging === 'auto' && Object.values(round.submissions).some((s) => s.auto?.matched)) {
+  } else if (
+    round.judging === 'auto' &&
+    Object.values(round.submissions).some((s) => s.auto?.matched)
+  ) {
     // The race is won, but hold the door open for a photo finish. Only ever
     // shortens the round: a late winner must not extend it.
     next = { ...next, phaseEndsAt: Math.min(next.phaseEndsAt, ctx.now + PHOTO_FINISH_MS) };
@@ -729,7 +780,8 @@ function pass(
   if (state.round.id !== action.roundId) return { ok: false, error: 'wrong-round' };
   if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
   if (state.round.submissions[action.playerId]) return { ok: false, error: 'already-submitted' };
-  if (state.round.passes[action.playerId] !== undefined) return { ok: false, error: 'already-passed' };
+  if (state.round.passes[action.playerId] !== undefined)
+    return { ok: false, error: 'already-passed' };
 
   const round: RoundState = {
     ...state.round,
@@ -755,6 +807,7 @@ function vote(
   // of answers still owed a verdict, and could close the round out from under
   // the reply on its way back.
   if (state.round.aiPending) return { ok: false, error: 'ai-judging' };
+  if (state.ranked) return { ok: false, error: 'already-decided' };
   if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
   if (action.targetId === action.playerId) return { ok: false, error: 'cannot-vote-for-self' };
   if (!state.players[action.targetId]) return { ok: false, error: 'no-such-target' };
@@ -818,7 +871,9 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
     number: roundNumber,
     challengeId: challenge.id,
     judging:
-      challenge.judging === 'peer' && ctx.aiAvailable && isAiVerifiable(challenge) ? 'ai' : challenge.judging,
+      challenge.judging === 'peer' && ctx.aiAvailable && isAiVerifiable(challenge)
+        ? 'ai'
+        : challenge.judging,
     aiPending: false,
     // Set for real when the countdown ends and the prompt is revealed.
     startedAt: ctx.now + state.settings.countdownMs,
@@ -850,6 +905,8 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
  */
 function deckFor(state: MatchState, ctx: EngineContext): readonly Challenge[] {
   const base = ctx.pool ?? allChallengesPool();
+  if (state.ranked)
+    return base.filter((c) => c.judging === 'auto' || (ctx.aiAvailable && isAiVerifiable(c)));
   if (state.customChallenges.length === 0) return base;
   return [...base, ...state.customChallenges.map((c) => customChallenge(c.id, c.prompt))];
 }
@@ -960,15 +1017,18 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
     // downgrades to peer judging because *a* frame could not be read, not
     // because the ones that could should be re-tried by hand — and an opponent
     // must not be able to overturn a server-side reading in either direction.
-    const isValid = submission.auto
-      ? submission.auto.matched
-      : round.judging === 'auto'
+    const isValid =
+      round.voided || round.aiPending
         ? false
-        : // No vote by the deadline counts as approval: abstaining should never
-          // be a cheaper way to deny a point than actually judging. An AI round
-          // whose referee never answered lands here too, and is forgiven the
-          // same way.
-          submission.peer?.approve ?? true;
+        : submission.auto
+          ? submission.auto.matched
+          : round.judging === 'auto'
+            ? false
+            : // No vote by the deadline counts as approval: abstaining should never
+              // be a cheaper way to deny a point than actually judging. An AI round
+              // whose referee never answered lands here too, and is forgiven the
+              // same way.
+              (submission.peer?.approve ?? true);
     const rejectedByThem = Object.values(round.submissions).some(
       (s) => s.peer?.approve === false && s.peer.voterId === player.id,
     );
@@ -976,16 +1036,21 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
     perPlayer[player.id] = {
       valid: isValid,
       elapsedMs: submission.elapsedMs,
-      note: isValid
-        ? noteForValid(round.judging, submission, rejectedByThem)
-        : noteForInvalid(round.judging, submission),
+      note:
+        round.voided || round.aiPending
+          ? 'Verification unavailable. No rating or XP changes this match.'
+          : isValid
+            ? noteForValid(round.judging, submission, rejectedByThem)
+            : noteForInvalid(round.judging, submission),
     };
     if (isValid) valid.push({ id: player.id, elapsedMs: submission.elapsedMs });
   }
 
   let winnerId: PlayerId | null = null;
   let reason: RoundReason;
-  if (vetoed) {
+  if (round.voided || round.aiPending) {
+    reason = 'verification-unavailable';
+  } else if (vetoed) {
     reason = 'vetoed';
   } else if (valid.length === 0) {
     reason = Object.keys(round.submissions).length === 0 ? 'no-submissions' : 'both-failed';
@@ -1065,8 +1130,14 @@ export function roundsAnswered(history: readonly RoundOutcome[], playerId: Playe
  */
 export function countsForRating(state: MatchState): boolean {
   if (state.phase !== 'matchResult' || state.endReason === 'abandoned') return false;
+  if (state.history.some((r) => r.judging === 'peer' || r.reason === 'verification-unavailable'))
+    return false;
   const seated = playersInSeatOrder(state);
   if (seated.length !== 2 || state.history.length === 0) return false;
+  if (state.endReason === 'forfeit')
+    return Boolean(
+      state.winnerId && state.history.some((r) => r.perPlayer[state.winnerId!]?.valid),
+    );
   const needed = Math.ceil(state.history.length / 2);
   return seated.every((player) => roundsAnswered(state.history, player.id) >= needed);
 }
@@ -1090,13 +1161,16 @@ function afterRoundResult(state: MatchState, ctx: EngineContext): MatchState {
 
 function endMatch(state: MatchState, reason: MatchEndReason, _ctx: EngineContext): MatchState {
   const seated = playersInSeatOrder(state);
+  if (reason === 'forfeit' && seated.filter((p) => p.connected).length !== 1) reason = 'abandoned';
   const sorted = [...seated].sort((a, b) => b.score - a.score);
   const winnerId =
-    reason === 'draw' || reason === 'abandoned'
-      ? null
-      : sorted.length === 2 && sorted[0]!.score === sorted[1]!.score
+    reason === 'forfeit'
+      ? (seated.find((p) => p.connected)?.id ?? null)
+      : reason === 'draw' || reason === 'abandoned'
         ? null
-        : sorted[0]?.id ?? null;
+        : sorted.length === 2 && sorted[0]!.score === sorted[1]!.score
+          ? null
+          : (sorted[0]?.id ?? null);
 
   return {
     ...state,
@@ -1124,6 +1198,7 @@ function clearRematchVotes(players: Record<PlayerId, PlayerState>): Record<Playe
 function resetForRematch(state: MatchState, _ctx: EngineContext): MatchState {
   return {
     ...state,
+    pauseUsedMs: 0,
     phase: 'lobby',
     phaseEndsAt: Number.POSITIVE_INFINITY,
     round: null,
@@ -1157,7 +1232,13 @@ function resetForRematch(state: MatchState, _ctx: EngineContext): MatchState {
 export function tick(state: MatchState, ctx: EngineContext): MatchState {
   if (state.pausedAt !== null) {
     if (state.pauseDeadline !== null && ctx.now >= state.pauseDeadline) {
-      return bump(endMatch({ ...state, pausedAt: null, pauseDeadline: null }, 'abandoned', ctx));
+      return bump(
+        endMatch(
+          { ...state, pausedAt: null, pauseDeadline: null },
+          state.ranked ? 'forfeit' : 'abandoned',
+          ctx,
+        ),
+      );
     }
     return state;
   }

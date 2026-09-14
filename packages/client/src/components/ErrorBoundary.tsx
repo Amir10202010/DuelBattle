@@ -1,3 +1,4 @@
+import { tr } from '../i18n/index.js';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
@@ -33,16 +34,17 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="overlay overlay--fatal" role="alertdialog" aria-label="Something broke">
+      <div className="overlay overlay--fatal" role="alertdialog" aria-label={tr('Something broke')}>
         <div className="overlay__inner">
-          <p className="eyebrow">Something broke</p>
-          <h2 className="display overlay__title">That is on us.</h2>
+          <p className="eyebrow">{tr('Something broke')}</p>
+          <h2 className="display overlay__title">{tr('That is on us.')}</h2>
           <p className="dim">
-            The game hit an error it could not recover from. Reloading should put you back in —
-            your seat is held for a minute.
+            {tr(
+              'The game hit an error it could not recover from. Reloading should put you back in — your seat is held for a minute.',
+            )}
           </p>
           <button className="btn btn--primary btn--lg" onClick={() => location.reload()}>
-            Reload
+            {tr('Reload')}
           </button>
         </div>
       </div>

@@ -1,4 +1,6 @@
-import { memo, useState } from 'react';
+import { tr, useUiPreferences } from '../i18n/index.js';
+import { memo, useSyncExternalStore } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import type { PublicMatchState, PublicPlayer } from '@battle/shared';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { Toast } from '../net/store.js';
@@ -18,11 +20,12 @@ interface TimerBarProps {
  * reads at a glance mid-round and the number is what people shout at each other.
  */
 export const TimerBar = memo(function TimerBar({ endsAt, totalMs, now, label }: TimerBarProps) {
+  useUiPreferences();
   if (endsAt === null) return null;
   const remaining = Math.max(0, endsAt - now);
   const fraction = totalMs > 0 ? Math.min(1, remaining / totalMs) : 0;
   const seconds = remaining / 1000;
-  const urgent = remaining <= 5_000;
+  const urgent = !label && remaining <= 5_000;
 
   return (
     <div className={`timer ${urgent ? 'timer--urgent' : ''}`}>
@@ -30,9 +33,10 @@ export const TimerBar = memo(function TimerBar({ endsAt, totalMs, now, label }: 
         <div className="timer__fill" style={{ transform: `scaleX(${fraction})` }} />
       </div>
       <span className="timer__value mono" role="timer" aria-live="off">
-        {seconds < 10 ? seconds.toFixed(1) : Math.ceil(seconds)}s
+        {tr(seconds < 10 ? seconds.toFixed(1) : Math.ceil(seconds))}
+        {tr('s')}
       </span>
-      {label && <span className="timer__label eyebrow">{label}</span>}
+      {label && <span className="timer__label eyebrow">{tr(label)}</span>}
     </div>
   );
 });
@@ -44,7 +48,8 @@ interface ScoreStripProps {
 
 /** Round wins as pips, so the state of the match reads without counting. */
 export const ScoreStrip = memo(function ScoreStrip({ match, youId }: ScoreStripProps) {
-  const seats = match.seats.map((id) => (id ? match.players[id] ?? null : null));
+  useUiPreferences();
+  const seats = match.seats.map((id) => (id ? (match.players[id] ?? null) : null));
   const target = match.settings.winTarget;
 
   return (
@@ -53,16 +58,21 @@ export const ScoreStrip = memo(function ScoreStrip({ match, youId }: ScoreStripP
         <div key={index} className={`scorestrip__side scorestrip__side--seat${index}`}>
           <span className="scorestrip__name">
             {player?.name ?? '—'}
-            {player && player.id === youId && <span className="scorestrip__you">you</span>}
+            {player && player.id === youId && <span className="scorestrip__you">{tr('you')}</span>}
           </span>
           <span className="scorestrip__pips" aria-hidden="true">
             {Array.from({ length: target }, (_, i) => (
-              <i key={i} className={i < (player?.score ?? 0) ? 'is-won' : ''} />
+              <i
+                key={i}
+                className={`${i < (player?.score ?? 0) ? 'is-won' : ''} ${match.phase === 'roundResult' && match.round?.outcome?.winnerId === player?.id && i === (player?.score ?? 0) - 1 ? 'is-earned' : ''}`}
+              />
             ))}
           </span>
-          <span className="scorestrip__score mono">{player?.score ?? 0}</span>
+          <span key={player?.score ?? 0} className="scorestrip__score mono">
+            {player?.score ?? 0}
+          </span>
           <span className="sr-only">
-            {player?.name ?? 'empty seat'} has {player?.score ?? 0} of {target} rounds
+            {player?.name ?? tr('Empty seat')}: {player?.score ?? 0} / {target}
           </span>
         </div>
       ))}
@@ -79,11 +89,12 @@ export const ConnectionBadge = memo(function ConnectionBadge({
   status,
   latencyMs,
 }: ConnectionBadgeProps) {
+  useUiPreferences();
   if (status === 'open') {
     return (
-      <span className="conn conn--ok" title={latencyMs === null ? undefined : `${latencyMs}ms`}>
+      <span className="conn conn--ok" title={tr(latencyMs === null ? undefined : `${latencyMs}ms`)}>
         <i aria-hidden="true" />
-        <span className="sr-only">Connected</span>
+        <span className="sr-only">{tr('Connected')}</span>
       </span>
     );
   }
@@ -91,28 +102,29 @@ export const ConnectionBadge = memo(function ConnectionBadge({
   return (
     <span className="conn conn--bad" role="status">
       <i aria-hidden="true" />
-      {copy}
+      {tr(copy)}
     </span>
   );
 });
 
 export const MuteButton = memo(function MuteButton() {
-  const [muted, setMuted] = useState(() => sound.isMuted);
+  useUiPreferences();
+  const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
   return (
     <button
       type="button"
       className="mute"
       aria-pressed={muted}
-      aria-label={muted ? 'Unmute sound' : 'Mute sound'}
-      title={muted ? 'Unmute' : 'Mute'}
+      aria-label={tr(muted ? 'Unmute sound' : 'Mute sound')}
+      title={tr(muted ? 'Unmute' : 'Mute')}
       onClick={() => {
         sound.setMuted(!muted);
-        setMuted(!muted);
+
         // Clicking is a gesture, which is the browser's price for any audio.
-        if (muted) sound.play('tick1');
+        if (muted) sound.play('roundWin');
       }}
     >
-      <span aria-hidden="true">{muted ? 'MUTED' : 'SOUND'}</span>
+      {muted ? <VolumeX size={19} aria-hidden="true" /> : <Volume2 size={19} aria-hidden="true" />}
     </button>
   );
 });
@@ -122,11 +134,12 @@ interface ToastsProps {
 }
 
 export const Toasts = memo(function Toasts({ toasts }: ToastsProps) {
+  useUiPreferences();
   return (
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((toast) => (
         <div key={toast.id} className={`toast toast--${toast.kind}`}>
-          {toast.message}
+          {tr(toast.message)}
         </div>
       ))}
     </div>
@@ -144,18 +157,16 @@ export const PausedOverlay = memo(function PausedOverlay({
   now,
   opponent,
 }: PausedOverlayProps) {
+  useUiPreferences();
   const remaining = Math.max(0, paused.deadline - now);
   return (
-    <div className="overlay overlay--paused" role="alertdialog" aria-label="Match paused">
+    <div className="overlay overlay--paused" role="alertdialog" aria-label={tr('Match paused')}>
       <div className="overlay__inner">
-        <p className="eyebrow">Match paused</p>
+        <p className="eyebrow">{tr('Match paused')}</p>
         <h2 className="display overlay__title">
-          {opponent ? `${opponent.name} dropped out` : 'Waiting for your opponent'}
+          {tr(opponent ? `${opponent.name} dropped out` : 'Waiting for your opponent')}
         </h2>
-        <p className="dim">
-          The clock is frozen. If they are not back in {Math.ceil(remaining / 1000)}s the match ends
-          here.
-        </p>
+        <p className="dim">{tr(`Reconnecting · ${Math.ceil(remaining / 1000)} sec left`)}</p>
       </div>
     </div>
   );

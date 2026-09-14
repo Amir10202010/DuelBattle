@@ -16,3 +16,10 @@ vision/models/
 
 # Ratings and the identity secret.
 data/
+
+# Credentials and local SQLite files
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

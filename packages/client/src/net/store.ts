@@ -1,3 +1,4 @@
+import { getPreferences } from '../i18n/preferences.js';
 import {
   PROTOCOL_VERSION,
   type Avatar,
@@ -20,12 +21,14 @@ export type Screen = 'home' | 'room';
 
 /** Where the search for an opponent has got to. */
 export interface QueueState {
+  mode?: 'ranked' | 'casual';
   position: number;
   waiting: number;
   since: number;
 }
 
 export interface BoardState {
+  offset?: number;
   kind: string;
   entries: LeaderboardEntry[];
   total: number;
@@ -33,6 +36,7 @@ export interface BoardState {
 }
 
 export interface StoreSnapshot {
+  boardError?: string | null;
   status: ConnectionStatus;
   screen: Screen;
   /** True between asking to join and being seated. */
@@ -251,10 +255,27 @@ export class MatchStore {
     this.connection.connect();
   }
 
+  setLanguage(language: 'en' | 'ru'): void {
+    if (this.snapshot.status === 'open')
+      this.connection.send({
+        t: 'hello',
+        protocol: PROTOCOL_VERSION,
+        language,
+        ...(storedIdentity() ? { identity: storedIdentity()! } : {}),
+      });
+  }
+
   stop(): void {
     for (const timer of this.toastTimers) window.clearTimeout(timer);
     this.toastTimers.clear();
     this.connection.close();
+  }
+
+  refreshAccount(profile: PublicProfile | null): void {
+    this.intent = null;
+    this.connection.close();
+    this.patch({ ...EMPTY, profile });
+    this.connection.connect();
   }
 
   // -- React bindings -------------------------------------------------------
@@ -301,13 +322,13 @@ export class MatchStore {
    * away from the page. They press the button again, which is one click and no
    * surprises.
    */
-  findMatch(name: string): void {
+  findMatch(name: string, mode?: 'ranked' | 'casual'): void {
     rememberName(name);
     this.patch({
       joinError: null,
-      queue: { position: 0, waiting: 0, since: Date.now() },
+      queue: { position: 0, waiting: 0, since: Date.now(), ...(mode ? { mode } : {}) },
     });
-    this.connection.send({ t: 'findMatch', name });
+    this.connection.send({ t: 'findMatch', name, ...(mode ? { mode } : {}) });
   }
 
   cancelFind(): void {
@@ -321,9 +342,9 @@ export class MatchStore {
     this.connection.send({ t: 'setProfile', ...changes });
   }
 
-  requestBoard(kind: string): void {
-    this.patch({ boardLoading: true });
-    this.connection.send({ t: 'leaderboard', board: kind });
+  requestBoard(kind: string, offset = 0): void {
+    this.patch({ boardLoading: true, boardError: null });
+    this.connection.send({ t: 'leaderboard', board: kind, offset });
   }
 
   /** Re-enters a room this tab was already seated in. Never another tab's. */
@@ -419,6 +440,7 @@ export class MatchStore {
     this.connection.send({
       t: 'hello',
       protocol: PROTOCOL_VERSION,
+      ...(getPreferences().locale === 'ru' ? { language: 'ru' as const } : {}),
       ...(identity ? { identity } : {}),
     });
     const intent = this.intent;
@@ -442,6 +464,9 @@ export class MatchStore {
         return;
       case 'standings':
         this.patch({
+          ...(this.snapshot.you && message.players[this.snapshot.you]
+            ? { profile: message.players[this.snapshot.you] }
+            : {}),
           standings: message.players,
           lastRatings: message.lastMatch,
           rewards: message.rewards ?? null,
@@ -450,6 +475,7 @@ export class MatchStore {
       case 'queued':
         this.patch({
           queue: {
+            ...(this.snapshot.queue?.mode ? { mode: this.snapshot.queue.mode } : {}),
             position: message.position,
             waiting: message.waiting,
             since: this.snapshot.queue?.since ?? Date.now(),
@@ -464,6 +490,7 @@ export class MatchStore {
           boardLoading: false,
           board: {
             kind: message.board,
+            offset: message.offset ?? 0,
             entries: message.entries,
             total: message.total,
             you: message.you,
@@ -488,6 +515,7 @@ export class MatchStore {
         return;
       }
       case 'state':
+        if (!this.snapshot.you) return;
         this.patch({
           match: message.state,
           latencyMs: this.connection.latencyMs,
@@ -524,6 +552,8 @@ export class MatchStore {
   }
 
   private onError(message: Extract<ServerMessage, { t: 'error' }>): void {
+    if (this.snapshot.boardLoading)
+      this.patch({ boardLoading: false, boardError: message.message });
     // A search that was refused is a search that is over. Leaving the spinner
     // up would have somebody waiting for an opponent the server is not looking
     // for.
@@ -536,8 +566,7 @@ export class MatchStore {
 
     if (message.code === 'session-expired') {
       // The seat is gone: forget it so we do not retry in a loop.
-      const code =
-        this.intent && 'code' in this.intent ? this.intent.code : this.snapshot.roomCode;
+      const code = this.intent && 'code' in this.intent ? this.intent.code : this.snapshot.roomCode;
       if (code) writeSession(code, null);
       this.intent = null;
       this.patch({

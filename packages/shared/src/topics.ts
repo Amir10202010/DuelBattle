@@ -27,6 +27,15 @@ import { RAW_TOPICS } from './topics/pool.js';
 export type TopicCategory = string;
 
 export interface Topic {
+  readonly title: string;
+  readonly description: string;
+  readonly language: 'en';
+  readonly expectedResponseType: 'photo';
+  readonly evaluationCriteria: readonly string[];
+  readonly safetyStatus: 'screened';
+  /** Editorial heuristic, not an AI probability or a guarantee of safety. */
+  readonly qualityScore: number;
+  readonly tags: readonly string[];
   /** Stable across regenerations: derived from the prompt, not from position. */
   readonly id: string;
   readonly prompt: string;
@@ -81,7 +90,7 @@ const INSTRUCTION =
  * ledge because somebody will do it.
  */
 const FORBIDDEN =
-  /\b(PASSPORT NUMBER|ID CARD|IDENTITY CARD|DRIVING LICENCE|DRIVER'?S LICENSE|CREDIT CARD NUMBER|BANK DETAILS|PIN NUMBER|ADDRESS ON IT|POSTCODE|PHONE NUMBER|PASSWORD|NAKED|UNDERWEAR|YOUR BODY|BARE SKIN|A PET|YOUR PET|YOUR CAT|YOUR DOG|AN ANIMAL THAT IS ALIVE|A CHILD|YOUR HOUSEMATE|SOMEBODY ELSE IN THE ROOM|SET .* ON FIRE|LIGHT A FIRE|BURN|A WEAPON|A GUN|A KNIFE TO YOUR|PILLS|MEDICATION|PRESCRIPTION|ALCOHOL|DRUGS|OUT OF THE WINDOW AND|CLIMB)\b/;
+  /\b(PASSPORT|BANK CARD|CREDIT CARD|KNIFE|ID CARD|IDENTITY CARD|DRIVING LICENCE|DRIVER'?S LICENSE|CREDIT CARD NUMBER|BANK DETAILS|PIN NUMBER|ADDRESS ON IT|POSTCODE|PHONE NUMBER|PASSWORD|NAKED|UNDERWEAR|YOUR BODY|BARE SKIN|A PET|YOUR PET|YOUR CAT|YOUR DOG|AN ANIMAL THAT IS ALIVE|A CHILD|YOUR HOUSEMATE|SOMEBODY ELSE IN THE ROOM|SET .* ON FIRE|LIGHT A FIRE|BURN|A WEAPON|A GUN|A KNIFE TO YOUR|PILLS|MEDICATION|PRESCRIPTION|ALCOHOL|DRUGS|OUT OF THE WINDOW AND|CLIMB)\b/;
 
 export interface TopicCandidate {
   prompt: string;
@@ -141,13 +150,53 @@ export function topicId(prompt: string): string {
   return `t-${(hash >>> 0).toString(36)}`;
 }
 
-export const TOPICS: readonly Topic[] = RAW_TOPICS.map(([prompt, category, difficulty, visual]) => ({
-  id: topicId(prompt),
-  prompt,
-  category,
-  difficulty,
-  visual: visual === 1,
-}));
+export function topicMetadata(
+  topic: TopicCandidate,
+): Pick<
+  Topic,
+  | 'title'
+  | 'description'
+  | 'language'
+  | 'expectedResponseType'
+  | 'evaluationCriteria'
+  | 'safetyStatus'
+  | 'qualityScore'
+  | 'tags'
+> {
+  return {
+    title: topic.prompt,
+    description: `Find your answer nearby and hold it clearly in view. ${topic.visual ? 'The photograph must demonstrate the request.' : 'A friendly creativity round; no rating is at stake.'}`,
+    language: 'en',
+    expectedResponseType: 'photo',
+    safetyStatus: 'screened',
+    evaluationCriteria: topic.visual
+      ? [
+          'Matches the requested object or property',
+          'Clearly visible in the submitted photo',
+          'Presented within the round deadline',
+        ]
+      : ['Responds to the prompt', 'A clear and creative interpretation'],
+    qualityScore: Math.min(
+      100,
+      60 +
+        (topic.visual ? 20 : 10) +
+        (topic.prompt.length <= 40 ? 10 : 5) +
+        (topic.difficulty <= 2 ? 10 : 5),
+    ),
+    tags: [topic.category, topic.visual ? 'visual' : 'creative', `difficulty-${topic.difficulty}`],
+  };
+}
+
+export const TOPICS: readonly Topic[] = RAW_TOPICS.map(
+  ([prompt, category, difficulty, visual]) => ({
+    ...topicMetadata({ prompt, category, difficulty, visual: visual === 1 }),
+    id: topicId(prompt),
+    prompt,
+    category,
+    difficulty,
+    visual: visual === 1,
+  }),
+);
 
 /** Every category in the pool with how many prompts sit behind it. */
 export function topicCategories(): { category: TopicCategory; count: number }[] {

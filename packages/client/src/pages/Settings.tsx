@@ -1,4 +1,11 @@
-import { useEffect, useState } from 'react';
+import {
+  getPreferences,
+  setPreferences,
+  type ThemePreference,
+  type LocalePreference,
+} from '../i18n/preferences.js';
+import { tr, useUiPreferences } from '../i18n/index.js';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   AVATAR_COLORS,
   AVATAR_SHAPES,
@@ -11,30 +18,25 @@ import type { CameraState } from '../media/useCamera.js';
 import { sound } from '../media/sound.js';
 import { Avatar } from '../components/Identity.jsx';
 
-/**
- * The things that follow a player around.
- *
- * There is no account to manage here, and that is the point: the server issues
- * this browser a signed token and stores a name, a mark and a handful of
- * counters against it. So this page holds exactly what that is — who you are on
- * a scoreboard, which camera you use, and whether the game makes noise.
- *
- * The camera picker lives here rather than only inside a room, because the one
- * moment you cannot calmly work out which of three webcams is the right one is
- * the moment an opponent is waiting for you to be ready.
- */
+/** Account appearance, device preferences and optional game audio. */
 export function Settings({
   store,
   profile,
   camera,
+  onLogout,
+  onNavigate,
 }: {
   store: MatchStore;
   profile: PublicProfile | null;
   camera: CameraState;
+  onLogout: () => Promise<void>;
+  onNavigate: (path: string) => void;
 }) {
+  useUiPreferences();
   const [name, setName] = useState(profile?.name ?? '');
   const [saved, setSaved] = useState(false);
-  const [muted, setMuted] = useState(() => sound.isMuted);
+  const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (profile?.name) setName((current) => current || profile.name);
@@ -46,92 +48,141 @@ export function Settings({
     const trimmed = name.trim();
     if (!trimmed) return;
     store.saveProfile({ name: trimmed });
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1_800);
   };
+  useEffect(() => {
+    setSaved(Boolean(profile?.name && profile.name === name.trim()));
+  }, [profile?.name, name]);
 
   return (
     <main className="page page--settings">
       <header className="page__head">
-        <p className="eyebrow">Settings</p>
-        <h1 className="page__title display">Who you are, and how it sounds.</h1>
+        <p className="eyebrow">{tr('Settings')}</p>
+        <h1 className="page__title display">{tr('Make yourself at home.')}</h1>
         <p className="page__lede">
-          There is no account and no password. This browser holds a signed token; everything below
-          is stored against it, and it is the whole of what the game knows about you.
+          {tr('Your player identity, camera and sound. A few small choices for a better battle.')}
         </p>
       </header>
 
       <section className="setting">
-        <h2 className="setting__title">Name</h2>
-        <p className="setting__note dim">Shown to your opponent and on the leaderboard.</p>
-        <div className="setting__row">
-          <input
-            className="input"
-            value={name}
-            maxLength={MAX_NAME_LENGTH}
-            autoComplete="nickname"
-            aria-label="Your name"
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && saveName()}
-          />
-          <button className="btn" onClick={saveName} disabled={!name.trim()}>
-            {saved ? 'Saved' : 'Save'}
+        <h2>{tr('Appearance & language')}</h2>
+        <div className="preferences-grid">
+          <label className="preference-control">
+            <span>{tr('Theme')}</span>
+            <select
+              className="input"
+              value={getPreferences().theme}
+              onChange={(e) => setPreferences({ theme: e.target.value as ThemePreference })}
+            >
+              <option value="system">{tr('Follow device')}</option>
+              <option value="light">{tr('Light neon')}</option>
+              <option value="dark">{tr('Dark')}</option>
+            </select>
+            <small>{tr('Automatic mode follows your device’s light or dark setting.')}</small>
+          </label>
+          <label className="preference-control">
+            <span>{tr('Language')}</span>
+            <select
+              className="input"
+              value={getPreferences().language}
+              onChange={(e) => setPreferences({ language: e.target.value as LocalePreference })}
+            >
+              <option value="system">{tr('Follow browser')}</option>
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+            </select>
+            <small>{tr('Your choice is saved on this device.')}</small>
+          </label>
+        </div>
+      </section>
+
+      {!profile && (
+        <section className="setting">
+          <h2>{tr('Save your player identity')}</h2>
+          <p className="setting__note dim">
+            {tr('Sign in to choose a permanent name and avatar.')}
+          </p>
+          <button className="btn btn--primary" onClick={() => onNavigate('/login')}>
+            {tr('Sign in')}
           </button>
-        </div>
-      </section>
+        </section>
+      )}
+      {profile && (
+        <>
+          <section className="setting">
+            <h2 className="setting__title">{tr('Name')}</h2>
+            <p className="setting__note dim">
+              {tr('Shown to your opponent and on the leaderboard.')}
+            </p>
+            <div className="setting__row">
+              <input
+                className="input"
+                value={name}
+                maxLength={MAX_NAME_LENGTH}
+                autoComplete="nickname"
+                aria-label={tr('Your name')}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveName()}
+              />
+              <button className="btn" onClick={saveName} disabled={!name.trim()}>
+                {tr(saved ? 'Saved' : 'Save')}
+              </button>
+            </div>
+          </section>
+
+          <section className="setting">
+            <h2 className="setting__title">{tr('Your mark')}</h2>
+            <p className="setting__note dim">
+              {tr('Pick a shape and a colour. Make your mark on the ladder.')}
+            </p>
+            <div className="marks">
+              <div className="marks__preview">
+                <Avatar avatar={avatar} size={72} name={name} />
+              </div>
+              <div className="marks__pickers">
+                <div className="marks__row" role="group" aria-label={tr('Shape')}>
+                  {AVATAR_SHAPES.map((_, shape) => (
+                    <button
+                      key={shape}
+                      type="button"
+                      className={`marks__option ${avatar.shape === shape ? 'is-active' : ''}`}
+                      aria-pressed={avatar.shape === shape}
+                      aria-label={tr(`Shape ${shape + 1}`)}
+                      onClick={() => store.saveProfile({ avatar: { ...avatar, shape } })}
+                    >
+                      <Avatar avatar={{ ...avatar, shape }} size={30} />
+                    </button>
+                  ))}
+                </div>
+                <div className="marks__row" role="group" aria-label={tr('Colour')}>
+                  {AVATAR_COLORS.map((hex, color) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      className={`marks__swatch ${avatar.color === color ? 'is-active' : ''}`}
+                      style={{ background: hex }}
+                      aria-pressed={avatar.color === color}
+                      aria-label={tr(`Colour ${color + 1}`)}
+                      onClick={() => store.saveProfile({ avatar: { ...avatar, color } })}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="setting">
-        <h2 className="setting__title">Your mark</h2>
+        <h2 className="setting__title">{tr('Camera')}</h2>
         <p className="setting__note dim">
-          A shape and a colour. No uploads — an account-less game that accepts image files is a
-          moderation problem rather than a game.
-        </p>
-        <div className="marks">
-          <div className="marks__preview">
-            <Avatar avatar={avatar} size={72} name={name} />
-          </div>
-          <div className="marks__pickers">
-            <div className="marks__row" role="group" aria-label="Shape">
-              {AVATAR_SHAPES.map((_, shape) => (
-                <button
-                  key={shape}
-                  type="button"
-                  className={`marks__option ${avatar.shape === shape ? 'is-active' : ''}`}
-                  aria-pressed={avatar.shape === shape}
-                  aria-label={`Shape ${shape + 1}`}
-                  onClick={() => store.saveProfile({ avatar: { ...avatar, shape } })}
-                >
-                  <Avatar avatar={{ ...avatar, shape }} size={30} />
-                </button>
-              ))}
-            </div>
-            <div className="marks__row" role="group" aria-label="Colour">
-              {AVATAR_COLORS.map((hex, color) => (
-                <button
-                  key={hex}
-                  type="button"
-                  className={`marks__swatch ${avatar.color === color ? 'is-active' : ''}`}
-                  style={{ background: hex }}
-                  aria-pressed={avatar.color === color}
-                  aria-label={`Colour ${color + 1}`}
-                  onClick={() => store.saveProfile({ avatar: { ...avatar, color } })}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="setting">
-        <h2 className="setting__title">Camera</h2>
-        <p className="setting__note dim">
-          Nothing is recorded. Frames go to your opponent while a match is running and are dropped
-          the moment it ends.
+          {tr(
+            'Frames are shared with your opponent. AI rounds also send snapshots to the configured referee provider. The server keeps no photo archive. Your browser holds snapshots for the match recap until you leave.',
+          )}
         </p>
         {camera.devices.length > 1 ? (
           <select
             className="input"
-            aria-label="Camera"
+            aria-label={tr('Camera')}
             value={camera.deviceId ?? ''}
             onChange={(e) => camera.selectDevice(e.target.value)}
           >
@@ -143,27 +194,56 @@ export function Settings({
           </select>
         ) : (
           <p className="setting__note dim">
-            {camera.status === 'ready'
-              ? 'One camera, and it is working.'
-              : 'The camera is asked for when a match starts, not before.'}
+            {tr(
+              camera.status === 'ready'
+                ? 'One camera, and it is working.'
+                : 'The camera is asked for when a match starts, not before.',
+            )}
           </p>
         )}
       </section>
+      {profile && (
+        <section className="setting">
+          <h2 className="setting__title">{tr('Your account')}</h2>
+          <p className="setting__note dim">
+            {tr(
+              'Use your player ID and password on another device. Keep your recovery key somewhere safe.',
+            )}
+          </p>
+          <button
+            className="btn"
+            onClick={() => {
+              void onLogout().catch(() =>
+                setError('Could not sign out. Check your connection and retry.'),
+              );
+            }}
+          >
+            {tr('Sign out')}
+          </button>
+          {error && (
+            <p role="alert" className="error-text">
+              {tr(error)}
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="setting">
-        <h2 className="setting__title">Sound</h2>
-        <p className="setting__note dim">Countdowns, locks and round results. No microphone, ever.</p>
+        <h2 className="setting__title">{tr('Sound')}</h2>
+        <p className="setting__note dim">
+          {tr('Countdowns, locks and round results. No microphone, ever.')}
+        </p>
         <button
           className="btn"
           aria-pressed={!muted}
           onClick={() => {
             sound.setMuted(!muted);
-            setMuted(!muted);
+
             // Clicking is a gesture, which is the browser's price for any audio.
-            if (muted) sound.play('tick1');
+            if (muted) sound.play('roundWin');
           }}
         >
-          {muted ? 'Turn sound on' : 'Turn sound off'}
+          {tr(muted ? 'Turn sound on' : 'Turn sound off')}
         </button>
       </section>
     </main>

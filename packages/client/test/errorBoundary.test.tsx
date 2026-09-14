@@ -48,7 +48,7 @@ describe('error boundary', () => {
         <Boom />
       </ErrorBoundary>,
     );
-    expect(view.container.textContent).toContain('Something broke');
+    expect(view.container.textContent).toContain('The game stopped');
     expect(view.container.querySelector('button')?.textContent).toBe('Reload');
     view.unmount();
   });
@@ -61,7 +61,7 @@ describe('error boundary', () => {
     );
     const dialog = view.container.querySelector('[role="alertdialog"]');
     expect(dialog).not.toBeNull();
-    expect(dialog?.getAttribute('aria-label')).toBe('Something broke');
+    expect(dialog?.getAttribute('aria-label')).toBe('The game stopped');
     view.unmount();
   });
 
@@ -71,7 +71,9 @@ describe('error boundary', () => {
         <Boom />
       </ErrorBoundary>,
     );
-    expect(view.spy.mock.calls.some((call) => String(call[0]).includes('Battle crashed'))).toBe(true);
+    expect(view.spy.mock.calls.some((call) => String(call[0]).includes('Battle crashed'))).toBe(
+      true,
+    );
     view.unmount();
   });
 });

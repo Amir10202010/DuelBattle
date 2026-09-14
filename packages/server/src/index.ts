@@ -20,6 +20,6 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('unhandledRejection', (reason) => {
   log.error('unhandled rejection', {
-    reason: reason instanceof Error ? reason.stack : String(reason),
+    errorType: reason instanceof Error ? reason.name : 'unknown',
   });
 });

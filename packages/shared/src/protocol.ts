@@ -10,7 +10,7 @@ import type {
   Submission,
 } from './game.js';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Hard ceiling on a single evidence image, enforced by the server. */
 export const MAX_IMAGE_BYTES = 220_000;
@@ -20,6 +20,8 @@ export const MAX_NAME_LENGTH = 18;
 
 /** One row of a leaderboard, as it crosses the wire. */
 export interface LeaderboardEntry {
+  movement?: number;
+  recent?: ('win' | 'loss' | 'draw')[];
   position: number;
   name: string;
   avatar: Avatar;
@@ -39,15 +41,15 @@ export interface LeaderboardEntry {
  */
 export type ClientMessage =
   /** `identity` is the signed token this browser was issued last time, if any. */
-  | { t: 'hello'; protocol: number; identity?: string }
+  | { t: 'hello'; protocol: number; identity?: string; language?: 'en' | 'ru' }
   | { t: 'createRoom'; name: string }
   | { t: 'joinRoom'; code: string; name: string }
   /** Join the queue for whoever turns up next. */
-  | { t: 'findMatch'; name: string }
+  | { t: 'findMatch'; name: string; mode?: 'ranked' | 'casual' }
   | { t: 'cancelFind' }
   /** The name and avatar this browser plays under, kept between visits. */
   | { t: 'setProfile'; name?: string; avatar?: Avatar }
-  | { t: 'leaderboard'; board: string }
+  | { t: 'leaderboard'; board: string; offset?: number }
   | { t: 'rejoin'; code: string; token: string }
   | { t: 'cameraReady'; ready: boolean }
   | { t: 'ready'; ready: boolean }
@@ -125,6 +127,7 @@ export interface PublicRound {
 }
 
 export interface PublicMatchState {
+  ranked?: boolean;
   roomCode: string;
   phase: Phase;
   /** Server clock deadline for the current phase; Infinity is sent as null. */
@@ -169,7 +172,9 @@ function publicSubmission(
     evidenceId: s.evidenceId,
     needsVerdict: judging === 'peer' && !s.auto && !s.peer,
     ...(revealVerdicts && s.auto ? { auto: s.auto } : {}),
-    ...(revealVerdicts && s.peer ? { peer: { approve: s.peer.approve, voterId: s.peer.voterId } } : {}),
+    ...(revealVerdicts && s.peer
+      ? { peer: { approve: s.peer.approve, voterId: s.peer.voterId } }
+      : {}),
   };
 }
 
@@ -185,6 +190,7 @@ export function toPublicState(state: MatchState): PublicMatchState {
 
   return {
     roomCode: state.roomCode,
+    ranked: state.ranked ?? false,
     phase: state.phase,
     phaseEndsAt: Number.isFinite(state.phaseEndsAt) ? state.phaseEndsAt : null,
     seats: [...state.seats],
@@ -286,6 +292,7 @@ export type ServerMessage =
   | {
       t: 'leaderboard';
       board: string;
+      offset?: number;
       entries: LeaderboardEntry[];
       total: number;
       you: LeaderboardEntry | null;

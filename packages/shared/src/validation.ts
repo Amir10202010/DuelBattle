@@ -30,7 +30,10 @@ export const nameSchema = z
 
 export const roomCodeSchema = z
   .string()
-  .regex(new RegExp(`^[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}$`), 'That room code looks wrong');
+  .regex(
+    new RegExp(`^[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}$`),
+    'That room code looks wrong',
+  );
 
 /**
  * Evidence is JPEG-only because the server decodes it to re-run the detector
@@ -56,13 +59,20 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({
     t: z.literal('hello'),
     protocol: z.number().int(),
+    language: z.enum(['en', 'ru']).optional(),
     // Bounded before it is verified: an oversized token should be refused, not
     // hashed.
     identity: z.string().max(128).optional(),
   }),
   z.object({ t: z.literal('createRoom'), name: nameSchema }),
   z.object({ t: z.literal('joinRoom'), code: roomCodeSchema, name: nameSchema }),
-  z.object({ t: z.literal('findMatch'), name: nameSchema }),
+  z
+    .object({
+      t: z.literal('findMatch'),
+      name: nameSchema,
+      mode: z.enum(['ranked', 'casual']).optional(),
+    })
+    .strict(),
   z.object({ t: z.literal('cancelFind') }),
   z.object({
     t: z.literal('setProfile'),
@@ -73,11 +83,23 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
       .object({ shape: z.number().int().min(0).max(64), color: z.number().int().min(0).max(64) })
       .optional(),
   }),
-  z.object({ t: z.literal('leaderboard'), board: z.string().max(24) }),
+  z
+    .object({
+      t: z.literal('leaderboard'),
+      board: z.string().max(24),
+      offset: z.number().int().min(0).max(100000).optional(),
+    })
+    .strict(),
   z.object({ t: z.literal('rejoin'), code: roomCodeSchema, token: z.string().min(8).max(128) }),
   z.object({ t: z.literal('cameraReady'), ready: z.boolean() }),
   z.object({ t: z.literal('ready'), ready: z.boolean() }),
-  z.object({ t: z.literal('submit'), roundId: z.string().min(1).max(64), image: evidenceImageSchema }),
+  z
+    .object({
+      t: z.literal('submit'),
+      roundId: z.string().min(1).max(64),
+      image: evidenceImageSchema,
+    })
+    .strict(),
   z.object({
     t: z.literal('vote'),
     roundId: z.string().min(1).max(64),
@@ -99,18 +121,16 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('frame'), image: frameImageSchema, seq: z.number().int().nonnegative() }),
 ]);
 
-
-
-
 /**
  * Compile-time proof that the hand-written `ClientMessage` union and the schema
  * that guards the socket have not drifted apart.
  */
-type SchemaMatchesType = z.infer<typeof clientMessageSchema> extends ClientMessage
-  ? ClientMessage extends z.infer<typeof clientMessageSchema>
-    ? true
-    : never
-  : never;
+type SchemaMatchesType =
+  z.infer<typeof clientMessageSchema> extends ClientMessage
+    ? ClientMessage extends z.infer<typeof clientMessageSchema>
+      ? true
+      : never
+    : never;
 export const PROTOCOL_TYPES_AGREE: SchemaMatchesType = true;
 
 /* -------------------------------------------------------------------------
@@ -204,16 +224,18 @@ export const JUDGE_RESPONSE_JSON_SCHEMA = {
  * `judging.ts` and the schemas that parse the model's reply cannot drift apart
  * without the build saying so.
  */
-type AssessmentSchemaMatchesType = z.infer<typeof photoAssessmentSchema> extends PhotoAssessment
-  ? PhotoAssessment extends z.infer<typeof photoAssessmentSchema>
-    ? true
-    : never
-  : never;
+type AssessmentSchemaMatchesType =
+  z.infer<typeof photoAssessmentSchema> extends PhotoAssessment
+    ? PhotoAssessment extends z.infer<typeof photoAssessmentSchema>
+      ? true
+      : never
+    : never;
 export const ASSESSMENT_TYPES_AGREE: AssessmentSchemaMatchesType = true;
 
-type DetectionSchemaMatchesType = z.infer<typeof detectionSchema> extends Detection
-  ? Detection extends z.infer<typeof detectionSchema>
-    ? true
-    : never
-  : never;
+type DetectionSchemaMatchesType =
+  z.infer<typeof detectionSchema> extends Detection
+    ? Detection extends z.infer<typeof detectionSchema>
+      ? true
+      : never
+    : never;
 export const DETECTION_TYPES_AGREE: DetectionSchemaMatchesType = true;

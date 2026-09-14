@@ -35,6 +35,9 @@ export interface AchievementProfile {
 
 /** One finished match, from one player's side of it. */
 export interface MatchSummary {
+  forfeited?: boolean;
+  topicIds?: string[];
+  categories?: string[];
   result: 'win' | 'loss' | 'draw';
   yourScore: number;
   theirScore: number;
@@ -99,7 +102,10 @@ const tierNamed = (name: string): number =>
 
 const reachedTier = (name: string): Pick<Achievement, 'earned' | 'progress'> => ({
   earned: ({ profile }) => profile.peakRating >= tierNamed(name),
-  progress: (profile) => ({ have: Math.min(tierNamed(name), profile.peakRating), need: tierNamed(name) }),
+  progress: (profile) => ({
+    have: Math.min(tierNamed(name), profile.peakRating),
+    need: tierNamed(name),
+  }),
 });
 
 export const ACHIEVEMENTS: readonly Achievement[] = [
@@ -220,12 +226,16 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   },
   {
     id: 'the-long-one',
-    name: 'The Long One',
-    description: 'Won a first-to-five without dropping a round.',
+    name: 'Perfect Sweep',
+    description: 'Won three rounds without conceding, with every answer verified.',
     group: 'dominance',
     rarity: 'legendary',
     xp: 250,
-    earned: ({ match }) => match.result === 'win' && match.yourScore >= 5 && match.theirScore === 0,
+    earned: ({ match }) =>
+      match.result === 'win' &&
+      match.yourScore >= 3 &&
+      match.theirScore === 0 &&
+      match.validAnswers === match.roundsPlayed,
   },
   {
     id: 'comeback',
@@ -286,12 +296,12 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   },
   {
     id: 'jury-of-one',
-    name: 'Jury Of One',
-    description: 'Won a round your opponent had to approve themselves.',
+    name: 'Camera Ready',
+    description: 'Won a round verified by the server camera checks.',
     group: 'craft',
     rarity: 'common',
     xp: 50,
-    earned: ({ match }) => match.wonByJudge.peer > 0,
+    earned: ({ match }) => match.wonByJudge.auto > 0,
   },
   {
     id: 'machine-approved',
@@ -304,22 +314,21 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   },
   {
     id: 'all-three',
-    name: 'All Three Referees',
-    description: 'Won a round under each of the three judges, in one match.',
+    name: 'Room Versatile',
+    description: 'Won a match spanning three different challenge categories.',
     group: 'craft',
     rarity: 'legendary',
     xp: 250,
-    earned: ({ match }) =>
-      match.wonByJudge.auto > 0 && match.wonByJudge.peer > 0 && match.wonByJudge.ai > 0,
+    earned: ({ match }) => match.result === 'win' && new Set(match.categories ?? []).size >= 3,
   },
   {
     id: 'house-rules',
-    name: 'House Rules',
-    description: 'Won a round somebody in the room made up.',
+    name: 'In Your Element',
+    description: 'Won three server-verified camera rounds in one match.',
     group: 'craft',
     rarity: 'uncommon',
     xp: 80,
-    earned: ({ match }) => match.customWins > 0,
+    earned: ({ match }) => match.wonByJudge.auto >= 3,
   },
   {
     id: 'best-of-the-night',
@@ -388,10 +397,7 @@ export const TOTAL_ACHIEVEMENT_XP = ACHIEVEMENTS.reduce((sum, a) => sum + a.xp, 
  * so a rule that gets stricter later cannot take a badge back off somebody who
  * genuinely earned it under the old one.
  */
-export function newlyEarned(
-  ctx: AchievementContext,
-  already: readonly string[],
-): Achievement[] {
+export function newlyEarned(ctx: AchievementContext, already: readonly string[]): Achievement[] {
   const held = new Set(already);
   return ACHIEVEMENTS.filter((a) => !held.has(a.id) && a.earned(ctx));
 }

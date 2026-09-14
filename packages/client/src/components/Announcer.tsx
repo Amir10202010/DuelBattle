@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { memo, useEffect, useRef, useState } from 'react';
 import { getChallenge, opponentOf, type PublicMatchState } from '@battle/shared';
 
@@ -84,6 +85,7 @@ export const Announcer = memo(function Announcer({
   match: PublicMatchState;
   youId: string;
 }) {
+  useUiPreferences();
   const [message, setMessage] = useState('');
   const lastKey = useRef('');
 
@@ -100,7 +102,7 @@ export const Announcer = memo(function Announcer({
 
   return (
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-      {message}
+      {tr(message)}
     </div>
   );
 });

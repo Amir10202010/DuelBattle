@@ -104,6 +104,7 @@ export class Connection implements GameConnection {
     this.socket = socket;
 
     socket.onopen = () => {
+      if (this.socket !== socket) return;
       this.attempts = 0;
       this.setStatus('open');
       // The handshake goes first. Everything in the queue needs a session to
@@ -117,6 +118,7 @@ export class Connection implements GameConnection {
     };
 
     socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
       if (typeof event.data !== 'string') return;
       let message: ServerMessage;
       try {
@@ -132,6 +134,7 @@ export class Connection implements GameConnection {
     };
 
     socket.onclose = () => {
+      if (this.socket !== socket) return;
       this.stopPings();
       this.socket = null;
       if (this.closedByUs) {

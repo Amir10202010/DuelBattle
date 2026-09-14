@@ -21,31 +21,31 @@
   color-scheme: dark;
 
   /* Surfaces, darkest first. Olive-shifted, never neutral. */
-  --ink-0: #10130f;
-  --ink-1: #181d15;
-  --ink-2: #20261b;
-  --ink-3: #2a3124;
-  --line: #373e31;
-  --line-strong: #444f38;
+  --ink-0: #10131c;
+  --ink-1: #171c28;
+  --ink-2: #202637;
+  --ink-3: #2a3245;
+  --line: #2b3244;
+  --line-strong: #404b62;
   /* For a control whose boundary is the only thing that says it is a control:
      a text field has no label inside it, and --line at 1.5:1 against the
      surfaces either side of it is not a boundary anybody can see. Measured at
      3.00:1 on the lightest surface here, which is what WCAG asks of one. */
-  --line-control: #6f7e60;
+  --line-control: #65728b;
 
   /* Text, brightest first. */
-  --text: #f4f6ed;
-  --text-dim: #a6b29a;
+  --text: #f4f2ec;
+  --text-dim: #a5afc3;
   /* Measured at 4.51:1 on the lightest surface in this palette, so it clears AA
      everywhere it is used. The eyebrow labels set it at 11px, which is exactly
      where a dimmer grey stops being readable across a room. */
-  --text-faint: #8f9c84;
+  --text-faint: #99a6bd;
 
   /* The one loud colour, and what is legible on top of it. */
-  --lime: #d9f65a;
-  --lime-bright: #e6ff79;
-  --on-lime: #273015;
-  --lime-soft: rgba(217, 246, 90, 0.14);
+  --lime: #c8ee78;
+  --lime-bright: #d8fa99;
+  --on-lime: #202a15;
+  --lime-soft: rgba(200, 238, 120, 0.1);
 
   /* The paper half, for the page you arrive on. */
   --paper: #fafbf6;
@@ -72,9 +72,9 @@
   --font-display: 'Barlow Condensed', 'DM Sans', Impact, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
-  --r-sm: 3px;
-  --r-md: 6px;
-  --r-lg: 10px;
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 14px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -93,10 +93,10 @@
    * ready to take it. Glow everywhere would say nothing; glow on exactly the
    * live thing is the fastest way to point at it without another label.
    */
-  --glow-lime: 0 0 20px rgba(217, 246, 90, 0.45);
-  --glow-lime-soft: 0 0 12px rgba(217, 246, 90, 0.25);
-  --glow-coral: 0 0 18px rgba(255, 138, 107, 0.4);
-  --glow-bad: 0 0 18px rgba(255, 111, 94, 0.35);
+  --glow-lime: 0 0 0 1px rgba(200, 238, 120, 0.25);
+  --glow-lime-soft: 0 0 0 1px rgba(200, 238, 120, 0.15);
+  --glow-coral: 0 0 0 1px rgba(255, 138, 107, 0.25);
+  --glow-bad: 0 0 0 1px rgba(255, 111, 94, 0.25);
 
   --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.5);
 

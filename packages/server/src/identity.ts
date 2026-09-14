@@ -1,18 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
-/**
- * Who a returning player is, without asking them to sign up for anything.
- *
- * The browser keeps a token; the server issues it and is the only thing that
- * can mint a valid one. There is no email, no password and nothing to
- * remember — but there is a signature, because without one "I am player X" is
- * a claim anybody can make, and a rating you can take off somebody by typing
- * their id is not a rating.
- *
- * A token is a bearer credential for a rating and nothing else. It unlocks no
- * personal data, because there is none: a row here is a number, a display name
- * and a handful of counters.
- */
+/** Signed guest identity for room continuity and claiming a legacy profile.
+ * Account sessions and ranked authorization are handled separately by AuthService. */
 export class Identities {
   constructor(private readonly secret: Buffer) {
     if (secret.length < 16) throw new Error('Identity secret must be at least 16 bytes.');

@@ -1,3 +1,4 @@
+import { tr, useUiPreferences } from '../i18n/index.js';
 import { memo, useEffect, useRef } from 'react';
 import type { PublicPlayer } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
@@ -20,7 +21,15 @@ interface StageFrameProps {
  * are identical in size and treatment — this is a duel, so neither side gets a
  * visual advantage.
  */
-export function StageFrame({ seat, player, overlay, footer, children, state = 'idle' }: StageFrameProps) {
+export function StageFrame({
+  seat,
+  player,
+  overlay,
+  footer,
+  children,
+  state = 'idle',
+}: StageFrameProps) {
+  useUiPreferences();
   return (
     <section className={`stage stage--seat${seat} stage--${state}`}>
       <div className="stage__media">
@@ -29,8 +38,10 @@ export function StageFrame({ seat, player, overlay, footer, children, state = 'i
       </div>
       <header className="stage__bar">
         <span className="stage__dot" aria-hidden="true" />
-        <span className="stage__name">{player?.name ?? 'Waiting…'}</span>
-        {player && !player.connected && <span className="stage__status">reconnecting…</span>}
+        <span className="stage__name">{player?.name ?? tr('Waiting…')}</span>
+        {player && !player.connected && (
+          <span className="stage__status">{tr('reconnecting…')}</span>
+        )}
         {footer}
       </header>
     </section>
@@ -42,6 +53,7 @@ interface SelfVideoProps {
 }
 
 export const SelfVideo = memo(function SelfVideo({ videoRef }: SelfVideoProps) {
+  useUiPreferences();
   return (
     <video
       ref={videoRef}
@@ -69,6 +81,7 @@ interface PeerVideoProps {
  * and then never again for the rest of the match.
  */
 export const PeerVideo = memo(function PeerVideo({ store, playerId }: PeerVideoProps) {
+  useUiPreferences();
   const imgRef = useRef<HTMLImageElement | null>(null);
   const staleTimer = useRef<number | null>(null);
 
@@ -100,9 +113,9 @@ export const PeerVideo = memo(function PeerVideo({ store, playerId }: PeerVideoP
 
   return (
     <>
-      <img ref={imgRef} className="stage__video stage__peer" alt="" data-live="false" />
+      <img ref={imgRef} className="stage__video stage__peer" alt={''} data-live="false" />
       <div className="stage__placeholder" aria-hidden="true">
-        <span className="eyebrow">no signal</span>
+        <span className="eyebrow">{tr('no signal')}</span>
       </div>
     </>
   );

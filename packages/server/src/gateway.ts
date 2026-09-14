@@ -21,6 +21,7 @@ import { RoomCapacityError, type RoomManager } from './rooms.js';
 import { config } from './config.js';
 import { TokenBuckets, type LimiterOptions } from './limiter.js';
 import { log } from './log.js';
+import type { AuthService } from './auth.js';
 
 /** Ceiling on a single frame, above the largest legal message by a small margin. */
 const MAX_MESSAGE_BYTES = 300_000;
@@ -59,6 +60,10 @@ function drain(bucket: TokenBucket, ratePerSec: number, burst: number, now: numb
 let nextSessionKey = 1;
 
 interface Session {
+  language: 'en' | 'ru';
+  authToken: string;
+  guestIdentity: string | null;
+  mode: 'ranked' | 'casual';
   /** Stable for the life of the socket. Only the queue needs one. */
   key: string;
   socket: WebSocket;
@@ -85,12 +90,15 @@ export class Gateway {
   private readonly queue = new MatchQueue();
   private readonly queued = new Map<string, Session>();
   private heartbeat: NodeJS.Timeout | null = null;
+  private readonly boardLimiter = new TokenBuckets({ burst: 6, refillPerSec: 0.5 });
+  private readonly recentOpponents = new Map<string, string[]>();
 
   constructor(
     private readonly rooms: RoomManager,
     createLimit: LimiterOptions | undefined = undefined,
     private readonly identities: Identities | null = null,
     private readonly profiles: ProfileStore | null = null,
+    private readonly auth: AuthService | null = null,
   ) {
     this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
     this.createLimiter = new TokenBuckets(createLimit ?? defaultCreateLimit());
@@ -120,7 +128,9 @@ export class Gateway {
       socket.destroy();
       return;
     }
-    this.wss.handleUpgrade(request, socket, head, (ws) => this.onConnection(ws, ip));
+    this.wss.handleUpgrade(request, socket, head, (ws) =>
+      this.onConnection(ws, ip, this.auth?.token(request) ?? ''),
+    );
   }
 
   /**
@@ -142,15 +152,19 @@ export class Gateway {
     }
   }
 
-  private onConnection(socket: WebSocket, ip: string): void {
+  private onConnection(socket: WebSocket, ip: string, authToken: string): void {
     const now = Date.now();
     const session: Session = {
       key: `s${nextSessionKey++}`,
+      language: 'en',
+      authToken,
+      guestIdentity: null,
+      mode: 'casual',
       socket,
       ip,
       room: null,
       playerId: null,
-      identity: null,
+      identity: this.auth?.resolve(authToken)?.id ?? null,
       queuedName: '',
       connectedAt: now,
       alive: true,
@@ -231,13 +245,17 @@ export class Gateway {
     } catch (err) {
       log.error('message handler threw', {
         type: message.t,
-        error: err instanceof Error ? err.stack ?? err.message : String(err),
+        errorType: err instanceof Error ? err.name : 'unknown',
       });
       this.fail(session, 'server-error', 'Something went wrong on our side.');
     }
   }
 
   private route(session: Session, message: ClientMessage, now: number): void {
+    if (this.auth && session.identity && !this.auth.resolve(session.authToken)) {
+      this.fail(session, 'session-expired', 'Your session ended. Sign in again.', true);
+      return;
+    }
     switch (message.t) {
       case 'hello': {
         if (message.protocol !== PROTOCOL_VERSION) {
@@ -249,18 +267,24 @@ export class Gateway {
           );
           return;
         }
+        session.language = message.language ?? 'en';
+        if (session.language === 'ru') session.room?.useRussianTopics();
+        if (session.room || this.queued.has(session.key)) return;
         if (!this.identities) return;
         // An unsigned or unrecognised token is not an error worth telling
         // anybody about: it is a first visit, or a browser that cleared its
         // storage. Either way they get a new name and carry on.
         const known = this.identities.verify(message.identity);
         if (known) {
-          session.identity = known;
+          session.guestIdentity = known;
         } else {
           const token = this.identities.issue();
-          session.identity = this.identities.verify(token);
+          session.guestIdentity = this.identities.verify(token);
           send(session.socket, { t: 'identity', token });
         }
+        // Legacy identities are only supported by injected test stores. Production
+        // progression always requires a revocable account session.
+        if (!this.auth && config.nodeEnv === 'test') session.identity = session.guestIdentity;
         if (session.identity && this.profiles) {
           // The front page can greet a returning player by rank rather than
           // waiting for a match to tell them.
@@ -268,9 +292,6 @@ export class Gateway {
             t: 'profile',
             profile: publicView(profileFor(this.profiles, session.identity, '', now), true),
           });
-        }
-        if (session.room && session.playerId && session.identity) {
-          session.room.identify(session.playerId, session.identity, now);
         }
         return;
       }
@@ -287,7 +308,12 @@ export class Gateway {
         this.rejoinRoom(session, message.code, message.token, now);
         return;
       case 'findMatch':
-        this.enqueue(session, message.name, now);
+        this.enqueue(
+          session,
+          message.name,
+          now,
+          message.mode ?? (session.identity ? 'ranked' : 'casual'),
+        );
         return;
       case 'cancelFind':
         if (this.dequeue(session)) send(session.socket, { t: 'unqueued' });
@@ -296,7 +322,7 @@ export class Gateway {
         this.updateProfile(session, message, now);
         return;
       case 'leaderboard':
-        this.sendBoard(session, message.board);
+        this.sendBoard(session, message.board, message.offset ?? 0);
         return;
       default:
         break;
@@ -307,7 +333,10 @@ export class Gateway {
       return;
     }
     session.room.handle(session.playerId, message, now);
-    if (message.t === 'leave') this.clearMembership(session);
+    if (message.t === 'leave') {
+      this.clearMembership(session);
+      this.refreshProfile(session, now);
+    }
   }
 
   private createRoom(session: Session, name: string, now: number): void {
@@ -336,6 +365,14 @@ export class Gateway {
       return;
     }
     // Releasing the current seat first — even when it is in this same room —
+    if (room.ranked) {
+      this.fail(
+        session,
+        'rejected',
+        'Ranked seats are assigned by matchmaking. Reconnect with your original seat.',
+      );
+      return;
+    }
     // is what stops one socket from occupying both sides of a match.
     this.leaveCurrentRoom(session, now);
     this.seat(session, room, room.join(name, now), now);
@@ -347,7 +384,7 @@ export class Gateway {
       this.fail(session, 'room-not-found', 'That room has closed.');
       return;
     }
-    const outcome = room.rejoin(token, now);
+    const outcome = room.rejoin(token, now, session.identity);
     // Only give up the seat we hold once the new one is known to be valid.
     if (outcome.ok && (session.room !== room || session.playerId !== outcome.playerId)) {
       this.leaveCurrentRoom(session, now);
@@ -355,18 +392,22 @@ export class Gateway {
     this.seat(session, room, outcome, now);
   }
 
-  private seat(
-    session: Session,
-    room: Room,
-    outcome: ReturnType<Room['join']>,
-    now: number,
-  ): void {
+  private seat(session: Session, room: Room, outcome: ReturnType<Room['join']>, now: number): void {
     if (!outcome.ok || !outcome.playerId || !outcome.token) {
       this.fail(session, outcome.error ?? 'rejected', outcome.message ?? 'Could not join.');
       return;
     }
     session.room = room;
     session.playerId = outcome.playerId;
+    if (session.language === 'ru') room.useRussianTopics();
+    // Disconnect stale transports BEFORE attach, so their close event cannot
+    // mark the newly attached seat offline or continue submitting for it.
+    for (const other of this.sessions) {
+      if (other !== session && other.room === room && other.playerId === outcome.playerId) {
+        this.clearMembership(other);
+        this.fail(other, 'session-expired', 'This seat is open in another tab.', true);
+      }
+    }
     send(session.socket, {
       t: 'joined',
       roomCode: room.code,
@@ -387,7 +428,27 @@ export class Gateway {
    * player asked for one. Charging at pairing time would let somebody queue
    * from twenty tabs for free and then hand the bill to whoever they matched.
    */
-  private enqueue(session: Session, name: string, now: number): void {
+  private enqueue(session: Session, name: string, now: number, mode: 'ranked' | 'casual'): void {
+    if (mode === 'ranked' && !session.identity) {
+      this.fail(
+        session,
+        'rejected',
+        'Sign in to unlock ranked battles. Guest play is available in friendly mode.',
+      );
+      return;
+    }
+    if (
+      [...this.sessions].some(
+        (s) =>
+          s !== session &&
+          session.identity &&
+          s.identity === session.identity &&
+          (s.room || this.queued.has(s.key)),
+      )
+    ) {
+      this.fail(session, 'rejected', 'Finish your other match or leave its queue first.');
+      return;
+    }
     if (!this.createLimiter.take(session.ip, now)) {
       this.fail(session, 'rate-limited', 'That is a lot of matches. Give it a moment.');
       return;
@@ -397,11 +458,40 @@ export class Gateway {
     this.leaveCurrentRoom(session, now);
 
     session.queuedName = name;
-    const rating = session.identity && this.profiles
-      ? profileFor(this.profiles, session.identity, name, now).rating
-      : STARTING_RATING;
+    if (mode === 'ranked' && session.identity && this.rooms.hasActiveIdentity(session.identity)) {
+      this.fail(
+        session,
+        'rejected',
+        'Your ranked seat is still open. Reconnect to finish that match first.',
+      );
+      return;
+    }
+    const blockedUntil =
+      mode === 'ranked' && session.identity
+        ? (this.profiles?.queueCooldown?.(session.identity) ?? 0)
+        : 0;
+    if (blockedUntil > now) {
+      this.fail(
+        session,
+        'rejected',
+        `Ranked play reopens in ${Math.ceil((blockedUntil - now) / 60000)} minutes after leaving a match. Friendly rooms are still available.`,
+      );
+      return;
+    }
+    session.mode = mode;
+    const rating =
+      session.identity && this.profiles
+        ? profileFor(this.profiles, session.identity, name, now).rating
+        : STARTING_RATING;
 
-    this.queue.add({ key: session.key, identity: session.identity, rating, joinedAt: now });
+    this.queue.add({
+      key: session.key,
+      identity: session.identity ?? session.guestIdentity,
+      rating,
+      joinedAt: now,
+      mode,
+      recentOpponents: this.recentOpponents.get(session.identity ?? '') ?? [],
+    });
     this.queued.set(session.key, session);
     this.announceQueue();
   }
@@ -430,6 +520,12 @@ export class Gateway {
    * rather than dropping them silently.
    */
   matchmake(now: number): void {
+    for (const session of this.queued.values()) {
+      if (this.auth && session.identity && !this.auth.resolve(session.authToken)) {
+        this.dequeue(session);
+        this.fail(session, 'session-expired', 'Your session ended. Sign in again.', true);
+      }
+    }
     const pairs = this.queue.pairs(now);
     if (pairs.length === 0) return;
 
@@ -455,7 +551,7 @@ export class Gateway {
 
       let room: Room;
       try {
-        room = this.rooms.create(now);
+        room = this.rooms.create(now, first!.mode === 'ranked');
       } catch (err) {
         if (!(err instanceof RoomCapacityError)) throw err;
         for (const session of live) {
@@ -467,6 +563,19 @@ export class Gateway {
 
       for (const session of live) {
         this.seat(session, room, room.join(session.queuedName || 'Player', now), now);
+      }
+      if (first?.identity && second?.identity) {
+        for (const [id, other] of [
+          [first.identity, second.identity],
+          [second.identity, first.identity],
+        ] as const) {
+          this.recentOpponents.set(
+            id,
+            [other, ...(this.recentOpponents.get(id) ?? [])].slice(0, 3),
+          );
+        }
+        if (this.recentOpponents.size > 10000)
+          this.recentOpponents.delete(this.recentOpponents.keys().next().value!);
       }
     }
 
@@ -487,7 +596,10 @@ export class Gateway {
     message: Extract<ClientMessage, { t: 'setProfile' }>,
     now: number,
   ): void {
-    if (!session.identity || !this.profiles) return;
+    if (!session.identity || !this.profiles) {
+      this.fail(session, 'rejected', 'Sign in to unlock your player profile.');
+      return;
+    }
     const current = profileFor(this.profiles, session.identity, '', now);
     const updated = {
       ...current,
@@ -499,13 +611,21 @@ export class Gateway {
     send(session.socket, { t: 'profile', profile: publicView(updated, true) });
   }
 
-  private sendBoard(session: Session, board: string): void {
-    if (!this.profiles) return;
+  private sendBoard(session: Session, board: string, offset: number): void {
+    if (!this.profiles || !session.identity) {
+      this.fail(session, 'rejected', 'Sign in to unlock the leaderboard.');
+      return;
+    }
+    if (!this.boardLimiter.take(session.ip, Date.now())) {
+      this.fail(session, 'rate-limited', 'The board is refreshing too quickly. Try again shortly.');
+      return;
+    }
     const kind = isBoardKind(board) ? board : 'rating';
-    const built = buildBoard(this.profiles, kind, session.identity);
+    const built = buildBoard(this.profiles, kind, session.identity, 25, offset);
     send(session.socket, {
       t: 'leaderboard',
       board: built.kind,
+      offset: built.offset,
       entries: built.entries,
       total: built.total,
       you: built.you,
@@ -516,6 +636,16 @@ export class Gateway {
     if (!session.room || !session.playerId) return;
     session.room.remove(session.playerId, now);
     this.clearMembership(session);
+    this.refreshProfile(session, now);
+  }
+
+  private refreshProfile(session: Session, now: number): void {
+    if (session.identity && this.profiles) {
+      send(session.socket, {
+        t: 'profile',
+        profile: publicView(profileFor(this.profiles, session.identity, '', now), true),
+      });
+    }
   }
 
   private clearMembership(session: Session): void {
@@ -560,11 +690,7 @@ function send(socket: WebSocket, message: ServerMessage): void {
 }
 
 function isFrameMessage(parsed: unknown): boolean {
-  return (
-    typeof parsed === 'object' &&
-    parsed !== null &&
-    (parsed as { t?: unknown }).t === 'frame'
-  );
+  return typeof parsed === 'object' && parsed !== null && (parsed as { t?: unknown }).t === 'frame';
 }
 
 function clientIp(request: IncomingMessage): string {

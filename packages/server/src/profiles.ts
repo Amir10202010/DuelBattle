@@ -16,6 +16,7 @@ export type { MatchRecord };
  * leave this side — who it belongs to and when it was last touched.
  */
 export interface PlayerProfile extends Required<PublicProfile> {
+  previousPosition?: number;
   id: string;
   /** The last name they played under. Display only. */
   name: string;
@@ -72,14 +73,29 @@ export function hydrate(row: Partial<PlayerProfile> & { id: string }, now: numbe
     avatar: normalizeAvatar(row.avatar ?? blank.avatar),
     peakRating: Math.max(row.peakRating ?? 0, row.rating ?? blank.rating),
     xp: Math.max(0, Math.floor(row.xp ?? 0)),
-    achievements: Array.isArray(row.achievements) ? row.achievements.filter((a) => typeof a === 'string') : [],
+    achievements: Array.isArray(row.achievements)
+      ? row.achievements.filter((a) => typeof a === 'string')
+      : [],
     history: Array.isArray(row.history) ? row.history : [],
   };
 }
 
 /** Everything a client may be told about a row, with nothing private in it. */
 export function publicView(profile: PlayerProfile, own: boolean): PublicProfile {
-  const { name, avatar, rating, peakRating, matchesPlayed, wins, losses, draws, streak, bestStreak, xp, achievements } = profile;
+  const {
+    name,
+    avatar,
+    rating,
+    peakRating,
+    matchesPlayed,
+    wins,
+    losses,
+    draws,
+    streak,
+    bestStreak,
+    xp,
+    achievements,
+  } = profile;
   return {
     name,
     avatar,
@@ -98,6 +114,21 @@ export function publicView(profile: PlayerProfile, own: boolean): PublicProfile 
 }
 
 export interface ProfileStore {
+  queueCooldown?(id: string): number;
+  setQueueCooldown?(id: string, until: number): void;
+  auditEvaluation?(roundId: string, verdict: unknown, at: number): void;
+  transaction?<T>(run: () => T): T;
+  claimMatch?(id: string, a: string, b: string, at: number): boolean;
+  rankedPage?(
+    kind: 'rating' | 'streak' | 'wins',
+    viewer: string | null,
+    offset: number,
+    limit: number,
+  ): {
+    total: number;
+    profiles: PlayerProfile[];
+    own: { profile: PlayerProfile; position: number } | null;
+  };
   get(id: string): PlayerProfile | undefined;
   save(profile: PlayerProfile): void;
   /**
@@ -155,7 +186,10 @@ export class FileProfileStore implements ProfileStore {
   private flushTimer: NodeJS.Timeout | null = null;
   private dirty = false;
 
-  constructor(dir: string, private readonly flushDelayMs = 1_000) {
+  constructor(
+    dir: string,
+    private readonly flushDelayMs = 1_000,
+  ) {
     this.path = join(dir, 'profiles.json');
     mkdirSync(dir, { recursive: true });
     this.load();
@@ -197,8 +231,9 @@ export class FileProfileStore implements ProfileStore {
     let raw: string;
     try {
       raw = readFileSync(this.path, 'utf8');
-    } catch {
-      return; // First run. An absent file is not a problem.
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw new Error('Profile data could not be read. Restore access before starting.');
     }
     try {
       const parsed: unknown = JSON.parse(raw);
@@ -206,19 +241,15 @@ export class FileProfileStore implements ProfileStore {
       for (const row of parsed) {
         const profile = row as Partial<PlayerProfile> & { id?: unknown };
         if (typeof profile?.id === 'string' && typeof profile.rating === 'number') {
-          this.rows.set(profile.id, hydrate(profile as Partial<PlayerProfile> & { id: string }, Date.now()));
+          this.rows.set(
+            profile.id,
+            hydrate(profile as Partial<PlayerProfile> & { id: string }, Date.now()),
+          );
         }
       }
       log.info('profiles loaded', { count: this.rows.size });
-    } catch (err) {
-      // Refusing to start would cost every player their rating over one bad
-      // byte. Starting fresh over a file we cannot read would cost them the
-      // same thing, silently — so the file is left alone and said out loud.
-      log.error('profiles file unreadable; starting empty and leaving it in place', {
-        path: this.path,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      this.rows.clear();
+    } catch {
+      throw new Error('Profile data is invalid. Restore a valid backup before starting.');
     }
   }
 
