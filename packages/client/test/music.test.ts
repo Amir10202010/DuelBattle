@@ -102,12 +102,32 @@ describe('background music', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     music.setEnabled(true); expect(Context.instances).toHaveLength(0);
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    vi.stubGlobal('AudioContext', class extends Context {
+      override state = 'suspended';
+      override resume = vi.fn(() => new Promise<void>(() => {}));
+    });
     music.unlock(); music.setEnabled(false); await Promise.resolve();
     expect(Context.instances[0]!.notes).toHaveLength(0);
   });
   it('degrades to silence when audio is unavailable', () => {
     vi.stubGlobal('AudioContext', undefined);
     expect(() => music.setEnabled(true)).not.toThrow();
-    expect(music.getSnapshot()).toMatchObject({ enabled: false, unavailable: true });
+    expect(music.getSnapshot()).toMatchObject({ enabled: true, unavailable: true, playback: 'unavailable' });
+  });
+
+  it('keeps the preference and retries a blocked start on the next gesture', async () => {
+    vi.stubGlobal('AudioContext', class extends Context {
+      override state = 'suspended';
+      override resume = vi.fn(async () => { throw new Error('NotAllowedError'); });
+    });
+    music.setEnabled(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(music.getSnapshot()).toMatchObject({ enabled: true, playback: 'blocked' });
+    const ctx = Context.instances[0]!;
+    ctx.resume = vi.fn(async () => { ctx.state = 'running'; });
+    music.unlock();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(music.getSnapshot()).toMatchObject({ enabled: true, playback: 'running', unavailable: false });
+    expect(ctx.notes.length).toBeGreaterThan(0);
   });
 });

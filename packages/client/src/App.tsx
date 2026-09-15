@@ -1,4 +1,5 @@
 import { sound } from './media/sound.js';
+import { AUDIO_GESTURES, isAudioControl } from './media/audioPlayback.js';
 import { useMusic } from './hooks/useMusic.js';
 import { tr, useUiPreferences } from './i18n/index.js';
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -79,21 +80,20 @@ export function App() {
     store.setLanguage(preferences.locale);
   }, [preferences.locale, store]);
   useEffect(() => {
-    const unlock = () => {
+    const unlock = (event: Event) => {
+      if (isAudioControl(event)) return;
       if (!sound.isMuted) sound.unlock();
     };
-    document.addEventListener('pointerdown', unlock);
-    document.addEventListener('keydown', unlock);
+    for (const event of AUDIO_GESTURES) document.addEventListener(event, unlock, true);
     const click = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target?.closest('button:not(:disabled), a[href], summary')) return;
-      if (target.closest('.audio-enable, .audio-controls, .music-control, .lockin')) return;
+      if (isAudioControl(event) || target.closest('.lockin')) return;
       sound.play('button');
     };
     document.addEventListener('click', click);
     return () => {
-      document.removeEventListener('pointerdown', unlock);
-      document.removeEventListener('keydown', unlock);
+      for (const event of AUDIO_GESTURES) document.removeEventListener(event, unlock, true);
       document.removeEventListener('click', click);
     };
   }, []);

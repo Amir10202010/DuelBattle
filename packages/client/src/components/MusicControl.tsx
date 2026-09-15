@@ -5,12 +5,13 @@ import { tr, useUiPreferences } from '../i18n/index.js';
 
 export function MusicControl({ expanded = false }: { expanded?: boolean }) {
   useUiPreferences();
-  const { enabled, volume, unavailable } = useSyncExternalStore(music.subscribe, music.getSnapshot);
-  const label = tr(enabled ? 'Turn music off' : 'Turn music on');
+  const { enabled, volume, unavailable, playback } = useSyncExternalStore(music.subscribe, music.getSnapshot);
+  const playing = enabled && playback === 'running';
+  const label = tr(playing ? 'Turn music off' : 'Turn music on');
   return (
     <div className={`music-control ${expanded ? 'music-control--expanded' : ''}`}>
       <button className={expanded ? 'btn' : 'icon-button'} title={label} aria-label={label}
-        aria-pressed={enabled} onClick={() => music.setEnabled(!enabled)}>
+        aria-pressed={playing} onClick={() => music.setEnabled(!playing)}>
         <Music2 size={18} />
         {expanded && <span>{label}</span>}
       </button>

@@ -1,18 +1,18 @@
 import { useEffect } from 'react';
 import type { PublicMatchState } from '@battle/shared';
 import { music } from '../media/music.js';
+import { AUDIO_GESTURES, isAudioControl } from '../media/audioPlayback.js';
 import type { MatchStore } from '../net/store.js';
 
 export function useMusic(match: PublicMatchState | null, store: Pick<MatchStore, 'serverNow'>) {
   useEffect(() => {
     const visibility = () => { if (document.hidden) music.pause(); else music.restore(); };
+    const unlock = (event: Event) => { if (!isAudioControl(event)) music.unlock(); };
     // A saved preference still waits for a gesture on a fresh page.
-    document.addEventListener('pointerdown', music.unlock);
-    document.addEventListener('keydown', music.unlock);
+    for (const event of AUDIO_GESTURES) document.addEventListener(event, unlock, true);
     document.addEventListener('visibilitychange', visibility);
     return () => {
-      document.removeEventListener('pointerdown', music.unlock);
-      document.removeEventListener('keydown', music.unlock);
+      for (const event of AUDIO_GESTURES) document.removeEventListener(event, unlock, true);
       document.removeEventListener('visibilitychange', visibility);
       music.pause();
     };

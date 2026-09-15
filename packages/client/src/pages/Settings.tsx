@@ -37,6 +37,7 @@ export function Settings({
   const [name, setName] = useState(profile?.name ?? '');
   const [saved, setSaved] = useState(false);
   const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
+  const playback = useSyncExternalStore(sound.subscribe, sound.getPlayback);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -237,6 +238,7 @@ export function Settings({
         <button
           className="btn"
           aria-pressed={!muted}
+          data-audio-action
           onClick={() => {
             sound.setMuted(!muted);
 
@@ -246,6 +248,16 @@ export function Settings({
         >
           {tr(muted ? 'Turn sound on' : 'Turn sound off')}
         </button>
+        <button className="btn btn--ghost" data-audio-action onClick={() => {
+          sound.setMuted(false);
+          sound.play('roundWin');
+        }}>{tr('Test sound')}</button>
+        <p className="setting__note" role="status">{tr(
+          muted ? 'Sound effects are off.' : playback === 'running'
+            ? 'Audio started. If it’s quiet, check the tab and device volume.'
+            : playback === 'starting' ? 'Starting audio…'
+            : 'Audio hasn’t started. Tap Test sound to try again.',
+        )}</p>
       </section>
       <section className="setting">
         <h2 className="setting__title">{tr('Music')}</h2>

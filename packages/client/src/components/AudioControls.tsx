@@ -8,14 +8,16 @@ import { MusicControl } from './MusicControl.jsx';
 export function AudioControls() {
   useUiPreferences();
   const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
-  const { enabled } = useSyncExternalStore(music.subscribe, music.getSnapshot);
-  if (muted && !enabled) return (
+  const playback = useSyncExternalStore(sound.subscribe, sound.getPlayback);
+  const { enabled, playback: musicPlayback } = useSyncExternalStore(music.subscribe, music.getSnapshot);
+  const needsStart = (!muted && playback !== 'running') || (enabled && musicPlayback !== 'running');
+  if ((muted && !enabled) || needsStart) return (
     <button className="btn audio-enable" onClick={() => {
       sound.setMuted(false);
       sound.play('roundWin');
       music.setEnabled(true);
     }}>
-      <Volume2 size={17} />{tr('Enable audio')}
+      <Volume2 size={17} />{tr(needsStart ? 'Start audio' : 'Enable audio')}
     </button>
   );
   return <div className="audio-controls">

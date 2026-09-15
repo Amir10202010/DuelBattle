@@ -72,6 +72,12 @@ export const gameEn: Record<string, string> = {
 };
 
 export const gameRu: Record<string, string> = {
+  'Start audio': 'Запустить звук',
+  'Test sound': 'Проверить звук',
+  'Sound effects are off.': 'Звуки выключены.',
+  'Starting audio…': 'Включаем звук…',
+  'Audio started. If it’s quiet, check the tab and device volume.': 'Звук запущен. Если тихо, проверь громкость вкладки и устройства.',
+  'Audio hasn’t started. Tap Test sound to try again.': 'Звук не запустился. Нажми «Проверить звук» ещё раз.',
   'Enable audio': 'Включить звук',
   'Enable effects': 'Включить эффекты',
   'Mute effects': 'Выключить эффекты',

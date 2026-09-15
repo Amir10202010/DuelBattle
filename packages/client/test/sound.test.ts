@@ -162,7 +162,7 @@ describe('sound board', () => {
     sound.play('roundWin');
     expect(ctx.oscillators).toHaveLength(0);
     finish();
-    await Promise.resolve(); await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(ctx.oscillators.length).toBeGreaterThan(0);
   });
 
@@ -176,7 +176,7 @@ describe('sound board', () => {
       finish = () => { ctx.state = 'running'; resolve(); };
     });
     sound.play('roundWin'); sound.setMuted(true); finish();
-    await Promise.resolve(); await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(ctx.oscillators).toHaveLength(0);
   });
 });

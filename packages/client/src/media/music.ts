@@ -1,5 +1,7 @@
+import { preparePlayback, resumeAudio, type PlaybackState } from './audioPlayback.js';
+
 type Arrangement = 'menu' | 'battle';
-type MusicSettings = { enabled: boolean; volume: number; unavailable: boolean };
+type MusicSettings = { enabled: boolean; volume: number; unavailable: boolean; playback: PlaybackState };
 const KEY = 'battle.music.v1';
 const STEP = 60 / 108 / 4;
 
@@ -18,7 +20,8 @@ const MELODY = [
 const frequency = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 
 export class MusicPlayer {
-  private settings: MusicSettings = { enabled: false, volume: 0.28, unavailable: false };
+  private settings: MusicSettings = { enabled: false, volume: 0.28, unavailable: false, playback: 'idle' };
+  private attempt = 0;
   private listeners = new Set<() => void>();
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -51,7 +54,9 @@ export class MusicPlayer {
 
   private update(patch: Partial<MusicSettings>) {
     this.settings = { ...this.settings, ...patch };
-    try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* Optional. */ }
+    if ('enabled' in patch || 'volume' in patch) {
+      try { localStorage.setItem(KEY, JSON.stringify({ enabled: this.settings.enabled, volume: this.settings.volume })); } catch { /* Optional. */ }
+    }
     this.listeners.forEach((listener) => listener());
   }
 
@@ -85,6 +90,11 @@ export class MusicPlayer {
     if (this.sleepTimer !== null) clearTimeout(this.sleepTimer);
     this.sleepTimer = null;
     try {
+      preparePlayback();
+      if (this.ctx?.state === 'closed') {
+        if (this.timer !== null) clearInterval(this.timer);
+        this.timer = null; this.ctx = null; this.voices.clear();
+      }
       if (!this.ctx) {
         const Audio = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!Audio) throw new Error('Audio unavailable');
@@ -92,31 +102,47 @@ export class MusicPlayer {
         this.master = this.ctx.createGain();
         this.master.gain.value = 0;
         this.master.connect(this.ctx.destination);
+        this.ctx.onstatechange = () => {
+          if (this.ctx?.state !== 'running' && this.settings.enabled && !document.hidden)
+            this.update({ playback: 'blocked' });
+        };
         this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate / 5, this.ctx.sampleRate);
         const data = this.noise.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
       }
       const ctx = this.ctx;
-      void ctx.resume().then(() => {
-        if (!this.settings.enabled || document.hidden || ctx.state !== 'running') return;
+      const attempt = ++this.attempt;
+      const start = (running: boolean) => {
+        if (attempt !== this.attempt || !this.settings.enabled || document.hidden) return;
+        if (!running) { this.update({ playback: 'blocked', unavailable: true }); return; }
+        this.update({ playback: 'running', unavailable: false });
         this.mix();
         if (this.timer !== null) return;
         this.arrangement = this.wanted;
         this.nextTime = ctx.currentTime + 0.06;
         this.schedule();
         this.timer = setInterval(() => this.schedule(), 50);
-      }).catch(() => this.failed());
+      };
+      if (ctx.state === 'running') start(true);
+      else {
+        this.update({ playback: 'starting' });
+        void resumeAudio(ctx).then(start).catch(() => {
+          if (attempt === this.attempt) this.failed();
+        });
+      }
     } catch { this.failed(); }
   };
 
   private failed() {
-    this.update({ enabled: false, unavailable: true });
     this.pause();
+    this.update({ unavailable: true, playback: 'unavailable' });
   }
 
   restore = () => { if (this.ctx) this.unlock(); };
 
   pause = () => {
+    ++this.attempt;
+    this.update({ playback: 'idle' });
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     const ctx = this.ctx;

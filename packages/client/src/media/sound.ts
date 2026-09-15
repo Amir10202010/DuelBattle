@@ -1,3 +1,5 @@
+import { preparePlayback, resumeAudio, type PlaybackState } from './audioPlayback.js';
+
 export type Cue =
   | 'button'
   | 'hurry'
@@ -152,6 +154,8 @@ class SoundBoard {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private muted = readMuted();
+  private playback: PlaybackState = 'idle';
+  private attempt = 0;
   private listeners = new Set<() => void>();
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -160,6 +164,12 @@ class SoundBoard {
     };
   };
   getMuted = () => this.muted;
+  getPlayback = () => this.playback;
+  private setPlayback(state: PlaybackState) {
+    if (this.playback === state) return;
+    this.playback = state;
+    for (const listener of this.listeners) listener();
+  }
 
   get isMuted(): boolean {
     return this.muted;
@@ -180,24 +190,31 @@ class SoundBoard {
 
   /** Safe to call on every gesture; only the first one does any work. */
   unlock(): Promise<void> | void {
-    if (!this.ctx) {
+    preparePlayback();
+    if (!this.ctx || this.ctx.state === 'closed') {
       const Ctor =
         window.AudioContext ??
         (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return;
+      if (!Ctor) { this.setPlayback('unavailable'); return; }
       try {
         this.ctx = new Ctor();
       } catch {
+        this.setPlayback('unavailable');
         return;
       }
       this.master = this.ctx.createGain();
       this.master.gain.value = this.muted ? 0 : 1;
       this.master.connect(this.ctx.destination);
+      this.ctx.onstatechange = () => {
+        this.setPlayback(this.ctx?.state === 'running' ? 'running' : 'blocked');
+      };
     }
-    if (this.ctx.state !== 'running')
-      return this.ctx.resume().catch(() => {
-        /* Audio remains optional if the browser blocks playback. */
-      });
+    const attempt = ++this.attempt;
+    if (this.ctx.state === 'running') { this.setPlayback('running'); return; }
+    this.setPlayback('starting');
+    return resumeAudio(this.ctx).then((running) => {
+      if (attempt === this.attempt) this.setPlayback(running ? 'running' : 'blocked');
+    });
   }
 
   play(cue: Cue): void {
