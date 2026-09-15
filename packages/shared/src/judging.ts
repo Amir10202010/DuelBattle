@@ -45,6 +45,8 @@ export interface PhotoAssessment {
   presentation: number;
   objects: string[];
   reason: string;
+  reasonRu?: string;
+  objectsRu?: string[];
 }
 
 /** An assessment once the server has put a name back on it. */

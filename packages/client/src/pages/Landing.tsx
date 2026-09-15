@@ -11,7 +11,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { allChallengesPool, TIERS, supportsRussian } from '@battle/shared';
-import { MugArt, RankEmblem } from '../components/GameArt.jsx';
+import { RankEmblem } from '../components/GameArt.jsx';
 
 export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) {
   const { locale } = useUiPreferences();
@@ -83,7 +83,8 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
           </div>
           <div className="demo-players">
             <div className="demo-you">
-              <MugArt />
+              <img src="/friends.jpg" alt={tr('A player holding a red mug to the camera')}
+                width="1200" height="800" fetchPriority="high" />
               <span>
                 <i className="live-dot" />
                 {tr(' YOU ')}
@@ -102,7 +103,7 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
               />
               <span>
                 {tr('YOUR RIVAL ')}
-                <b>{tr('Still searching…')}</b>
+                <b>{tr('Answer ready')}</b>
               </span>
             </div>
             <span className="versus">{tr('VS')}</span>
@@ -161,7 +162,7 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
               Icon: Trophy,
               n: '03',
               title: 'Earn the rematch',
-              copy: 'The fastest valid answer takes the round. First to the target wins.',
+              copy: 'The better answer wins. A close call? Speed breaks the tie.',
             },
           ].map(({ Icon, n, title, copy }) => (
             <article key={n}>

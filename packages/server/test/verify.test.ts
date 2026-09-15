@@ -75,7 +75,7 @@ describe('verifySubmission', () => {
     expect(outcome.kind).toBe('verdict');
     if (outcome.kind !== 'verdict') return;
     expect(outcome.verdict.matched).toBe(false);
-    expect(outcome.verdict.reason).toMatch(/Hold the object up/);
+    expect(outcome.verdict.reason).toMatch(/closer to the camera/);
   });
 
   it('asks for a baseline instead of guessing when it has none', () => {

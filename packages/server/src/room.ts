@@ -27,7 +27,7 @@ import {
   type PlayerId,
   type ServerMessage,
 } from '@battle/shared';
-import { decodeEvidence, verifySubmission } from './verify.js';
+import { cropEvidence, decodeEvidence, verifySubmission } from './verify.js';
 import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
 import { validateAssessments } from './ai/pipeline.js';
 import { publicView, type PlayerProfile, type ProfileStore } from './profiles.js';
@@ -87,6 +87,7 @@ export interface JoinOutcome {
 }
 
 const ACTION_ERROR_COPY: Record<ActionError, string> = {
+  'ai-unavailable': 'Custom rounds need the AI photo check. Try a camera round.',
   'room-full': 'That room already has two players.',
   'name-taken': 'Someone in there is already using that name.',
   'not-in-room': 'You are not in this room any more.',
@@ -95,7 +96,7 @@ const ACTION_ERROR_COPY: Record<ActionError, string> = {
   'already-submitted': 'You have already locked in this round.',
   'already-passed': 'You have already passed on this round.',
   'already-voted': 'You have already judged that answer.',
-  'already-decided': 'The camera already settled that one.',
+  'already-decided': 'Rounds are scored automatically.',
   'ai-judging': 'The AI judge has this round.',
   'cannot-vote-for-self': 'You cannot judge your own answer.',
   'no-such-target': 'That player is not here.',
@@ -147,6 +148,7 @@ export class Room {
   emptySince: number | null;
 
   private readonly judge: AiJudge | undefined;
+  private aiUnavailableUntil = 0;
   private readonly profiles: ProfileStore | undefined;
   private readonly pool: readonly Challenge[] | undefined;
   /** Set when a match ends, cleared when the next one starts. */
@@ -331,7 +333,7 @@ export class Room {
     return {
       now,
       newId: () => randomId(10),
-      aiAvailable: Boolean(this.judge),
+      aiAvailable: Boolean(this.judge && this.judge.available !== false && now >= this.aiUnavailableUntil),
       ...(this.pool ? { pool: this.pool } : this.russianTopics ? { pool: RUSSIAN_POOL } : {}),
     };
   }
@@ -407,7 +409,7 @@ export class Room {
     seat.send = send;
     this.emptySince = null;
     this.dispatch({ type: 'setConnected', playerId, connected: true }, now);
-    send({ t: 'state', state: toPublicState(this.state), serverTime: now });
+    send({ t: 'state', state: { ...toPublicState(this.state), aiAvailable: this.ctx(now).aiAvailable }, serverTime: now });
     this.sendVisibleEvidence(playerId, send);
     this.broadcastIfChanged(now);
   }
@@ -612,7 +614,7 @@ export class Room {
       return;
     }
 
-    if (round.judging === 'auto') {
+    if (round.judging === 'auto' || challengeInRoom(this.state, round.challengeId)?.detector) {
       const challenge = challengeInRoom(this.state, round.challengeId);
       if (!challenge) {
         log.error('round references an unknown challenge', {
@@ -626,16 +628,15 @@ export class Room {
       const outcome = verifySubmission(challenge, baseline, decoded);
       if (outcome.kind === 'verdict') {
         auto = outcome.verdict;
-      } else {
+      } else if (round.judging === 'auto') {
+        // No player can override an unavailable camera check.
         // We cannot decide this one ourselves, so we say so and hand the round
         // to the opponent rather than inventing a verdict.
         this.dispatch({ type: 'downgradeJudging', roundId: round.id, reason: outcome.kind }, now);
         this.broadcast({
           t: 'toast',
           kind: 'warn',
-          message: this.state.ranked
-            ? 'Camera check unavailable. This match will not change rating or XP.'
-            : 'Camera check unavailable — your opponent judges this friendly round.',
+          message: 'Camera check unavailable. We will try another task.',
         });
       }
     }
@@ -675,7 +676,7 @@ export class Room {
 
     const payload: ServerMessage = {
       t: 'state',
-      state: toPublicState(this.state),
+      state: { ...toPublicState(this.state), aiAvailable: this.ctx(now).aiAvailable },
       serverTime: now,
     };
     this.broadcast(payload);
@@ -750,7 +751,9 @@ export class Room {
       const seat = this.seats.get(playerId);
       const before =
         seat && seat.baselineRoundId === roundId && seat.baselineImage ? [seat.baselineImage] : [];
-      photos.push({ playerId, image, contextImages: before });
+      const region = round.submissions[playerId]?.auto?.evaluation?.region;
+      photos.push({ playerId, image, contextImages: before,
+        ...(region ? { focusImage: cropEvidence(image, region) } : {}) });
     }
     if (photos.length === 0) {
       this.dispatch({ type: 'aiFinished', roundId, verdicts: null }, now);
@@ -760,7 +763,7 @@ export class Room {
 
     // Leave a margin inside the judging window, so a slow referee still leaves
     // the players time to judge it themselves.
-    const budget = Math.max(1_000, this.state.settings.judgingMs - 3_000);
+    const budget = Math.max(1, this.state.phaseEndsAt - now - 250);
 
     void judge
       .judge({ challenge, photos, signal: AbortSignal.timeout(budget) })
@@ -769,22 +772,30 @@ export class Room {
           assessments,
           photos.map((p) => p.playerId),
         );
-        this.profiles?.auditEvaluation?.(
-          roundId,
-          { version: 1, status: 'verified', challengeId: challenge.id, assessments: validated },
-          Date.now(),
-        );
+        try {
+          this.profiles?.auditEvaluation?.(roundId,
+            { version: 2, status: 'verified', challengeId: challenge.id, assessments: validated }, Date.now());
+        } catch { log.error('evaluation audit unavailable', { room: this.code }); }
         const verdicts: Record<PlayerId, AutoVerdict> = {};
         for (const assessment of validated) {
+          const camera = round.submissions[assessment.playerId]?.auto;
+          const color = camera?.evaluation?.criterion === 'color' ? camera : undefined;
           verdicts[assessment.playerId] = {
-            matched: assessment.valid,
+            matched: assessment.valid && (!color || color.matched),
             confidence: assessment.confidence,
             reason: assessment.reason,
+            evaluation: {
+              ...(color?.evaluation ?? { score: assessment.score, criterion: 'task' as const }),
+              label: assessment.objects[0] ?? 'Shown object',
+              labelRu: assessment.objectsRu?.[0] ?? 'Предмет',
+              reasonRu: assessment.reasonRu,
+            },
           };
         }
         return verdicts;
       })
       .catch((err: unknown) => {
+        this.aiUnavailableUntil = Date.now() + 120_000;
         try {
           this.profiles?.auditEvaluation?.(
             roundId,
@@ -802,6 +813,13 @@ export class Room {
             room: this.code,
             errorType: err instanceof Error ? err.name : 'unknown',
           });
+        }
+        // A colour round has an independent, server-computed fallback. Require
+        // a verdict for EVERY submitted photo; never silently favour one side.
+        const submissions = Object.values(round.submissions);
+        if (challenge.detector && submissions.length && submissions.every((s) => s.auto)) {
+          this.broadcast({ t: 'toast', kind: 'info', message: 'Using the camera colour check.' });
+          return Object.fromEntries(submissions.map((s) => [s.playerId, s.auto!]));
         }
         return null;
       })

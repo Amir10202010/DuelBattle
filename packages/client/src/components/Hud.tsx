@@ -1,10 +1,8 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { memo, useSyncExternalStore } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { memo } from 'react';
 import type { PublicMatchState, PublicPlayer } from '@battle/shared';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { Toast } from '../net/store.js';
-import { sound } from '../media/sound.js';
 
 interface TimerBarProps {
   /** Server-clock deadline. */
@@ -104,28 +102,6 @@ export const ConnectionBadge = memo(function ConnectionBadge({
       <i aria-hidden="true" />
       {tr(copy)}
     </span>
-  );
-});
-
-export const MuteButton = memo(function MuteButton() {
-  useUiPreferences();
-  const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
-  return (
-    <button
-      type="button"
-      className="mute"
-      aria-pressed={muted}
-      aria-label={tr(muted ? 'Unmute sound' : 'Mute sound')}
-      title={tr(muted ? 'Unmute' : 'Mute')}
-      onClick={() => {
-        sound.setMuted(!muted);
-
-        // Clicking is a gesture, which is the browser's price for any audio.
-        if (muted) sound.play('roundWin');
-      }}
-    >
-      {muted ? <VolumeX size={19} aria-hidden="true" /> : <Volume2 size={19} aria-hidden="true" />}
-    </button>
   );
 });
 

@@ -1,14 +1,16 @@
+import { findColorRegions, type ColorRegion } from './regions.js';
 import type { Frame } from './frame.js';
 import { sameSize } from './frame.js';
 import { matchesColor, relativeLuminance, rgbToHsv, type ColorKey } from './color.js';
 
 export interface DetectionResult {
   matched: boolean;
+  region?: ColorRegion;
+  score?: number;
   /**
    * Set when the conditions make this round impossible to settle either way —
    * asking for something darker than a room that is already almost black, say.
-   * The server hands these to the opponent rather than failing the player for
-   * the state of their lighting.
+   * The server skips these rounds without assigning a winner.
    */
   undecidable?: true;
   /** 0..1, monotonic in "how clearly this passed". Never used as a threshold. */
@@ -264,43 +266,21 @@ export function detectColorObject(
   current: Frame,
   opts: ColorDetectorOptions,
 ): DetectionResult {
-  const minShare = opts.minShare ?? DEFAULT_MIN_SHARE;
-  const minChange = opts.minChange ?? DEFAULT_MIN_CHANGE;
-  const analysis = analyseChange(baseline, current, { ...opts, colors: [opts.target] });
-  const share = analysis.colorShare.get(opts.target) ?? 0;
-  const metrics = {
-    changeRatio: analysis.changeRatio,
-    share,
-    coverage: share * analysis.changeRatio,
-  };
-
-  if (analysis.changeRatio < minChange) {
-    return {
-      matched: false,
-      confidence: 0,
-      progress: clamp01(analysis.changeRatio / minChange) * 0.3,
-      reason: 'Hold the object up so the camera can see it change.',
-      metrics,
-    };
-  }
-  if (share < minShare) {
-    return {
-      matched: false,
-      confidence: clamp01(share / minShare) * 0.5,
-      progress: 0.3 + 0.7 * clamp01(share / minShare) * 0.9,
-      reason: `That does not read as ${opts.target} — try filling more of the frame.`,
-      metrics,
-    };
-  }
-
-  const shareScore = clamp01((share - minShare) / (1 - minShare));
-  const sizeScore = clamp01(analysis.changeRatio / 0.25);
+  assertComparable(baseline, current);
+  const regions = findColorRegions(baseline, current, opts.target,
+    opts.changeThreshold ?? changeThresholdFor(baseline), exposureGainFor(baseline));
+  const region = regions[0];
+  const required = opts.minChange ?? 0.0012;
+  const coverage = region?.coverage ?? 0;
+  const matched = Boolean(region && coverage >= required);
   return {
-    matched: true,
-    confidence: clamp01(0.5 + 0.35 * shareScore + 0.15 * sizeScore),
-    progress: 1,
-    reason: `Locked on — ${Math.round(share * 100)}% of what you showed is ${opts.target}.`,
-    metrics,
+    matched,
+    confidence: matched ? 0.85 + 0.15 * Math.min(1, coverage / 0.015) : 0,
+    progress: matched ? 1 : Math.min(0.9, coverage / required),
+    score: matched ? region!.score : 0,
+    ...(region ? { region } : {}),
+    reason: matched ? 'Colour found.' : 'Bring the coloured object closer to the camera.',
+    metrics: { coverage, changeRatio: coverage, share: region ? 1 : 0, colorFit: region?.score ?? 0 },
   };
 }
 

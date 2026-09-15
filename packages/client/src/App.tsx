@@ -1,4 +1,5 @@
 import { sound } from './media/sound.js';
+import { useMusic } from './hooks/useMusic.js';
 import { tr, useUiPreferences } from './i18n/index.js';
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from 'react';
 import { MatchStore } from './net/store.js';
@@ -28,6 +29,7 @@ export function App() {
   storeRef.current ??= new MatchStore();
   const store = storeRef.current;
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  useMusic(snapshot.screen === 'room' ? snapshot.match : null, store);
   const auth = useAuth();
   const camera = useCamera();
   const route = useRoute();
@@ -82,9 +84,17 @@ export function App() {
     };
     document.addEventListener('pointerdown', unlock);
     document.addEventListener('keydown', unlock);
+    const click = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest('button:not(:disabled), a[href], summary')) return;
+      if (target.closest('.audio-enable, .audio-controls, .music-control, .lockin')) return;
+      sound.play('button');
+    };
+    document.addEventListener('click', click);
     return () => {
       document.removeEventListener('pointerdown', unlock);
       document.removeEventListener('keydown', unlock);
+      document.removeEventListener('click', click);
     };
   }, []);
   const completedAuth = (state: AuthState) => {

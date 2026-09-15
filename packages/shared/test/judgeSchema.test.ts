@@ -26,7 +26,7 @@ describe('the judge response contract', () => {
     // are written separately so both are readable; this is what keeps them
     // saying the same thing.
     expect([...assessmentJson.required].sort()).toEqual(
-      Object.keys(photoAssessmentSchema.shape).sort(),
+      Object.entries(photoAssessmentSchema.shape).filter(([, schema]) => !schema.isOptional()).map(([key]) => key).sort(),
     );
     expect(Object.keys(assessmentJson.properties).sort()).toEqual(
       Object.keys(photoAssessmentSchema.shape).sort(),

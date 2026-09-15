@@ -7,8 +7,8 @@ import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, type Frame } from '@battle/shared';
  */
 export const LIVE_FRAME_WIDTH = 320;
 export const LIVE_FRAME_HEIGHT = 240;
-export const EVIDENCE_WIDTH = 480;
-export const EVIDENCE_HEIGHT = 360;
+export const EVIDENCE_WIDTH = 640;
+export const EVIDENCE_HEIGHT = 480;
 
 export const LIVE_FRAME_QUALITY = 0.55;
 /** Tried once when a frame comes out over budget, before giving up on it. */

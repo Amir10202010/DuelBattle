@@ -127,6 +127,7 @@ export interface PublicRound {
 }
 
 export interface PublicMatchState {
+  aiAvailable?: boolean;
   ranked?: boolean;
   roomCode: string;
   phase: Phase;
@@ -164,13 +165,13 @@ export interface PublicMatchState {
 function publicSubmission(
   s: Submission,
   revealVerdicts: boolean,
-  judging: RoundJudging,
+  _judging: RoundJudging,
 ): PublicSubmission {
   return {
     playerId: s.playerId,
     elapsedMs: s.elapsedMs,
     evidenceId: s.evidenceId,
-    needsVerdict: judging === 'peer' && !s.auto && !s.peer,
+    needsVerdict: false,
     ...(revealVerdicts && s.auto ? { auto: s.auto } : {}),
     ...(revealVerdicts && s.peer
       ? { peer: { approve: s.peer.approve, voterId: s.peer.voterId } }

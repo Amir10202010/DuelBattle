@@ -9,14 +9,11 @@ import {
   ArrowRight,
   Zap,
   UserRound,
-  Volume2,
-  VolumeX,
 } from 'lucide-react';
-import { useSyncExternalStore } from 'react';
 import { levelFor, type PublicProfile } from '@battle/shared';
 import { pagePath, type Page } from '../hooks/useRoute.js';
 import { Avatar } from './Identity.jsx';
-import { sound } from '../media/sound.js';
+import { AudioControls } from './AudioControls.jsx';
 
 const LINKS = [
   { page: 'dashboard', label: 'Home', Icon: Home },
@@ -38,7 +35,6 @@ export function Nav({
   publicOnly?: boolean;
 }) {
   useUiPreferences();
-  const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
   const go = (path: string) => (e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
@@ -66,6 +62,7 @@ export function Nav({
         {tr(brand)}
         <span className="public-nav__note">{tr('Your room is the game.')}</span>
         <div>
+          <AudioControls />
           {profile ? (
             <a className="btn btn--primary" href="/home" onClick={go('/home')}>
               {tr('Enter home ')}
@@ -130,17 +127,7 @@ export function Nav({
           <strong>{tr(LINKS.find((l) => l.page === page)?.label ?? 'Settings')}</strong>
         </div>
         <div className="topbar-right">
-          <button
-            className="icon-button"
-            aria-label={tr(muted ? 'Enable sound' : 'Mute sound')}
-            title={tr(muted ? 'Enable sound' : 'Mute sound')}
-            onClick={() => {
-              sound.setMuted(!muted);
-              if (muted) sound.play('roundWin');
-            }}
-          >
-            {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          </button>
+          <AudioControls />
           {profile ? (
             <a className="topbar-player" href="/profile" onClick={go('/profile')}>
               <div>

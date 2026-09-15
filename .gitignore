@@ -23,3 +23,6 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Downloaded, checksum-verified browser vision runtime
+packages/client/public/vision-runtime/

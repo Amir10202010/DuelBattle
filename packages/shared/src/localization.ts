@@ -1,5 +1,8 @@
+import { PARTY_RUSSIAN } from './party.js';
 /** Reviewed Russian prompts. Matching and evaluation always use the canonical challenge. */
 export const RUSSIAN_PROMPTS: Readonly<Record<string, string>> = {
+  ...PARTY_RUSSIAN,
+  'SHOW SOMETHING GREEN': 'ПОКАЖИ ЧТО-НИБУДЬ ЗЕЛЁНОЕ',
   'SHOW SOMETHING RED': 'ПОКАЖИ ЧТО-НИБУДЬ КРАСНОЕ',
   'SHOW SOMETHING BLUE': 'ПОКАЖИ ЧТО-НИБУДЬ СИНЕЕ',
   'TOUCH SOMETHING GREEN': 'КОСНИСЬ ЗЕЛЁНОГО ПРЕДМЕТА',

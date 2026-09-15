@@ -37,27 +37,40 @@ export function validateAssessments(raw: unknown, ids: string[]): PlayerAssessme
     presentation: a.presentation,
     objects: a.objects,
     reason: a.reason,
+    reasonRu: a.reasonRu,
+    objectsRu: a.objectsRu,
     score: a.valid ? a.fulfillment + a.presentation : 0,
   }));
 }
 
 export class VerifiedJudge implements AiJudge {
+  private unavailableUntil = 0;
+  get available(): boolean { return Date.now() >= this.unavailableUntil; }
   constructor(
     private readonly primary: AiJudge,
     private readonly verifier: AiJudge = primary,
   ) {}
 
   async judge(input: Parameters<AiJudge['judge']>[0]): Promise<PlayerAssessment[]> {
+    input.signal.throwIfAborted();
     const started = Date.now();
     const ids = input.photos.map((p) => p.playerId);
     // Each pass is independent: no names, timing, previous judgement or score.
     // A shared absolute deadline includes retries and provider response parsing.
-    const primary = validateAssessments(await this.primary.judge(input), ids);
+    if (!this.available) throw new JudgeUnavailable('The photo check is resting.');
+    let primary: PlayerAssessment[], second: PlayerAssessment[];
+    try {
+      const readings = await Promise.all([
+        Promise.resolve().then(() => { input.signal.throwIfAborted(); return this.primary.judge(input); }),
+        Promise.resolve().then(() => { input.signal.throwIfAborted(); return this.verifier.judge({ ...input, photos: [...input.photos].reverse() }); }),
+      ]);
+      primary = validateAssessments(readings[0], ids);
+      second = validateAssessments(readings[1], ids);
+    } catch (error) {
+      this.unavailableUntil = Date.now() + 120_000;
+      throw error;
+    }
     input.signal.throwIfAborted();
-    const second = validateAssessments(
-      await this.verifier.judge({ ...input, photos: [...input.photos].reverse() }),
-      ids,
-    );
     const result = primary.map((a) => {
       const b = second.find((value) => value.playerId === a.playerId)!;
       if (
@@ -65,7 +78,8 @@ export class VerifiedJudge implements AiJudge {
         Math.abs(a.fulfillment - b.fulfillment) > 18 ||
         Math.abs(a.score - b.score) > 25
       ) {
-        throw new JudgeUnavailable('Independent checks disagree. No ranked verdict will be used.');
+        this.unavailableUntil = Date.now() + 120_000;
+        throw new JudgeUnavailable('The photo checks disagree.');
       }
       return {
         ...a,
@@ -75,7 +89,7 @@ export class VerifiedJudge implements AiJudge {
         score: a.valid
           ? Math.min(a.fulfillment, b.fulfillment) + Math.min(a.presentation, b.presentation)
           : 0,
-        reason: `${a.reason} Independently verified.`.slice(0, 300),
+        reason: a.reason,
       };
     });
     log.info('evaluation complete', {

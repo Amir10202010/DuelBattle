@@ -28,7 +28,7 @@ export interface CameraState {
 }
 
 const COPY: Record<Exclude<CameraStatus, 'ready' | 'requesting'>, string> = {
-  idle: 'Battle needs your camera. Nothing is recorded, and nothing leaves this match.',
+  idle: 'Turn on your camera to play.',
   denied:
     'Your browser is blocking the camera. Open the camera icon in the address bar, allow access, then try again.',
   'not-found': 'No camera found. Plug one in, or try a device that has one.',

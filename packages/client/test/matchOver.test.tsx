@@ -277,7 +277,7 @@ describe('the way out of a finished match', () => {
       },
     };
     const view = render(props({ match: gone }));
-    expect(view.container.textContent).toContain('Find another opponent');
+    expect(view.container.textContent).toContain('Play again');
     view.unmount();
   });
 });

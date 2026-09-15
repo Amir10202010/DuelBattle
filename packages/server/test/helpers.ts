@@ -136,7 +136,9 @@ export function fullFrame(color: Rgb, quality = 75): string {
 export function passingFrameFor(detector: DetectorSpec): string {
   switch (detector.kind) {
     case 'color':
-      return heldObjectFrame(hexToRgb(colorSwatch(detector.target)));
+      return (detector.minChange ?? 0) > 0.2
+        ? fullFrame(hexToRgb(colorSwatch(detector.target)))
+        : heldObjectFrame(hexToRgb(colorSwatch(detector.target)));
     case 'colorPair':
       return heldTwoToneFrame(
         hexToRgb(colorSwatch(detector.targets[0])),
@@ -218,6 +220,7 @@ export function realisticHeld(rgba: Buffer, opts: SceneOptions = {}): string {
 export function passingSceneFor(detector: DetectorSpec): Buffer {
   switch (detector.kind) {
     case 'color':
+      if ((detector.minChange ?? 0) > 0.2) return scene(hexToRgb(colorSwatch(detector.target)));
       return scene(GREY, [...FURNITURE, { x: 80, y: 50, w: 80, h: 80, color: hexToRgb(colorSwatch(detector.target)) }]);
     case 'colorPair':
       return scene(GREY, [

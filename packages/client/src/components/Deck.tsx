@@ -36,6 +36,7 @@ export function Deck({ store, match, youId }: DeckProps) {
   const deck = match.customChallenges;
   const mine = deck.filter((entry) => entry.authorId === youId).length;
   const full = mine >= MAX_CUSTOM_PER_PLAYER;
+  const unavailable = !match.aiAvailable;
 
   const submit = () => {
     const check = validateCustomPrompt(draft, deck, youId);
@@ -78,13 +79,14 @@ export function Deck({ store, match, youId }: DeckProps) {
         })}
       </ul>
 
+      {unavailable && <p className="dim">{tr('Custom rounds need the AI photo check.')}</p>}
       <div className="deck__add">
         <input
           className="input deck__input"
           value={draft}
           placeholder={tr(full ? 'That is your four' : 'Show something…')}
           maxLength={MAX_CUSTOM_PROMPT_LENGTH}
-          disabled={full}
+          disabled={full || unavailable}
           aria-label={tr('Write a round of your own')}
           onChange={(e) => {
             setDraft(e.target.value);
@@ -92,7 +94,7 @@ export function Deck({ store, match, youId }: DeckProps) {
           }}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
-        <button className="btn deck__submit" onClick={submit} disabled={full || !draft.trim()}>
+        <button className="btn deck__submit" onClick={submit} disabled={full || unavailable || !draft.trim()}>
           {tr('Add')}
         </button>
       </div>

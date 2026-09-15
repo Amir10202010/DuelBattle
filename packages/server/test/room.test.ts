@@ -246,15 +246,15 @@ describe('auto-judged rounds', () => {
     expect(h.r1.state.players[h.p1]?.submitted).toBe(false);
   });
 
-  it('hands the round to the opponent when it has no baseline to judge against', () => {
+  it('marks a missing baseline without asking the opponent for a verdict', () => {
     const h = seated();
     // No frames sent, so the server never saw the room before the prompt.
     const { roundId } = intoChallenge(h, { withBaseline: false });
 
     h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
 
-    expect(h.r1.state.round?.judging).toBe('peer');
-    expect(h.r1.ofType('toast').at(-1)?.message).toMatch(/opponent judges/i);
+    expect(h.r1.state.round?.judging).toBe('auto');
+    expect(h.r1.ofType('toast').at(-1)?.message).toMatch(/another task/i);
     // And the answer is now waiting on a vote rather than being scored blind.
     expect(h.r1.state.phase).toBe('challenge');
   });
@@ -269,36 +269,33 @@ describe('auto-judged rounds', () => {
     h.room.tick(30_000);
     const roundId = h.r1.state.round!.id;
     h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 31_000);
-    expect(h.r1.state.round?.judging).toBe('peer');
+    expect(h.r1.state.round?.judging).toBe('auto');
   });
 });
 
 describe('evidence handling', () => {
-  it('shows a judge their opponent’s answer and not their own', () => {
+  it('reveals both photos after an unverified round finishes', () => {
     const h = seated();
     const { roundId } = intoChallenge(h, { withBaseline: false });
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
-    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
-    expect(h.r1.state.phase).toBe('judging');
-
-    const forP1 = h.r1.ofType('evidence');
-    expect(forP1.length).toBeGreaterThan(0);
-    expect(forP1.every((e) => e.playerId !== h.p1)).toBe(true);
-    expect(forP1.some((e) => e.playerId === h.p2)).toBe(true);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5000);
+    expect(h.r2.ofType('evidence')).toHaveLength(0);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5100);
+    expect(h.r1.state.phase).toBe('roundResult');
+    expect(new Set(h.r1.ofType('evidence').map((e) => e.playerId))).toEqual(new Set([h.p1, h.p2]));
   });
 
-  it('resolves a peer round on the opponents’ votes', () => {
+  it('ignores legacy votes and preserves the automatic result', () => {
     const h = seated();
-    const { roundId } = intoChallenge(h, { withBaseline: false });
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
-    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
-    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_000);
-    h.room.handle(h.p2, { t: 'vote', roundId, targetId: h.p1, approve: true }, 6_100);
-
-    const state = h.r1.state;
-    expect(state.phase).toBe('roundResult');
-    expect(state.round?.outcome?.winnerId).toBe(h.p1);
-    expect(state.players[h.p1]?.score).toBe(1);
+    const { roundId, detector } = intoChallenge(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: passingFrameFor(detector!) }, 5000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: failingFrameFor(detector!) }, 5100);
+    const before = structuredClone(h.r1.state.round?.outcome);
+    h.room.handle(h.p2, { t: 'vote', roundId, targetId: h.p1, approve: false }, 6000);
+    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6100);
+    expect(h.r1.state.round?.outcome).toEqual(before);
+    expect(before?.winnerId).toBe(h.p1);
+    expect(h.r1.ofType('error').at(-1)?.message).toMatch(/automatically/i);
+    expect(h.r2.ofType('error').at(-1)?.message).toMatch(/automatically/i);
   });
 
   it('lets nobody score the round somebody rejected', () => {
@@ -317,27 +314,16 @@ describe('evidence handling', () => {
     expect(state.players[h.p2]?.score).toBe(0);
   });
 
-  it('keeps the camera’s verdict when only one frame could be read', () => {
+  it('does not let an unreadable answer win by approval', () => {
     const h = seated();
     const { roundId, detector } = intoChallenge(h, { withBaseline: 'p1Only' });
-    // p1 is readable and gets it wrong; p2 has no baseline, so the round falls
-    // back to judging with p1 already decided.
-    h.room.handle(h.p1, { t: 'submit', roundId, image: failingFrameFor(detector!) }, 5_000);
-    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
-    expect(h.r1.state.phase).toBe('judging');
-    expect(h.r1.state.round?.submissions[h.p1]?.needsVerdict).toBe(false);
-    expect(h.r1.state.round?.submissions[h.p2]?.needsVerdict).toBe(true);
-
-    // p2 cannot vote p1's failed answer back into the round, and p1 approving
-    // p2 leaves p2 the only valid answer.
-    h.room.handle(h.p2, { t: 'vote', roundId, targetId: h.p1, approve: true }, 6_000);
-    expect(h.r2.ofType('error').at(-1)?.message).toMatch(/camera already settled/i);
-    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_100);
-
-    const state = h.r1.state;
-    expect(state.phase).toBe('roundResult');
-    expect(state.round?.outcome?.perPlayer[h.p1]?.valid).toBe(false);
-    expect(state.round?.outcome?.winnerId).toBe(h.p2);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: failingFrameFor(detector!) }, 5000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5100);
+    expect(h.r1.state.round?.outcome?.reason).toBe('verification-unavailable');
+    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6000);
+    expect(h.r1.ofType('error').at(-1)?.message).toMatch(/automatically/i);
+    expect(h.r1.state.round?.outcome?.winnerId).toBeNull();
+    expect(h.r1.state.round?.submissions[h.p2]?.needsVerdict).toBe(false);
   });
 
   it('refuses a vote on your own answer', () => {
@@ -346,7 +332,7 @@ describe('evidence handling', () => {
     h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
     h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
     h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p1, approve: true }, 6_000);
-    expect(h.r1.ofType('error').at(-1)?.message).toMatch(/cannot judge your own/i);
+    expect(h.r1.ofType('error').at(-1)?.message).toMatch(/automatically/i);
   });
 
   it('shows both answers to both players once the round resolves', () => {
@@ -422,8 +408,8 @@ describe('a round the AI referee takes', () => {
   const AI_PROMPT = getChallenge('obj-face')!;
 
   /** Two seated players in a room whose deck is one AI-verifiable prompt. */
-  function seatedWithJudge(judge: AiJudge): Harness {
-    const room = new Room('AIRM1', 0, { judge, pool: [AI_PROMPT] });
+  function seatedWithJudge(judge: AiJudge, pool = [AI_PROMPT]): Harness {
+    const room = new Room('AIRM1', 0, { judge, pool });
     const a = room.join('Ada', 0);
     const b = room.join('Grace', 0);
     const p1 = a.playerId!;
@@ -451,6 +437,27 @@ describe('a round the AI referee takes', () => {
 
   /** Lets the referee's promise chain finish. */
   const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it.each([false, true])('compares colour quality with AI outage=%s', async (outage) => {
+    const judge: AiJudge = { judge: async ({ photos }) => {
+      if (outage) throw new JudgeUnavailable('offline');
+      expect(photos.every((p) => p.focusImage?.startsWith('data:image/jpeg;base64,'))).toBe(true);
+      return photos.map((p, i) => ({ playerId: p.playerId, valid: true, confidence: 0.92,
+        fulfillment: 65, presentation: 25, score: 90,
+        objects: [i ? 'pen' : 'sharpener'], objectsRu: [i ? 'ручка' : 'точилка'],
+        reason: 'A red object is presented.', reasonRu: 'Красный предмет в кадре.' }));
+    } };
+    const h = seatedWithJudge(judge, [getChallenge('color-red')!]);
+    const roundId = intoAiRound(h);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame([220, 50, 10]) }, 5000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame([220, 10, 10]) }, 5100);
+    await settle();
+    const outcome = h.r1.state.round?.outcome;
+    expect(outcome?.winnerId).toBe(h.p2);
+    expect(outcome?.reason).toBe('better-answer');
+    expect(outcome!.perPlayer[h.p2]!.evaluation!.score).toBeGreaterThan(outcome!.perPlayer[h.p1]!.evaluation!.score);
+    expect(outcome!.perPlayer[h.p2]!.evaluation!.labelRu).toBe(outage ? 'Предмет' : 'ручка');
+  });
 
   it('sends both photos to the referee and settles the round on the reply', async () => {
     let seen: JudgePhoto[] = [];
@@ -526,28 +533,18 @@ describe('a round the AI referee takes', () => {
     expect(outcome?.winnerId).not.toBe(invalid[0]![0]);
   });
 
-  it('hands the round back to the opponent when the referee cannot answer', async () => {
-    const judge: AiJudge = {
-      judge: () => Promise.reject(new JudgeUnavailable('out of quota')),
-    };
-    const h = seatedWithJudge(judge);
+  it('skips an AI outage and deals camera tasks afterwards', async () => {
+    const h = seatedWithJudge({ judge: async () => { throw new JudgeUnavailable('out of quota'); } });
     const roundId = intoAiRound(h);
-    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_000);
-    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
+    h.room.handle(h.p1, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5000);
+    h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5100);
     await settle();
-
-    const state = h.r1.state;
-    expect(state.phase).toBe('judging');
-    expect(state.round?.judging).toBe('peer');
-    expect(state.round?.aiPending).toBe(false);
-    // And the players can now actually judge it.
-    expect(state.round?.submissions[h.p2]?.needsVerdict).toBe(true);
-
-    // A verdict during judging is deliberately not revealed, so the observable
-    // proof the vote landed is that the answer stops waiting for one.
-    h.room.handle(h.p1, { t: 'vote', roundId, targetId: h.p2, approve: true }, 6_000);
-    expect(h.r1.ofType('error')).toHaveLength(0);
-    expect(h.r1.state.round?.submissions[h.p2]?.needsVerdict).toBe(false);
+    expect(h.r1.state.phase).toBe('roundResult');
+    expect(h.r1.state.round?.outcome?.reason).toBe('verification-unavailable');
+    expect(h.r1.state.aiAvailable).toBe(false);
+    h.room.tick(h.r1.state.phaseEndsAt!);
+    expect(h.r1.state.round?.judging).toBe('auto');
+    expect(h.r1.state.round?.challengeId).not.toBe(AI_PROMPT.id);
   });
 
   it('does not crash the round when the referee throws something unexpected', async () => {
@@ -558,11 +555,11 @@ describe('a round the AI referee takes', () => {
     h.room.handle(h.p2, { t: 'submit', roundId, image: heldObjectFrame(BLUE) }, 5_100);
     await settle();
 
-    expect(h.r1.state.round?.judging).toBe('peer');
-    expect(h.r1.state.phase).toBe('judging');
+    expect(h.r1.state.round?.judging).toBe('ai');
+    expect(h.r1.state.phase).toBe('roundResult');
   });
 
-  it('leaves the prompt with the opponent when no referee is configured', () => {
+  it('uses a camera prompt when no AI referee is configured', () => {
     const room = new Room('NOAI1', 0, { pool: [AI_PROMPT] });
     const a = room.join('Ada', 0);
     const b = room.join('Grace', 0);
@@ -574,7 +571,7 @@ describe('a round the AI referee takes', () => {
     room.handle(b.playerId!, { t: 'ready', ready: true }, 100);
     room.tick(4_000);
 
-    expect(rec.state.round?.judging).toBe('peer');
+    expect(rec.state.round?.judging).toBe('auto');
   });
 });
 

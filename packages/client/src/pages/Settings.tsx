@@ -16,6 +16,7 @@ import {
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { sound } from '../media/sound.js';
+import { MusicControl } from '../components/MusicControl.jsx';
 import { Avatar } from '../components/Identity.jsx';
 
 /** Account appearance, device preferences and optional game audio. */
@@ -229,7 +230,7 @@ export function Settings({
       )}
 
       <section className="setting">
-        <h2 className="setting__title">{tr('Sound')}</h2>
+        <h2 className="setting__title">{tr('Sound effects')}</h2>
         <p className="setting__note dim">
           {tr('Countdowns, locks and round results. No microphone, ever.')}
         </p>
@@ -245,6 +246,10 @@ export function Settings({
         >
           {tr(muted ? 'Turn sound on' : 'Turn sound off')}
         </button>
+      </section>
+      <section className="setting">
+        <h2 className="setting__title">{tr('Music')}</h2>
+        <MusicControl expanded />
       </section>
     </main>
   );

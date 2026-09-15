@@ -1,16 +1,10 @@
+import { PARTY_CHALLENGES } from './party.js';
 import { isColorKey, type ColorKey } from './vision/color.js';
 import { topicChallenges } from './topics.js';
 import type { DetectorSpec } from './vision/run.js';
 import type { RandomSource } from './ids.js';
 
-/**
- * How a round is decided.
- *  - `auto`: a detector runs on the submitted frame and the server re-runs it
- *    authoritatively. Instant, objective, no waiting.
- *  - `peer`: the opponent judges the snapshot. Used for everything a camera
- *    genuinely cannot decide ("older than you", "your mum gave you"). This is a
- *    deliberate product choice, not a stand-in for a missing model.
- */
+/** Catalogue capability: auto has a deterministic detector; legacy peer requires AI eligibility. */
 export type JudgingMode = 'auto' | 'peer';
 
 export type ChallengeCategory = 'color' | 'object' | 'action' | 'story' | 'wildcard';
@@ -52,7 +46,7 @@ function color(
     difficulty,
     durationMs,
     judging: 'auto',
-    detector: { kind: 'color', target },
+    detector: { kind: 'color', target, ...(id.endsWith('-fill') ? { minChange: 0.35 } : {}) },
     tags: ['color', target],
   };
 }
@@ -102,12 +96,13 @@ function auto(
 }
 
 export const CHALLENGES: readonly Challenge[] = [
+  ...PARTY_CHALLENGES,
   // ---- Colour: objective, instant, and the backbone of the pacing. ----
   color('color-red', 'SHOW SOMETHING RED', 'red', 1, SHORT),
   color('color-blue', 'SHOW SOMETHING BLUE', 'blue', 1, SHORT),
   color(
     'color-green',
-    'TOUCH SOMETHING GREEN',
+    'SHOW SOMETHING GREEN',
     'green',
     1,
     SHORT,
@@ -483,12 +478,7 @@ export function validateCustomPrompt(
   return { ok: true, prompt };
 }
 
-/**
- * A player-written round.
- *
- * Always peer-judged: no detector can decide an arbitrary sentence, and
- * inventing one that pretends to would be worse than asking the opponent.
- */
+/** Player-written visual tasks require an available AI judge. */
 export function customChallenge(id: string, prompt: string): Challenge {
   return {
     id,
@@ -497,7 +487,7 @@ export function customChallenge(id: string, prompt: string): Challenge {
     difficulty: 2,
     durationMs: NORMAL,
     judging: 'peer',
-    tags: ['custom'],
+    tags: ['custom', 'visual'],
   };
 }
 

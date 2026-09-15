@@ -79,7 +79,7 @@ describe('the rounds an AI referee may take', () => {
 
   it('agrees with isAiVerifiable', () => {
     for (const c of CHALLENGES) {
-      expect(isAiVerifiable(c), c.id).toBe(AI_VERIFIABLE_IDS.includes(c.id));
+      expect(isAiVerifiable(c), c.id).toBe(AI_VERIFIABLE_IDS.includes(c.id) || c.tags.includes('visual'));
     }
   });
 });

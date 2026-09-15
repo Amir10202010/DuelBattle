@@ -1,5 +1,5 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { PublicPlayer } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 
@@ -54,7 +54,21 @@ interface SelfVideoProps {
 
 export const SelfVideo = memo(function SelfVideo({ videoRef }: SelfVideoProps) {
   useUiPreferences();
+  const windowRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 320, height: 240 });
+  useEffect(() => {
+    const parent = windowRef.current?.parentElement;
+    if (!parent) return;
+    const resize = () => {
+      const width = Math.max(parent.clientWidth, parent.clientHeight * 4 / 3);
+      setSize({ width, height: width * 3 / 4 });
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(parent); resize();
+    return () => observer.disconnect();
+  }, []);
   return (
+    <div className="stage__camera-window" ref={windowRef} style={size}>
     <video
       ref={videoRef}
       className="stage__video stage__video--mirrored"
@@ -65,6 +79,7 @@ export const SelfVideo = memo(function SelfVideo({ videoRef }: SelfVideoProps) {
       // elsewhere on the screen.
       aria-hidden="true"
     />
+    </div>
   );
 });
 

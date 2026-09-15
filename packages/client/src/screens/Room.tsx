@@ -10,7 +10,8 @@ import {
 } from '../media/capture.js';
 import { MAX_FRAME_BYTES } from '@battle/shared';
 import { Announcer } from '../components/Announcer.jsx';
-import { ConnectionBadge, MuteButton, PausedOverlay } from '../components/Hud.jsx';
+import { ConnectionBadge, PausedOverlay } from '../components/Hud.jsx';
+import { AudioControls } from '../components/AudioControls.jsx';
 import { useAnimationClock } from '../hooks/useNow.js';
 import { useMatchSound } from '../hooks/useMatchSound.js';
 import { useWakeLock } from '../hooks/useWakeLock.js';
@@ -81,7 +82,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
         <span className="room__phase eyebrow">{tr(phaseLabel(match))}</span>
         <div className="room__right">
           <ConnectionBadge status={snapshot.status} latencyMs={snapshot.latencyMs} />
-          <MuteButton />
+          <AudioControls />
           <button
             className="btn btn--ghost room__leave"
             onClick={onLeave}

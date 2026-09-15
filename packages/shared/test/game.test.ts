@@ -4,7 +4,6 @@ import { getChallenge } from '../src/challenges.js';
 import {
   DEFAULT_SETTINGS,
   MATCH_LENGTHS,
-  PHOTO_FINISH_MS,
   challengeInRoom,
   countsForRating,
   createMatch,
@@ -168,7 +167,7 @@ describe('auto rounds', () => {
     expect(live.round?.startedAt).toBe(start.phaseEndsAt);
   });
 
-  it('holds the round open briefly after a winning answer, then scores it', () => {
+  it('keeps the full answer window open so a slower, better answer can win', () => {
     let s = intoChallenge(seatedMatch(0));
     const startedAt = s.round!.startedAt;
     s = apply(
@@ -184,7 +183,7 @@ describe('auto rounds', () => {
     );
     // Still open, so an opponent half a second behind is not erased.
     expect(s.phase).toBe('challenge');
-    expect(s.phaseEndsAt).toBe(startedAt + 2_400 + PHOTO_FINISH_MS);
+    expect(s.phaseEndsAt).toBe(startedAt + 20_000);
 
     s = tick(s, ctxAt(s.phaseEndsAt));
     expect(s.phase).toBe('roundResult');
@@ -353,345 +352,41 @@ describe('auto rounds', () => {
   });
 });
 
-describe('a round that falls back to peer judging mid-way', () => {
-  // The server downgrades when it cannot read *a* frame. The frames it did
-  // read are already settled, and nothing about the fallback should re-open
-  // them.
-  const autoPool = [AUTO];
-
-  function downgraded(order: 'cameraFirst' | 'cameraSecond') {
-    let s = intoChallenge(seatedMatch(0, autoPool), autoPool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    const read = { matched: false, confidence: 0.9, reason: 'Not detected' };
-
-    if (order === 'cameraFirst') {
-      s = apply(
-        s,
-        { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: read },
-        ctxAt(started + 1_000, autoPool),
-      );
-      s = apply(
-        s,
-        { type: 'downgradeJudging', roundId, reason: 'unreadable' },
-        ctxAt(started + 1_500, autoPool),
-      );
-      s = apply(
-        s,
-        { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-        ctxAt(started + 2_000, autoPool),
-      );
-    } else {
-      s = apply(
-        s,
-        { type: 'downgradeJudging', roundId, reason: 'unreadable' },
-        ctxAt(started + 500, autoPool),
-      );
-      s = apply(
-        s,
-        { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-        ctxAt(started + 2_000, autoPool),
-      );
-      s = apply(
-        s,
-        { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-        ctxAt(started + 2_500, autoPool),
-      );
+describe('automatic judging only', () => {
+  it('replaces an unjudgeable deck with camera tasks', () => {
+    const state = seatedMatch(0, [PEER]);
+    expect(state.round?.judging).toBe('auto');
+    expect(state.round?.challengeId).not.toBe(PEER.id);
+  });
+  it.each([true, false])('never accepts player votes (approve=%s)', (approve) => {
+    const state = intoChallenge(seatedMatch(0));
+    const original = structuredClone(state);
+    expect(expectError(state, { type: 'vote', playerId: 'p1', targetId: 'p2',
+      roundId: state.round!.id, approve }, ctxAt(4000))).toBe('already-decided');
+    expect(state).toEqual(original);
+  });
+  it('skips unverifiable evidence without approving it by default', () => {
+    let state = intoChallenge(seatedMatch(0));
+    state = apply(state, { type: 'downgradeJudging', roundId: state.round!.id, reason: 'no-baseline' }, ctxAt(4000));
+    state = apply(state, { type: 'submit', playerId: 'p1', roundId: state.round!.id, evidenceId: 'x' }, ctxAt(5000));
+    state = tick(state, ctxAt(state.phaseEndsAt));
+    expect(state.round?.judging).toBe('auto');
+    expect(state.round?.outcome?.winnerId).toBeNull();
+    expect(state.round?.outcome?.reason).toBe('verification-unavailable');
+    expect(state.players.p1?.score).toBe(0);
+  });
+  it('awards higher quality even when its photo arrives later', () => {
+    let state = intoChallenge(seatedMatch(0));
+    const roundId = state.round!.id;
+    const start = state.round!.startedAt;
+    for (const [playerId, score, elapsed] of [['p1', 71, 1000], ['p2', 93, 7000]] as const) {
+      state = apply(state, { type: 'submit', playerId, roundId, evidenceId: playerId,
+        auto: { matched: true, confidence: 0.9, reason: 'Colour found.',
+          evaluation: { score, criterion: 'color', label: 'Object', color: 'red' } } }, ctxAt(start + elapsed));
     }
-    return { state: s, roundId, started };
-  }
-
-  it('does not let a vote overturn an answer the camera already rejected', () => {
-    const { state, roundId, started } = downgraded('cameraFirst');
-    // p1's answer was read and failed. p2 approving it must not resurrect it.
-    const s = apply(
-      state,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
-      ctxAt(started + 3_000, autoPool),
-    );
-
-    expect(s.round?.outcome?.perPlayer.p1?.valid).toBe(false);
-    expect(s.round?.outcome?.winnerId).toBe('p2');
-  });
-
-  it('refuses a verdict on an answer the camera already settled', () => {
-    const { state, roundId, started } = downgraded('cameraFirst');
-    expect(state.phase).toBe('judging');
-    expect(
-      expectError(
-        state,
-        { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
-        ctxAt(started + 3_000, autoPool),
-      ),
-    ).toBe('already-decided');
-  });
-
-  it('closes as soon as the one open answer has its verdict', () => {
-    // Only p2's frame is unread, so only p1 has anybody to judge.
-    const { state, roundId, started } = downgraded('cameraFirst');
-    const s = apply(
-      state,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
-      ctxAt(started + 3_000, autoPool),
-    );
-    expect(s.phase).toBe('roundResult');
-  });
-
-  it('judges both answers when the fallback happened before either was read', () => {
-    // Nothing was verified, so this is an ordinary peer round for both of them
-    // -- including the rule that a rejection counts for nobody.
-    const { state, roundId, started } = downgraded('cameraSecond');
-    expect(state.phase).toBe('judging');
-
-    let s = apply(
-      state,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false },
-      ctxAt(started + 3_000, autoPool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true },
-      ctxAt(started + 3_100, autoPool),
-    );
-
-    expect(s.round?.outcome?.reason).toBe('vetoed');
-    expect(s.round?.outcome?.winnerId).toBeNull();
-  });
-});
-
-describe('peer rounds', () => {
-  const pool = [PEER];
-
-  it('opens judging once both answers are in', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    expect(s.round?.judging).toBe('peer');
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    expect(s.phase).toBe('challenge');
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    expect(s.phase).toBe('judging');
-  });
-
-  it('lets the faster approved answer take the round', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
-      ctxAt(started + 3_000, pool),
-    );
-    expect(s.phase).toBe('judging');
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: true },
-      ctxAt(started + 3_500, pool),
-    );
-    expect(s.phase).toBe('roundResult');
-    expect(s.round?.outcome?.winnerId).toBe('p1');
-    expect(s.round?.outcome?.reason).toBe('faster');
-  });
-
-  it('gives a rejection no winner, so voting no never wins the round', () => {
-    // The whole point: p2 was slower and would have lost the race, and says no.
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
-      ctxAt(started + 3_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
-      ctxAt(started + 3_100, pool),
-    );
-
-    expect(s.round?.outcome?.winnerId).toBeNull();
-    expect(s.round?.outcome?.reason).toBe('vetoed');
-    expect(s.players.p2?.score).toBe(0);
-    expect(s.players.p1?.score).toBe(0);
-    expect(s.round?.outcome?.perPlayer.p1?.note).toContain('Rejected by your opponent');
-    expect(s.round?.outcome?.perPlayer.p2?.note).toContain('You said no');
-  });
-
-  it('still credits the rejector a valid answer, it just wins them nothing', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
-      ctxAt(started + 3_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true },
-      ctxAt(started + 3_100, pool),
-    );
-
-    expect(s.round?.outcome?.perPlayer.p2?.valid).toBe(true);
-    expect(s.players.p2?.validAnswers).toBe(1);
-    expect(s.players.p2?.score).toBe(0);
-  });
-
-  it('voids the round when both of them say no', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p2', roundId, targetId: 'p1', approve: false },
-      ctxAt(started + 3_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false },
-      ctxAt(started + 3_100, pool),
-    );
-
-    expect(s.round?.outcome?.winnerId).toBeNull();
-    expect(s.round?.outcome?.reason).toBe('vetoed');
-  });
-
-  it('counts an abstention as approval so refusing to judge is never a tactic', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    s = tick(s, ctxAt(s.phaseEndsAt, pool));
-    expect(s.phase).toBe('roundResult');
-    expect(s.round?.outcome?.winnerId).toBe('p1');
-    expect(s.round?.outcome?.perPlayer.p2?.note).toBe('Unjudged — counted as good');
-  });
-
-  it('skips judging entirely when nobody answered', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    s = tick(s, ctxAt(s.phaseEndsAt, pool));
-    expect(s.phase).toBe('roundResult');
-    expect(s.round?.outcome?.reason).toBe('no-submissions');
-  });
-
-  it('refuses self-judging', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    expect(s.phase).toBe('judging');
-    const ctx = ctxAt(started + 5_000, pool);
-    expect(
-      expectError(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p1', approve: true }, ctx),
-    ).toBe('cannot-vote-for-self');
-  });
-
-  it('settles without judging when only one of them answered', () => {
-    // Nobody is left who could cast a verdict: the person who sat the round out
-    // does not get a say, so there is nothing to wait fifteen seconds for.
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = tick(s, ctxAt(s.phaseEndsAt, pool));
-
-    expect(s.phase).toBe('roundResult');
-    expect(s.round?.outcome?.winnerId).toBe('p1');
-  });
-
-  it('refuses a second vote on the same submission', () => {
-    let s = intoChallenge(seatedMatch(0, pool), pool);
-    const roundId = s.round!.id;
-    const started = s.round!.startedAt;
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
-      ctxAt(started + 1_000, pool),
-    );
-    s = apply(
-      s,
-      { type: 'submit', playerId: 'p2', roundId, evidenceId: 'b' },
-      ctxAt(started + 2_000, pool),
-    );
-    const ctx = ctxAt(started + 3_000, pool);
-    s = apply(s, { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: true }, ctx);
-    expect(
-      expectError(
-        s,
-        { type: 'vote', playerId: 'p1', roundId, targetId: 'p2', approve: false },
-        ctx,
-      ),
-    ).toBe('already-voted');
+    expect(state.round?.outcome?.winnerId).toBe('p2');
+    expect(state.round?.outcome?.reason).toBe('better-answer');
+    expect(state.round?.outcome?.perPlayer.p2?.evaluation?.score).toBe(93);
   });
 });
 
@@ -733,14 +428,14 @@ describe('match lifecycle', () => {
   });
 
   it('does not repeat a challenge inside one match', () => {
-    let s = seatedMatch(0, [AUTO, AUTO_2, PEER]);
+    let s = seatedMatch(0, [AUTO, AUTO_2, { ...AUTO, id: 'test-auto-3' }]);
     const seen: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const live = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, PEER]));
+      const live = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, { ...AUTO, id: 'test-auto-3' }]));
       seen.push(live.round!.challengeId);
-      s = tick(live, ctxAt(live.phaseEndsAt, [AUTO, AUTO_2, PEER]));
-      if (s.phase === 'judging') s = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, PEER]));
-      s = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, PEER]));
+      s = tick(live, ctxAt(live.phaseEndsAt, [AUTO, AUTO_2, { ...AUTO, id: 'test-auto-3' }]));
+      if (s.phase === 'judging') s = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, { ...AUTO, id: 'test-auto-3' }]));
+      s = tick(s, ctxAt(s.phaseEndsAt, [AUTO, AUTO_2, { ...AUTO, id: 'test-auto-3' }]));
     }
     expect(new Set(seen).size).toBe(3);
   });
@@ -998,8 +693,14 @@ describe('the series', () => {
 });
 
 describe('prompts the players write themselves', () => {
+  const customCtx = (now: number, pool?: readonly Challenge[]): EngineContext => ({ ...ctxAt(now, pool), aiAvailable: true });
+  it('requires an AI referee for custom prompts', () => {
+    let state = createMatch('ABCDE', 0);
+    state = apply(state, { type: 'join', playerId: 'p1', name: 'Ada' }, ctxAt(0));
+    expect(expectError(state, { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A MUG', id: 'c1' }, ctxAt(0))).toBe('ai-unavailable');
+  });
   function add(state: MatchState, playerId: string, prompt: string, id: string): MatchState {
-    return apply(state, { type: 'addChallenge', playerId, prompt, id }, ctxAt(100));
+    return apply(state, { type: 'addChallenge', playerId, prompt, id }, customCtx(100));
   }
 
   it('starts with an empty deck', () => {
@@ -1008,7 +709,7 @@ describe('prompts the players write themselves', () => {
 
   it('accepts a prompt in the lobby and records who wrote it', () => {
     let s = createMatch('ABCDE', 0);
-    const ctx = ctxAt(0);
+    const ctx = customCtx(0);
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
     s = add(s, 'p1', 'SHOW YOUR OLDEST MUG', 'c1');
     expect(s.customChallenges).toEqual([
@@ -1022,20 +723,20 @@ describe('prompts the players write themselves', () => {
       expectError(
         s,
         { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c1' },
-        ctxAt(5_000),
+        customCtx(5_000),
       ),
     ).toBe('wrong-phase');
   });
 
   it('refuses a duplicate and a full deck', () => {
     let s = createMatch('ABCDE', 0);
-    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctxAt(0));
+    s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, customCtx(0));
     s = add(s, 'p1', 'SHOW A CAT', 'c1');
     expect(
       expectError(
         s,
         { type: 'addChallenge', playerId: 'p1', prompt: 'SHOW A CAT', id: 'c2' },
-        ctxAt(0),
+        customCtx(0),
       ),
     ).toBe('duplicate-prompt');
 
@@ -1044,14 +745,14 @@ describe('prompts the players write themselves', () => {
       expectError(
         s,
         { type: 'addChallenge', playerId: 'p1', prompt: 'ONE TOO MANY', id: 'cx' },
-        ctxAt(0),
+        customCtx(0),
       ),
     ).toBe('deck-full');
   });
 
   it('gives each player their own allowance', () => {
     let s = createMatch('ABCDE', 0);
-    const ctx = ctxAt(0);
+    const ctx = customCtx(0);
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
     s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
     for (let i = 0; i < 4; i++) s = add(s, 'p1', `ADA PROMPT ${i}`, `a${i}`);
@@ -1068,7 +769,7 @@ describe('prompts the players write themselves', () => {
     let s = seatedMatch(0, [AUTO, AUTO_2]);
     // Back to the lobby so the deck can be edited.
     s = createMatch('ABCDE', 0);
-    const ctx = ctxAt(0);
+    const ctx = customCtx(0);
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
     s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
     s = add(s, 'p1', 'SHOW A CAT', 'c1');
@@ -1085,7 +786,7 @@ describe('prompts the players write themselves', () => {
 
   it('actually draws them into rounds', () => {
     let s = createMatch('ABCDE', 0);
-    const ctx = ctxAt(0, [AUTO]);
+    const ctx = customCtx(0, [AUTO]);
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
     s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
     s = add(s, 'p1', 'SHOW YOUR OLDEST MUG', 'c1');
@@ -1102,11 +803,11 @@ describe('prompts the players write themselves', () => {
     const pool = [AUTO];
     const seen: string[] = [];
     for (let i = 0; i < 2; i++) {
-      s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      s = tick(s, customCtx(s.phaseEndsAt, pool));
       seen.push(s.round!.challengeId);
-      s = tick(s, ctxAt(s.phaseEndsAt, pool));
-      if (s.phase === 'judging') s = tick(s, ctxAt(s.phaseEndsAt, pool));
-      s = tick(s, ctxAt(s.phaseEndsAt, pool));
+      s = tick(s, customCtx(s.phaseEndsAt, pool));
+      if (s.phase === 'judging') s = tick(s, customCtx(s.phaseEndsAt, pool));
+      s = tick(s, customCtx(s.phaseEndsAt, pool));
     }
     expect(seen).toContain('c1');
     expect(challengeInRoom(s, 'c1')?.judging).toBe('peer');
@@ -1115,7 +816,7 @@ describe('prompts the players write themselves', () => {
 
   it('takes a player’s prompts with them when they leave', () => {
     let s = createMatch('ABCDE', 0);
-    const ctx = ctxAt(0);
+    const ctx = customCtx(0);
     s = apply(s, { type: 'join', playerId: 'p1', name: 'Ada' }, ctx);
     s = apply(s, { type: 'join', playerId: 'p2', name: 'Grace' }, ctx);
     s = add(s, 'p1', 'ADA WROTE THIS', 'c1');
@@ -1318,7 +1019,7 @@ describe('passing on a round', () => {
 
     s = apply(
       s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: true, confidence: 1, reason: 'Verified' } },
       ctxAt(startedAt + 1_000, pool),
     );
     s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_500, pool));
@@ -1337,7 +1038,7 @@ describe('passing on a round', () => {
     s = apply(s, { type: 'pass', playerId: 'p2', roundId }, ctxAt(startedAt + 1_000, pool));
     s = apply(
       s,
-      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a' },
+      { type: 'submit', playerId: 'p1', roundId, evidenceId: 'a', auto: { matched: true, confidence: 1, reason: 'Verified' } },
       ctxAt(startedAt + 1_500, pool),
     );
 
@@ -1391,9 +1092,9 @@ describe('a round an AI referee takes', () => {
     expect(s.round?.judging).toBe('ai');
   });
 
-  it('leaves it with the opponent when no referee is configured', () => {
+  it('deals a camera task when no referee is configured', () => {
     const s = seated(false);
-    expect(s.round?.judging).toBe('peer');
+    expect(s.round?.judging).toBe('auto');
   });
 
   it('waits for the referee rather than offering a vote', () => {
@@ -1408,7 +1109,7 @@ describe('a round an AI referee takes', () => {
         { type: 'vote', playerId: 'p1', roundId: s.round!.id, targetId: 'p2', approve: false },
         ctxAi(s.round!.startedAt + 3_000),
       ),
-    ).toBe('ai-judging');
+    ).toBe('already-decided');
   });
 
   it('settles the round on the verdicts, with speed breaking the tie', () => {
@@ -1453,26 +1154,13 @@ describe('a round an AI referee takes', () => {
     expect(settled.round?.outcome?.perPlayer.p1?.valid).toBe(false);
   });
 
-  it('hands the round back to the opponent when the referee gives up', () => {
-    const s = bothAnswer(seated());
-    const handed = apply(
-      s,
-      { type: 'aiFinished', roundId: s.round!.id, verdicts: null },
-      ctxAi(s.round!.startedAt + 4_000),
-    );
-
-    expect(handed.phase).toBe('judging');
-    expect(handed.round?.judging).toBe('peer');
-    expect(handed.round?.aiPending).toBe(false);
-    // With a fresh window to judge in, not what is left of one spent waiting.
-    expect(handed.phaseEndsAt).toBe(s.round!.startedAt + 4_000 + handed.settings.judgingMs);
-
-    const voted = apply(
-      handed,
-      { type: 'vote', playerId: 'p1', roundId: handed.round!.id, targetId: 'p2', approve: true },
-      ctxAi(s.round!.startedAt + 5_000),
-    );
-    expect(voted.round?.submissions.p2?.peer?.approve).toBe(true);
+  it('skips an AI outage instead of asking players to judge', () => {
+    const state = bothAnswer(seated());
+    const settled = apply(state, { type: 'aiFinished', roundId: state.round!.id, verdicts: null }, ctxAi(state.round!.startedAt + 4000));
+    expect(settled.phase).toBe('roundResult');
+    expect(settled.round?.judging).toBe('ai');
+    expect(settled.round?.outcome?.reason).toBe('verification-unavailable');
+    expect(settled.round?.outcome?.winnerId).toBeNull();
   });
 
   it('does not punish anybody when the referee never answers at all', () => {

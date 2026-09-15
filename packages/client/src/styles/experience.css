@@ -1,0 +1,155 @@
+/* A single photo, two honest crops: the original players and their answers. */
+.demo-players > div { isolation: isolate; }
+.demo-players .demo-you img,
+.demo-players .demo-rival img {
+  position: absolute;
+  top: 0;
+  width: 200%;
+  max-width: none;
+  height: 100%;
+  object-fit: cover;
+  transform: none;
+  filter: none;
+}
+.demo-players .demo-you img { left: 0; object-position: left center; }
+.demo-players .demo-rival img { right: 0; object-position: right center; }
+.demo-players > div > span { color: #fff; }
+.demo-players .demo-rival > span b { color: #e9edf1; }
+.demo-players .demo-you > span b { color: #d5fa7c; }
+.audio-controls, .music-control { display: inline-flex; align-items: center; gap: 6px; }
+.audio-enable { gap: 7px; min-height: 38px; padding: 0 12px; font-size: 12px; white-space: nowrap; }
+.audio-enable, .music-control button[aria-pressed='true'] { border-color: var(--line-strong); color: var(--lime); }
+.music-control { position: relative; }
+.music-control--expanded { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 14px; }
+.music-volume { display: grid; grid-template-columns: auto minmax(90px, 180px) 4ch; align-items: center; gap: 12px; font-size: 12px; color: var(--text-dim); }
+.music-volume input { width: 100%; min-height: 36px; accent-color: var(--lime); }
+.music-volume output { font-variant-numeric: tabular-nums; }
+.music-error { position: absolute; top: 100%; right: 0; width: 190px; padding: 10px; background: var(--ink-1); border: 1px solid var(--line); color: var(--text); font-size: 12px; z-index: 30; }
+
+@media (min-width: 1100px) {
+  /* Wider editorial composition, with the actual duel as the main visual. */
+  .landing, .public-nav, .shell:not(.shell--game) > .foot { max-width: 1560px; }
+  .landing-hero { grid-template-columns: minmax(320px, .85fr) minmax(0, 1.15fr); gap: clamp(40px, 5vw, 84px); padding: 52px 52px 64px; min-height: min(760px, calc(100svh - 86px)); }
+  .hero-copy { max-width: 540px; }
+  .hero-copy h1 { font-size: clamp(48px, 4.8vw, 72px); letter-spacing: -.055em; line-height: 1.04; }
+  html[lang='ru'] .hero-copy h1 { font-size: clamp(42px, 4.2vw, 64px); letter-spacing: -.045em; }
+  .hero-copy > p { max-width: 35ch; font-size: 16px; line-height: 1.6; }
+  .hero-actions { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .hero-actions > .btn { min-width: 220px; min-height: 54px; justify-content: space-between; }
+  .hero-facts { margin-top: 26px; }
+  .demo-arena { transform: none; border-radius: 20px; box-shadow: 0 24px 64px #00000016; }
+  .demo-top { padding: 17px 24px; }
+  .demo-task { padding: 23px 24px; }
+  .demo-task h2 { font-size: clamp(26px, 2.3vw, 36px); }
+  .demo-players { gap: 12px; margin: 0 14px; }
+  .demo-players > div { height: auto; aspect-ratio: 3 / 4; max-height: 365px; border-radius: 12px; }
+  .demo-players > div > span { padding: 36px 16px 16px; gap: 7px; font-size: 11px; }
+  .demo-players > div > span b { font-size: 12px; }
+  .demo-players .versus { width: 44px; height: 44px; font-size: 13px; border: 4px solid var(--ink-1); }
+  .demo-result { padding: 19px 24px; }
+  .landing-ribbon { margin: 0 52px; }
+  .landing-section { padding: 64px 52px; }
+  .landing-progression { margin: 0 52px; padding: 42px; }
+  .how-grid { gap: 0; border-block: 1px solid var(--line); }
+  .how-grid article { border: 0; border-right: 1px solid var(--line); border-radius: 0; background: transparent; padding: 30px; }
+  .how-grid article:last-child { border-right: 0; }
+  .how-grid article p { max-width: 32ch; }
+  .page { max-width: 1500px; padding: 34px 48px 48px; }
+  .page--settings { max-width: 1000px; }
+  .page-heading h1, .page__title { font-size: 34px; letter-spacing: -.045em; }
+  .home-grid { grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; }
+  .battle-banner { min-height: 350px; padding: 36px; }
+  .battle-banner h2 { font-size: clamp(40px, 4vw, 60px); line-height: 1; }
+  .battle-banner__art { width: 43%; top: 25px; bottom: 20px; right: 0; }
+  .battle-banner__art .mug-art { max-height: 300px; }
+  .rank-card { justify-content: center; }
+  .rank-card .card-heading { width: 100%; }
+  .home-stats { padding-block: 20px; }
+  .home-secondary { grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; }
+  .page.page--play { max-width: 1220px; display: grid; grid-template-columns: 1.08fr 1fr; align-content: start; column-gap: 24px; }
+  .page--play > :not(.option) { grid-column: 1 / -1; }
+  .page--play > .option { margin-bottom: 0; padding: 32px; min-height: 270px; display: flex; flex-direction: column; }
+  .page--play .option > .btn, .page--play .option__actions { margin-top: auto; }
+  .page--play .option__title { font-size: 25px; }
+  .page--play .option__body { max-width: 36ch; }
+  .page--play .mode-picker { max-width: 540px; }
+
+  /* Camera stage above a control dock; scores sit next to the actual action. */
+  .room { min-height: 100dvh; height: auto; }
+  .room__bar { height: 54px; padding-inline: max(28px, calc((100vw - 1480px) / 2)); }
+  .room .arena { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, .48fr); grid-template-areas: 'prompt vision' 'stages stages' 'actions scores'; grid-template-rows: auto minmax(300px, 1fr) auto; width: min(100%, 1536px); min-height: calc(100dvh - 54px); margin: auto; padding: 20px 28px; gap: 16px; }
+  .room .arena > .prompt { grid-area: prompt; background: transparent; border: 0; padding: 0; }
+  .room .arena .prompt__text { font-size: clamp(28px, 2.5vw, 40px); text-shadow: none; text-transform: none; }
+  .room .arena .party-instruction { text-align: left; }
+  .room .arena > .vision-controls { grid-area: vision; align-self: end; padding-bottom: 3px; }
+  .room .arena > .arena__stages { grid-area: stages; gap: 20px; min-height: 300px; height: clamp(300px, calc(100dvh - 310px), 540px); }
+  .room .arena .stage { border-radius: 14px; }
+  .room .arena .stage__bar { min-height: 42px; padding-inline: 16px; }
+  .room .arena > .actions { grid-area: actions; min-height: 86px; padding: 14px 20px; }
+  .room .arena > .scorestrip { grid-area: scores; align-self: stretch; gap: 8px; }
+  .room .arena .scorestrip__side { flex-wrap: wrap; justify-content: space-between; padding: 14px; gap: 6px; min-width: 0; }
+  .room .arena .scorestrip__score { font-size: 30px; }
+  .room .arena .scorestrip__pips { order: 3; width: 100%; margin: 0; }
+  .room .arena .scorestrip__name { max-width: calc(100% - 36px); }
+  .room .actions--result { display: grid; grid-template-columns: 1fr 1.3fr; gap: 16px; }
+  .room .actions--result .actions__headline { font-size: 27px; }
+}
+
+@media (min-width: 1550px) {
+  .shell--game { padding-left: 188px; }
+  .game-rail { width: 188px; align-items: stretch; padding-inline: 16px; }
+  .game-rail .wordmark { gap: 8px; font-size: 17px; }
+  .game-rail .wordmark > span:last-child { display: inline; }
+  .game-rail .wordmark__mark { width: 30px; height: 34px; }
+  .game-rail nav { margin-top: 48px; gap: 10px; }
+  .game-rail .rail-link { flex-direction: row; justify-content: flex-start; gap: 14px; padding-inline: 15px; min-height: 52px; font-size: 12px; }
+  .game-rail .rail-link.is-current::before { left: -16px; }
+  .game-rail .rail-caption { text-align: left; padding-left: 15px; }
+}
+
+/* Portrait phones: preserve the full 4:3 camera field instead of squeezing
+   two feeds into the leftover viewport height. The shutter stays reachable. */
+@media (max-width: 760px) and (orientation: portrait) {
+  .room { height: auto; min-height: 100dvh; }
+  .room__bar { min-height: 48px; height: auto; gap: 8px; padding: 4px 10px; }
+  .room__phase { display: none; }
+  .room__right { gap: 7px; }
+  .room__leave { padding-inline: 10px; }
+  .room .arena { flex: none; min-height: calc(100dvh - 48px); padding: 8px; gap: 8px; }
+  .room .arena > .prompt { padding: 10px 12px; gap: 5px; }
+  .room .prompt__text { font-size: 23px; line-height: 1.15; text-transform: none; text-shadow: none; }
+  .room .prompt__meta { gap: 8px; }
+  .room .prompt__meta .eyebrow { font-size: 10px; }
+  .room .arena > .vision-controls { min-height: 0; }
+  .room .arena > .arena__stages { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 8px; }
+  .room .arena__stages > .stage { position: relative; aspect-ratio: 4 / 3; min-height: 0; }
+  .room .arena__stages .stage__bar { position: absolute; bottom: 0; left: 0; right: 0; min-height: 28px; padding: 5px 10px; border: 0; color: white; background: #10131ce6; }
+  .room .arena > .actions { position: sticky; bottom: max(6px, env(safe-area-inset-bottom)); z-index: 9; min-height: 64px; padding: 9px; box-shadow: 0 4px 20px #0003; }
+  .room .actions__row { width: 100%; display: flex; gap: 8px; }
+  .room .actions__row .lockin { flex: 1; width: auto; min-width: 0; min-height: 48px; }
+  .room .actions__key { display: none; }
+  .room .arena > .scorestrip { order: -1; }
+  .room .scorestrip__side { padding: 5px 8px; }
+  .room .scorestrip__name { font-size: 11px; }
+  .room .scorestrip__score { font-size: 20px; }
+  .room .scorestrip__you { display: none; }
+  .room .round-comparison__value { font-size: 18px; }
+  .room .actions--result .actions__headline { font-size: 23px; }
+}
+@media (max-width: 1099px) and (orientation: landscape) and (max-height: 620px) {
+  .room { height: auto; min-height: 100dvh; }
+  .room .arena__stages { flex: none; min-height: 230px; }
+  .room .prompt__text { font-size: 24px; }
+  .room .actions { min-height: 60px; position: sticky; bottom: max(4px, env(safe-area-inset-bottom)); z-index: 9; }
+}
+@media (max-width: 760px) {
+  .public-nav { flex-wrap: wrap; height: auto; min-height: 70px; row-gap: 8px; padding-block: 12px; }
+  .public-nav > div { gap: 10px; flex-wrap: wrap; }
+  .public-nav .audio-enable { padding-inline: 9px; font-size: 11px; }
+  .audio-controls .icon-button { width: 34px; height: 36px; }
+}
+@media (max-width: 400px) {
+  .public-nav > div { width: 100%; justify-content: space-between; }
+  .music-volume { grid-template-columns: 1fr 4ch; }
+  .music-volume > span { grid-column: 1 / -1; }
+}

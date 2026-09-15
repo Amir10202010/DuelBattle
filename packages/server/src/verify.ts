@@ -17,6 +17,30 @@ export class DecodeError extends Error {}
 
 const DATA_URL_PREFIX = 'data:image/jpeg;base64,';
 
+/** A server-selected crop helps the photo judge see small objects. Full evidence
+ * still accompanies it; client-provided boxes never enter this path. */
+export function cropEvidence(image: string, box: readonly number[]): string | undefined {
+  if (box.length !== 4 || box.some((n) => !Number.isFinite(n) || n < 0 || n > 1) ||
+    box[2]! <= box[0]! || box[3]! <= box[1]!) return undefined;
+  try {
+    const decoded = jpeg.decode(Buffer.from(image.slice(DATA_URL_PREFIX.length), 'base64'), {
+      useTArray: true, maxMemoryUsageInMB: 64,
+    });
+    if (decoded.width * decoded.height > MAX_DECODED_PIXELS) return undefined;
+    const pad = 0.05;
+    const left = Math.floor(Math.max(0, box[0]! - pad) * decoded.width);
+    const top = Math.floor(Math.max(0, box[1]! - pad) * decoded.height);
+    const width = Math.ceil(Math.min(1, box[2]! + pad) * decoded.width) - left;
+    const height = Math.ceil(Math.min(1, box[3]! + pad) * decoded.height) - top;
+    const data = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      const offset = ((top + y) * decoded.width + left) * 4;
+      data.set(decoded.data.subarray(offset, offset + width * 4), y * width * 4);
+    }
+    return DATA_URL_PREFIX + jpeg.encode({ width, height, data }, 85).data.toString('base64');
+  } catch { return undefined; }
+}
+
 /**
  * Decodes a client snapshot and immediately reduces it to the shared analysis
  * resolution, so nothing downstream ever holds a full-size frame.
@@ -67,8 +91,7 @@ export function verifySubmission(
 
   try {
     const result = runDetector(challenge.detector, baseline, submitted);
-    // Conditions the camera cannot settle either way go to the opponent, the
-    // same as a round with no baseline.
+    // Unreadable evidence is never turned into a player vote.
     if (result.undecidable) return { kind: 'undecidable', reason: result.reason };
     return {
       kind: 'verdict',
@@ -76,6 +99,13 @@ export function verifySubmission(
         matched: result.matched,
         confidence: result.confidence,
         reason: result.reason,
+        evaluation: {
+          score: result.matched ? Math.min(100, Math.max(0, Math.round(result.score ?? 100))) : 0,
+          criterion: challenge.detector.kind === 'color' ? 'color' : 'task',
+          label: 'Shown object', labelRu: 'Предмет',
+          ...(challenge.detector.kind === 'color' ? { color: challenge.detector.target } : {}),
+          ...(result.region ? { region: result.region.box } : {}),
+        },
       },
     };
   } catch (err) {

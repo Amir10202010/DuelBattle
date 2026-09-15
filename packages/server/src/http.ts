@@ -20,6 +20,9 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.wasm': 'application/wasm',
+  '.task': 'application/octet-stream',
+  '.tflite': 'application/octet-stream',
   '.webmanifest': 'application/manifest+json',
 };
 
@@ -51,7 +54,8 @@ const LOOKUP_LIMIT: LimiterOptions = { burst: 20, refillPerSec: 0.5 };
 const DOCUMENT_HEADERS: Record<string, string> = {
   'content-security-policy': [
     "default-src 'self'",
-    "script-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "worker-src 'self'",
     // React writes inline style attributes for the timer and detection bars.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
@@ -187,6 +191,10 @@ async function serveStatic(
   let filePath = requested ?? join(root, 'index.html');
 
   let stat = await statOrNull(filePath);
+  if ((!stat || stat.isDirectory()) && pathname.startsWith('/vision-runtime/')) {
+    json(res, 404, { error: 'vision-asset-missing' });
+    return;
+  }
   if (!stat || stat.isDirectory()) {
     filePath = join(root, 'index.html');
     stat = await statOrNull(filePath);
@@ -202,7 +210,7 @@ async function serveStatic(
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'content-length': stat.size,
     // Vite fingerprints assets, so everything but the entry document is immutable.
-    'cache-control': isEntry
+    'cache-control': isEntry || pathname === '/vision-runtime/tracker.js'
       ? 'no-cache'
       : pathname.startsWith('/assets/')
         ? 'public, max-age=31536000, immutable'

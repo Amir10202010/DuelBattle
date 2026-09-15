@@ -148,4 +148,35 @@ describe('sound board', () => {
       sound.play('go');
     }).not.toThrow();
   });
+
+  it('plays the first cue after an asynchronous mobile audio resume', async () => {
+    const sound = await freshBoard();
+    sound.setMuted(false);
+    sound.unlock();
+    const ctx = FakeAudioContext.instances[0]!;
+    ctx.state = 'suspended';
+    let finish!: () => void;
+    ctx.resume = () => new Promise<void>((resolve) => {
+      finish = () => { ctx.state = 'running'; resolve(); };
+    });
+    sound.play('roundWin');
+    expect(ctx.oscillators).toHaveLength(0);
+    finish();
+    await Promise.resolve(); await Promise.resolve();
+    expect(ctx.oscillators.length).toBeGreaterThan(0);
+  });
+
+  it('does not replay a queued cue after the user mutes', async () => {
+    const sound = await freshBoard();
+    sound.setMuted(false); sound.unlock();
+    const ctx = FakeAudioContext.instances[0]!;
+    ctx.state = 'suspended';
+    let finish!: () => void;
+    ctx.resume = () => new Promise<void>((resolve) => {
+      finish = () => { ctx.state = 'running'; resolve(); };
+    });
+    sound.play('roundWin'); sound.setMuted(true); finish();
+    await Promise.resolve(); await Promise.resolve();
+    expect(ctx.oscillators).toHaveLength(0);
+  });
 });

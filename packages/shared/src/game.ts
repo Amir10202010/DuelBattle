@@ -28,19 +28,8 @@ export interface MatchSettings {
   disconnectGraceMs: number;
 }
 
-/**
- * How long the round stays open after someone wins it.
- *
- * Ending an auto round the instant a valid answer lands means an opponent who
- * locked in fifty milliseconds later is recorded as never having answered, and
- * told they ran out of time — in the closest, best moment the game has. This
- * window lets both answers land so the round is decided on elapsed time and the
- * loser is told they were slower, which is what actually happened.
- */
 /** How many recent prompts a room remembers between matches. */
 const RECENT_CHALLENGE_MEMORY = 20;
-
-export const PHOTO_FINISH_MS = 500;
 
 /**
  * Match lengths the lobby offers, with the round cap each implies.
@@ -60,8 +49,8 @@ export const DEFAULT_SETTINGS: MatchSettings = {
   maxRounds: 9,
   suddenDeathRounds: 4,
   countdownMs: 3200,
-  judgingMs: 15_000,
-  roundResultMs: 3_200,
+  judgingMs: 25_000,
+  roundResultMs: 5_000,
   disconnectGraceMs: 45_000,
 };
 
@@ -80,7 +69,18 @@ export interface PlayerState {
   rematchVote: boolean;
 }
 
+export interface AnswerEvaluation {
+  score: number;
+  criterion: 'color' | 'task';
+  label: string;
+  labelRu?: string;
+  reasonRu?: string;
+  color?: string;
+  region?: [number, number, number, number];
+}
+
 export interface AutoVerdict {
+  evaluation?: AnswerEvaluation;
   matched: boolean;
   confidence: number;
   reason: string;
@@ -104,6 +104,7 @@ export interface Submission {
 }
 
 export type RoundReason =
+  | 'better-answer'
   | 'faster'
   | 'only-valid'
   | 'both-failed'
@@ -114,6 +115,7 @@ export type RoundReason =
   | 'vetoed';
 
 export interface PlayerRoundResult {
+  evaluation?: AnswerEvaluation;
   valid: boolean;
   elapsedMs: number | null;
   note: string;
@@ -130,14 +132,7 @@ export interface RoundOutcome {
   perPlayer: Record<PlayerId, PlayerRoundResult>;
 }
 
-/**
- * Who is deciding this round.
- *
- * Wider than the catalogue's own `JudgingMode`, which only says whether a
- * detector exists. A prompt declared `peer` is played as `ai` when a referee is
- * configured and the prompt is one a photograph can settle — and falls back to
- * `peer` if that referee cannot answer.
- */
+/** `peer` is retained for old stored history; active rooms use auto or AI. */
 export type RoundJudging = JudgingMode | 'ai';
 
 export interface RoundState {
@@ -266,6 +261,7 @@ export type ActionError =
   | 'room-full'
   | 'name-taken'
   | 'not-in-room'
+  | 'ai-unavailable'
   | 'wrong-phase'
   | 'wrong-round'
   | 'already-submitted'
@@ -378,7 +374,7 @@ export function reduce(state: MatchState, action: Action, ctx: EngineContext): R
     case 'pass':
       return pass(state, action, ctx);
     case 'vote':
-      return vote(state, action, ctx);
+      return { ok: false, error: 'already-decided' };
     case 'rematch':
       return rematch(state, action.playerId, ctx);
     case 'downgradeJudging':
@@ -386,7 +382,7 @@ export function reduce(state: MatchState, action: Action, ctx: EngineContext): R
     case 'aiFinished':
       return aiFinished(state, action, ctx);
     case 'addChallenge':
-      return addChallenge(state, action);
+      return addChallenge(state, action, ctx);
     case 'removeChallenge':
       return removeChallenge(state, action);
     case 'setWinTarget':
@@ -430,9 +426,11 @@ function setWinTarget(
 function addChallenge(
   state: MatchState,
   action: Extract<Action, { type: 'addChallenge' }>,
+  ctx: EngineContext,
 ): Result {
   if (state.phase !== 'lobby') return { ok: false, error: 'wrong-phase' };
   if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
+  if (!ctx.aiAvailable) return { ok: false, error: 'ai-unavailable' };
   const theirs = state.customChallenges.filter((c) => c.authorId === action.playerId).length;
   if (theirs >= MAX_CUSTOM_PER_PLAYER) return { ok: false, error: 'deck-full' };
   const prompt = action.prompt;
@@ -470,17 +468,7 @@ function removeChallenge(
   };
 }
 
-/**
- * The AI referee has answered, or has given up.
- *
- * An answer is written into the same `auto` slot a detector's verdict goes in,
- * because it is the same kind of thing: a machine reading of a photograph that
- * the opponent cannot overturn. Everything downstream — validity, the notes,
- * who is still owed a vote — already knows what to do with that.
- *
- * Giving up hands the round back to the opponent with a fresh window to judge
- * it in, rather than what is left of one spent waiting.
- */
+/** Writes verified machine readings; unavailable checks cannot award points. */
 function aiFinished(
   state: MatchState,
   action: Extract<Action, { type: 'aiFinished' }>,
@@ -491,27 +479,9 @@ function aiFinished(
   if (!state.round.aiPending) return { ok: true, state };
 
   if (!action.verdicts) {
-    if (state.ranked)
-      return {
-        ok: true,
-        state: bump(
-          resolveRound(
-            {
-              ...state,
-              round: { ...state.round, aiPending: false, voided: true },
-            },
-            ctx,
-          ),
-        ),
-      };
-    return {
-      ok: true,
-      state: bump({
-        ...state,
-        round: { ...state.round, judging: 'peer', aiPending: false },
-        phaseEndsAt: ctx.now + state.settings.judgingMs,
-      }),
-    };
+    return { ok: true, state: bump(resolveRound({
+      ...state, round: { ...state.round, aiPending: false, voided: true },
+    }, ctx)) };
   }
 
   const submissions: Record<PlayerId, Submission> = {};
@@ -528,7 +498,7 @@ function aiFinished(
   // owed a vote the round is over.
   return {
     ok: true,
-    state: bump(awaitingVerdict(next, next.round!).length === 0 ? resolveRound(next, ctx) : next),
+    state: bump(resolveRound(next, ctx)),
   };
 }
 
@@ -544,7 +514,7 @@ function downgradeJudging(state: MatchState, roundId: string): Result {
       ...state,
       round: {
         ...state.round,
-        ...(state.ranked ? { voided: true } : { judging: 'peer' as const }),
+        voided: true,
       },
     }),
   };
@@ -753,13 +723,6 @@ function submit(
 
   if (everyoneAnswered) {
     next = closeChallenge(next, ctx);
-  } else if (
-    round.judging === 'auto' &&
-    Object.values(round.submissions).some((s) => s.auto?.matched)
-  ) {
-    // The race is won, but hold the door open for a photo finish. Only ever
-    // shortens the round: a late winner must not extend it.
-    next = { ...next, phaseEndsAt: Math.min(next.phaseEndsAt, ctx.now + PHOTO_FINISH_MS) };
   }
 
   return { ok: true, state: bump(next) };
@@ -792,47 +755,6 @@ function pass(
   if (playersInSeatOrder(next).every((p) => isDone(round, p.id))) {
     next = closeChallenge(next, ctx);
   }
-  return { ok: true, state: bump(next) };
-}
-
-function vote(
-  state: MatchState,
-  action: Extract<Action, { type: 'vote' }>,
-  ctx: EngineContext,
-): Result {
-  if (state.pausedAt !== null) return { ok: false, error: 'match-paused' };
-  if (state.phase !== 'judging' || !state.round) return { ok: false, error: 'wrong-phase' };
-  if (state.round.id !== action.roundId) return { ok: false, error: 'wrong-round' };
-  // A vote landing while the referee still has the round would shrink the set
-  // of answers still owed a verdict, and could close the round out from under
-  // the reply on its way back.
-  if (state.round.aiPending) return { ok: false, error: 'ai-judging' };
-  if (state.ranked) return { ok: false, error: 'already-decided' };
-  if (!state.players[action.playerId]) return { ok: false, error: 'not-in-room' };
-  if (action.targetId === action.playerId) return { ok: false, error: 'cannot-vote-for-self' };
-  if (!state.players[action.targetId]) return { ok: false, error: 'no-such-target' };
-
-  const target = state.round.submissions[action.targetId];
-  if (!target) return { ok: false, error: 'no-submission-to-judge' };
-  if (target.peer) return { ok: false, error: 'already-voted' };
-  // The camera already read this one. A vote cannot overturn it, so it is not
-  // accepted rather than quietly recorded and ignored.
-  if (target.auto) return { ok: false, error: 'already-decided' };
-
-  const round: RoundState = {
-    ...state.round,
-    submissions: {
-      ...state.round.submissions,
-      [action.targetId]: {
-        ...target,
-        peer: { approve: action.approve, voterId: action.playerId, votedAt: ctx.now },
-      },
-    },
-  };
-  let next: MatchState = { ...state, round };
-
-  if (awaitingVerdict(next, round).length === 0) next = resolveRound(next, ctx);
-
   return { ok: true, state: bump(next) };
 }
 
@@ -871,7 +793,7 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
     number: roundNumber,
     challengeId: challenge.id,
     judging:
-      challenge.judging === 'peer' && ctx.aiAvailable && isAiVerifiable(challenge)
+      ctx.aiAvailable && (challenge.detector?.kind === 'color' || isAiVerifiable(challenge))
         ? 'ai'
         : challenge.judging,
     aiPending: false,
@@ -905,10 +827,15 @@ function startRound(state: MatchState, ctx: EngineContext): MatchState {
  */
 function deckFor(state: MatchState, ctx: EngineContext): readonly Challenge[] {
   const base = ctx.pool ?? allChallengesPool();
-  if (state.ranked)
-    return base.filter((c) => c.judging === 'auto' || (ctx.aiAvailable && isAiVerifiable(c)));
-  if (state.customChallenges.length === 0) return base;
-  return [...base, ...state.customChallenges.map((c) => customChallenge(c.id, c.prompt))];
+  const candidates = [...base, ...(ctx.aiAvailable && !state.ranked
+    ? state.customChallenges.map((c) => customChallenge(c.id, c.prompt)) : [])];
+  const playable = candidates.filter((c) => c.judging === 'auto' || (ctx.aiAvailable && isAiVerifiable(c)));
+  // A provider outage or an old/custom deck must never produce an empty picker.
+  const party = playable.filter((c) => c.tags.includes('party'));
+  // Alternate a short pose gag with scavenger rounds, instead of letting a
+  // thousand-topic pool bury the playful challenges. Explicit themed pools still work.
+  if (ctx.aiAvailable && (state.roundNumber + 1) % 2 === 0 && party.length) return party;
+  return playable.length ? playable : allChallengesPool().filter((c) => c.judging === 'auto');
 }
 
 /** Resolves a challenge by id, including the ones this room wrote itself. */
@@ -919,7 +846,7 @@ export function challengeInRoom(state: MatchState, id: string): Challenge | unde
 
 function beginChallenge(state: MatchState, ctx: EngineContext): MatchState {
   if (!state.round) return state;
-  const challenge = challengeInRoom(state, state.round.challengeId);
+  const challenge = ctx.pool?.find((c) => c.id === state.round!.challengeId) ?? challengeInRoom(state, state.round.challengeId);
   const duration = challenge?.durationMs ?? 25_000;
   return {
     ...state,
@@ -940,34 +867,7 @@ function closeChallenge(state: MatchState, ctx: EngineContext): MatchState {
     return openJudging(state, ctx);
   }
 
-  // Opening judging when nobody is eligible to vote would be fifteen seconds of
-  // both players looking at a question neither of them can answer.
-  return awaitingVerdict(state, state.round).length > 0
-    ? openJudging(state, ctx)
-    : resolveRound(state, ctx);
-}
-
-/**
- * The submissions that can still receive a verdict.
- *
- * Only your opponent judges you, and only if they answered the round
- * themselves. That is the whole of "you do not get to judge a round you did
- * not play": a submission whose judge passed or ran out of time is not waiting
- * for anything, so the round is settled now and the person who sat it out
- * never gets a say. Otherwise passing would be a free way to deny a point you
- * never contested.
- */
-function awaitingVerdict(state: MatchState, round: RoundState): PlayerId[] {
-  // Nobody is asked to vote while a referee has the round.
-  if (round.judging !== 'peer') return [];
-  return playersInSeatOrder(state)
-    .filter((player) => {
-      const submission = round.submissions[player.id];
-      if (!submission || submission.peer || submission.auto) return false;
-      const judge = opponentIdOf(state, player.id);
-      return judge !== null && round.submissions[judge] !== undefined;
-    })
-    .map((player) => player.id);
+  return resolveRound(state, ctx);
 }
 
 function openJudging(state: MatchState, ctx: EngineContext): MatchState {
@@ -989,19 +889,7 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
 
   const seated = playersInSeatOrder(state);
   const perPlayer: Record<PlayerId, PlayerRoundResult> = {};
-  const valid: { id: PlayerId; elapsedMs: number }[] = [];
-
-  // A rejection voids the round for both players, including the one who cast
-  // it.
-  //
-  // Your opponent is the only judge available for a prompt no camera can
-  // settle, and they are also the person who gains when you are marked
-  // invalid. Left alone that makes "No" the dominant move in every peer round:
-  // it turns a race you might lose into a win you cannot. Voiding the round
-  // takes the prize away. An honest rejection still stops a bogus answer from
-  // scoring — it just costs the judge the round too, which is the thing that
-  // makes a verdict worth believing.
-  const vetoed = Object.values(round.submissions).some((s) => s.peer?.approve === false);
+  const valid: { id: PlayerId; elapsedMs: number; score: number | null }[] = [];
 
   for (const player of seated) {
     const submission = round.submissions[player.id];
@@ -1013,52 +901,39 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
       };
       continue;
     }
-    // Where the camera reached a verdict, that verdict is the answer. A round
-    // downgrades to peer judging because *a* frame could not be read, not
-    // because the ones that could should be re-tried by hand — and an opponent
-    // must not be able to overturn a server-side reading in either direction.
-    const isValid =
-      round.voided || round.aiPending
-        ? false
-        : submission.auto
-          ? submission.auto.matched
-          : round.judging === 'auto'
-            ? false
-            : // No vote by the deadline counts as approval: abstaining should never
-              // be a cheaper way to deny a point than actually judging. An AI round
-              // whose referee never answered lands here too, and is forgiven the
-              // same way.
-              (submission.peer?.approve ?? true);
-    const rejectedByThem = Object.values(round.submissions).some(
-      (s) => s.peer?.approve === false && s.peer.voterId === player.id,
-    );
+    const isValid = !round.voided && !round.aiPending && submission.auto?.matched === true;
+    const evaluation = submission.auto?.evaluation;
 
     perPlayer[player.id] = {
       valid: isValid,
       elapsedMs: submission.elapsedMs,
-      note:
-        round.voided || round.aiPending
-          ? 'Verification unavailable. No rating or XP changes this match.'
-          : isValid
-            ? noteForValid(round.judging, submission, rejectedByThem)
-            : noteForInvalid(round.judging, submission),
+      ...(evaluation ? { evaluation } : {}),
+      note: round.voided || round.aiPending ? 'Could not check this round. Switching tasks.'
+        : submission.auto?.reason ?? 'No verified answer.',
     };
-    if (isValid) valid.push({ id: player.id, elapsedMs: submission.elapsedMs });
+    if (isValid) valid.push({ id: player.id, elapsedMs: submission.elapsedMs,
+      score: evaluation && Number.isFinite(evaluation.score) && evaluation.score >= 0 && evaluation.score <= 100
+        ? evaluation.score : null });
   }
 
   let winnerId: PlayerId | null = null;
   let reason: RoundReason;
   if (round.voided || round.aiPending) {
     reason = 'verification-unavailable';
-  } else if (vetoed) {
-    reason = 'vetoed';
+
   } else if (valid.length === 0) {
     reason = Object.keys(round.submissions).length === 0 ? 'no-submissions' : 'both-failed';
   } else if (valid.length === 1) {
     winnerId = valid[0]!.id;
     reason = 'only-valid';
   } else {
+    const quality = [...valid].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    const better = quality[0]!, other = quality[1]!;
     const sorted = [...valid].sort((a, b) => a.elapsedMs - b.elapsedMs);
+    if (better.score !== null && other.score !== null && better.score - other.score > 3) {
+      winnerId = better.id;
+      reason = 'better-answer';
+    } else
     if (sorted[0]!.elapsedMs === sorted[1]!.elapsedMs) {
       reason = 'both-perfect-tie';
     } else {
@@ -1096,21 +971,6 @@ function resolveRound(state: MatchState, ctx: EngineContext): MatchState {
     history: [...state.history, outcome],
   };
   return next;
-}
-
-function noteForValid(judging: RoundJudging, s: Submission, youRejectedTheirs: boolean): string {
-  // A machine verdict explains itself, whichever machine reached it.
-  if (s.auto) return s.auto.reason;
-  if (judging === 'auto') return 'Verified';
-  if (youRejectedTheirs) return 'You said no — the round counts for nobody';
-  if (!s.peer) return 'Unjudged — counted as good';
-  return 'Approved by your opponent';
-}
-
-function noteForInvalid(judging: RoundJudging, s: Submission): string {
-  if (s.auto) return s.auto.reason;
-  if (judging === 'auto') return 'Not detected';
-  return 'Rejected by your opponent — the round counts for nobody';
 }
 
 /** How many of the finished rounds this player actually answered. */

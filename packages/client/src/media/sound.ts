@@ -1,4 +1,7 @@
 export type Cue =
+  | 'button'
+  | 'hurry'
+  | 'hurryFinal'
   | 'tick3'
   | 'tick2'
   | 'tick1'
@@ -35,6 +38,12 @@ interface Note {
  * than timbre, because these are all sub-second cues under a live camera.
  */
 const CUES: Record<Cue, Note[]> = {
+  button: [{ freq: 520, to: 720, at: 0, duration: 0.045, gain: 0.065, type: 'triangle' }],
+  hurry: [{ freq: 440, to: 330, at: 0, duration: 0.075, gain: 0.09, type: 'triangle' }],
+  hurryFinal: [
+    { freq: 660, at: 0, duration: 0.06, gain: 0.11, type: 'triangle' },
+    { freq: 880, at: 0.1, duration: 0.07, gain: 0.1, type: 'triangle' },
+  ],
   xpGain: [{ freq: 660, to: 990, at: 0, duration: 0.18, gain: 0.1 }],
   reward: [
     { freq: 880, at: 0, duration: 0.12, gain: 0.12 },
@@ -170,7 +179,7 @@ class SoundBoard {
   }
 
   /** Safe to call on every gesture; only the first one does any work. */
-  unlock(): void {
+  unlock(): Promise<void> | void {
     if (!this.ctx) {
       const Ctor =
         window.AudioContext ??
@@ -185,18 +194,31 @@ class SoundBoard {
       this.master.gain.value = this.muted ? 0 : 1;
       this.master.connect(this.ctx.destination);
     }
-    if (this.ctx.state === 'suspended')
-      void this.ctx.resume().catch(() => {
+    if (this.ctx.state !== 'running')
+      return this.ctx.resume().catch(() => {
         /* Audio remains optional if the browser blocks playback. */
       });
   }
 
   play(cue: Cue): void {
     if (this.muted) return;
-    this.unlock();
+    const ready = this.unlock();
+    if (this.ctx && this.ctx.state !== 'running') {
+      const requestedAt = Date.now();
+      // Mobile browsers resume asynchronously. Keep the cue, but never replay
+      // stale countdowns when a tab wakes up several seconds later.
+      void ready?.then(() => {
+        if (Date.now() - requestedAt < 1200) this.render(cue);
+      });
+      return;
+    }
+    this.render(cue);
+  }
+
+  private render(cue: Cue): void {
     const ctx = this.ctx;
     const master = this.master;
-    if (!ctx || !master || ctx.state !== 'running') return;
+    if (this.muted || !ctx || !master || ctx.state !== 'running') return;
 
     const start = ctx.currentTime;
     for (const note of CUES[cue]) {

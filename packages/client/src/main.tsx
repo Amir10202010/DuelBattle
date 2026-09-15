@@ -11,6 +11,7 @@ import './styles/game.css';
 import './styles/app.css';
 import './styles/appearance.css';
 import './styles/playfulness.css';
+import './styles/experience.css';
 import { App } from './App.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 

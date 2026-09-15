@@ -74,11 +74,12 @@ export function useLocalDetection({
       const frame = capture.toFrame(videoRef.current);
       if (!frame) return;
 
-      if (current === 'countdown' || !baselineRef.current) {
+      if (current === 'countdown') {
         baselineRef.current = frame;
         setArmed(true);
         return;
       }
+      if (!baselineRef.current) return;
       try {
         setResult(runDetector(detector, baselineRef.current, frame));
       } catch {

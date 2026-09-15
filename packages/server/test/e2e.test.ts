@@ -206,6 +206,7 @@ describe('a full match over the wire', () => {
       image: passingFrameFor(challenge.detector!),
     });
 
+    guest.send({ t: 'pass', roundId: live.round!.id });
     const result = await host.waitForState((s) => s.phase === 'roundResult');
     expect(result.round?.outcome?.winnerId).toBe(host.playerId);
     expect(result.players[host.playerId]?.score).toBe(1);
@@ -247,29 +248,14 @@ describe('a full match over the wire', () => {
 });
 
 describe('rounds the players write themselves', () => {
-  it('adds a prompt, shows it to both, and lets only its author remove it', async () => {
+  it('refuses custom prompts without an AI referee', async () => {
     const { host, guest } = await pair();
-
-    host.send({ t: 'addChallenge', prompt: '  show me the worst gift you ever got ' });
-    const added = await guest.waitForState((s) => s.customChallenges.length === 1);
-    const entry = added.customChallenges[0]!;
-    // Normalised on the server, not trusted from the client.
-    expect(entry.prompt).toBe('SHOW ME THE WORST GIFT YOU EVER GOT');
-    expect(entry.authorId).toBe(host.playerId);
-
-    // The opponent cannot take out a prompt they did not write.
-    guest.send({ t: 'removeChallenge', id: entry.id });
-    const refusal = await guest.waitFor<Extract<ServerMessage, { t: 'error' }>>(
-      (m) => m.t === 'error',
-    );
-    expect(refusal.message).toMatch(/whoever wrote it/i);
-    expect(guest.state.customChallenges).toHaveLength(1);
-
-    host.send({ t: 'removeChallenge', id: entry.id });
-    await guest.waitForState((s) => s.customChallenges.length === 0);
-
-    host.close();
-    guest.close();
+    host.send({ t: 'addChallenge', prompt: 'SHOW A MUG' });
+    const refusal = await host.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
+    expect(refusal.message).toMatch(/AI photo check/);
+    expect(host.state.customChallenges).toHaveLength(0);
+    expect(guest.state.customChallenges).toHaveLength(0);
+    host.close(); guest.close();
   });
 
   it('refuses a prompt the rules do not allow, whatever the client sends', async () => {

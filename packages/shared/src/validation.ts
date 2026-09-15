@@ -163,6 +163,8 @@ export const photoAssessmentSchema = z
     presentation: z.number().int().min(0).max(30),
     objects: z.array(z.string().min(1).max(60)).max(8),
     reason: z.string().min(1).max(300),
+    reasonRu: z.string().min(1).max(300).optional(),
+    objectsRu: z.array(z.string().min(1).max(60)).max(8).optional(),
   })
   .strict();
 
@@ -213,6 +215,8 @@ export const JUDGE_RESPONSE_JSON_SCHEMA = {
             items: { type: 'string', minLength: 1, maxLength: 60 },
           },
           reason: { type: 'string', minLength: 1, maxLength: 300 },
+          reasonRu: { type: 'string', minLength: 1, maxLength: 300 },
+          objectsRu: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 60 } },
         },
       },
     },

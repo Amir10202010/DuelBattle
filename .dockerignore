@@ -11,3 +11,4 @@ data
 **/profiles.json
 coverage
 *.log
+packages/client/public/vision-runtime

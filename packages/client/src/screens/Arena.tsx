@@ -1,5 +1,10 @@
+import { DeadlineCue } from '../components/DeadlineCue.js';
+import '../styles/vision.css';
+import { useSceneVision } from '../hooks/useSceneVision.js';
+import { VisionOverlay } from '../components/VisionOverlay.js';
+import { RoundComparison } from '../components/RoundComparison.js';
 import { Celebration, roundStreak } from '../components/Celebration.jsx';
-import { Camera, Check, Timer } from 'lucide-react';
+import { Camera, Check } from 'lucide-react';
 import { tr, useUiPreferences } from '../i18n/index.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,6 +18,7 @@ import {
   type PublicMatchState,
   type RoundJudging,
   type PublicPlayer,
+  MAX_IMAGE_BYTES,
 } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
@@ -72,7 +78,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
 
   const lockIn = useCallback(() => {
     if (!round || !isChallenge || done || submitting) return;
-    const image = evidenceCapture.current.toDataUrl(camera.videoRef.current, EVIDENCE_QUALITY);
+    const image = evidenceCapture.current.toBoundedDataUrl(camera.videoRef.current, EVIDENCE_QUALITY, 0.55, MAX_IMAGE_BYTES);
     if (!image) return;
     setSubmitting(true);
     sound.play('lockIn');
@@ -92,6 +98,9 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     return () => window.removeEventListener('keydown', onKey);
   }, [isChallenge, done, lockIn]);
 
+  const tracking = useSceneVision(camera.videoRef, store, opponentId, camera.status === 'ready',
+    (match.phase === 'countdown' || isChallenge) && !match.paused);
+  const showVision = isChallenge && !match.paused;
   const selfState =
     match.phase === 'roundResult' ? resultState(match, youId) : done ? 'locked' : 'live';
   const peerState =
@@ -110,6 +119,14 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     <div className="arena">
       <PromptBand match={match} now={now} detection={detection} showMeter={!done} />
 
+      <div className="vision-controls" data-status={tracking.status}>
+        {tracking.status === 'unavailable' && <button onClick={tracking.retry}>{tr('Retry tracking')}</button>}
+        <button onClick={tracking.toggle} aria-pressed={tracking.enabled} title={tr('Body, hands and objects')}>
+          <span className="vision-controls__dot" aria-hidden="true" />
+          {tr(tracking.status === 'loading' ? 'Loading tracking…' : tracking.status === 'unavailable'
+            ? 'Tracking unavailable' : tracking.enabled ? 'Tracking on' : 'Tracking off')}
+        </button>
+      </div>
       <div className="arena__stages">
         <StageFrame
           seat={yourSeat}
@@ -117,11 +134,14 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           state={selfState}
           overlay={
             <>
+              {showVision && tracking.enabled && <VisionOverlay scene={tracking.scenes.self} mirrored
+                region={detection.result?.region?.box} />}
               {camera.status !== 'ready' && <CameraTrouble camera={camera} />}
               {match.phase === 'countdown' && <Countdown match={match} now={now} />}
               {match.phase === 'roundResult' && round && (
                 <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
               )}
+              <DeadlineCue endsAt={match.phaseEndsAt} now={now} active={isChallenge && !done && !submitting && !match.paused} />
               {isChallenge && (locked || passed) && <LockedBadge passed={passed} />}
               {selfState === 'won' && round && (
                 <Celebration key={round.id} streak={roundStreak(match.history, youId)} />
@@ -138,6 +158,7 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           state={peerState}
           overlay={
             <>
+              {showVision && tracking.enabled && <VisionOverlay scene={tracking.scenes.peer} />}
               {(match.phase === 'judging' || match.phase === 'roundResult') &&
                 round &&
                 opponentId && <EvidenceShot image={evidence[`${round.id}:${opponentId}`]} />}
@@ -228,17 +249,20 @@ function PromptBand({
           {tr(' · first to ')}
           {tr(match.settings.winTarget)}
         </span>
-        {!hidden && round && <JudgeBadge judging={round.judging} />}
+        {!hidden && challenge?.tags.includes('party')
+          ? <span className="badge badge--party">{tr('Time to get silly')}</span>
+          : !hidden && round && <JudgeBadge judging={round.judging} />}
       </div>
 
       <h1 className="prompt__text display">
         {hidden
-          ? tr('Get ready')
+          ? tr(Object.values(match.players).some((p) => p.score === match.settings.winTarget - 1) ? 'Match point!' : 'Get ready')
           : challenge && match.customChallenges.some((c) => c.id === challenge.id)
             ? challenge.prompt
             : tr(challenge?.prompt ?? '…')}
       </h1>
-      {!hidden && challenge?.hint && (
+      {!hidden && challenge?.tags.includes('party') && challenge.hint && <p className="party-instruction">{tr(challenge.hint)}</p>}
+      {!hidden && challenge?.hint && !challenge.tags.includes('party') && (
         <details className="prompt-help" key={round?.id}>
           <summary>{tr('Hint')}</summary>
           <p>{tr(challenge.hint)}</p>
@@ -281,7 +305,7 @@ function JudgeBadge({ judging }: { judging: RoundJudging }) {
   if (judging === 'ai') {
     return <span className="badge badge--ai">{tr('The AI judge decides this one')}</span>;
   }
-  return <span className="badge badge--peer">{tr('Your opponent decides this one')}</span>;
+  return <span className="badge badge--auto">{tr('Camera decides this one')}</span>;
 }
 
 function DetectionMeter({ detection, detector }: { detection: Detection; detector: DetectorSpec }) {
@@ -478,86 +502,21 @@ function ActionRow({
     );
   }
 
-  if (match.phase === 'judging' && round && opponent) {
-    const theirs = round.submissions[opponent.id];
-    const alreadyVoted = Boolean(theirs?.peer);
-    // Judging only opens when both of you answered, so their answer is here.
-    // What varies is whether anybody is being asked about it: a frame the
-    // camera read before the round fell back is already settled, and asking
-    // would be theatre -- the vote would not be accepted.
-    if (theirs && !theirs.needsVerdict && !alreadyVoted) {
-      return (
-        <div className="actions actions--waiting">
-          <p className="actions__note">
-            {tr('The camera settled')}
-            {opponent.name}
-            {tr('’s answer. Waiting on their verdict for yours…')}
-          </p>
-        </div>
-      );
-    }
-    return (
-      <div className="actions actions--judging">
-        <p className="actions__question">
-          {tr('Does')}
-          <strong>{opponent.name}</strong>
-          {tr('’s answer count?')}
-        </p>
-        <div className="actions__votes">
-          <button
-            className="btn btn--lg vote vote--no"
-            disabled={alreadyVoted}
-            onClick={() => store.vote(round.id, opponent.id, false)}
-          >
-            {tr('No')}
-          </button>
-          <button
-            className="btn btn--lg vote vote--yes"
-            disabled={alreadyVoted}
-            onClick={() => store.vote(round.id, opponent.id, true)}
-          >
-            {tr('Yes')}
-          </button>
-        </div>
-        <p className="actions__note dim">
-          {tr(
-            alreadyVoted
-              ? 'Verdict in. Waiting for theirs…'
-              : 'Say no and the round counts for nobody — you included.',
-          )}
-        </p>
-      </div>
-    );
-  }
-
   if (match.phase === 'roundResult' && round?.outcome) {
     const outcome = round.outcome;
-    const yours = outcome.perPlayer[youId];
+
     const headline =
       outcome.winnerId === youId
         ? 'Round won'
         : outcome.winnerId === null
-          ? 'No score'
+          ? outcome.reason === 'verification-unavailable' ? 'Checking paused' : outcome.reason === 'both-perfect-tie' ? 'Draw' : 'Try the next one'
           : `${opponent?.name ?? 'Opponent'} takes it`;
     return (
       <div
         className={`actions actions--result result--${outcome.winnerId === youId ? 'win' : outcome.winnerId ? 'loss' : 'draw'}`}
       >
         <p className="actions__headline display">{tr(headline)}</p>
-        <div className="actions__note dim">
-          {yours?.elapsedMs != null && (
-            <span className="round-result-time">
-              <Timer size={14} aria-hidden="true" />
-              {(yours.elapsedMs / 1000).toFixed(1)} {tr('sec')}
-            </span>
-          )}
-          {yours?.note && (
-            <details className="prompt-help">
-              <summary>{tr('Why this result?')}</summary>
-              <p>{tr(yours.note)}</p>
-            </details>
-          )}
-        </div>
+        <RoundComparison match={match} youId={youId} />
       </div>
     );
   }
