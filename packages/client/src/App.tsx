@@ -237,7 +237,9 @@ export function App() {
       )}
       <Suspense
         fallback={
-          <div className={`shell ${publicOnly ? 'shell--public' : 'shell--game'}`}>
+          <div
+            className={`shell ${publicOnly ? 'shell--public' : 'shell--game'} ${page === 'home' ? 'shell--landing' : ''}`}
+          >
             <Nav page={page} profile={profile} onNavigate={route.go} publicOnly={publicOnly} />
             <Skeleton />
           </div>
@@ -256,28 +258,32 @@ export function App() {
         ) : inRoom ? (
           <Skeleton label="Entering your room" />
         ) : (
-          <div className={`shell ${publicOnly ? 'shell--public' : 'shell--game'}`}>
+          <div
+            className={`shell ${publicOnly ? 'shell--public' : 'shell--game'} ${page === 'home' ? 'shell--landing' : ''}`}
+          >
             <Nav page={page} profile={profile} onNavigate={route.go} publicOnly={publicOnly} />
             <div id="main-content" className="screen-content" key={page}>
               {content}
             </div>
-            <footer className="foot">
-              <span>
-                {tr('DUELBATTLE ')}
-                <i>{'·'}</i>
-                {tr(' Your room is the game.')}
-              </span>
-              <span>{tr('Camera only. No microphone. Play fair.')}</span>
-              <a
-                href="/settings"
-                onClick={(e) => {
-                  e.preventDefault();
-                  route.go('/settings');
-                }}
-              >
-                {tr('Settings & privacy')}
-              </a>
-            </footer>
+            {page !== 'home' && (
+              <footer className="foot">
+                <span>
+                  {tr('DUELBATTLE ')}
+                  <i>{'·'}</i>
+                  {tr(' Your room is the game.')}
+                </span>
+                <span>{tr('Camera only. No microphone. Play fair.')}</span>
+                <a
+                  href="/settings"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    route.go('/settings');
+                  }}
+                >
+                  {tr('Settings & privacy')}
+                </a>
+              </footer>
+            )}
           </div>
         )}
       </Suspense>

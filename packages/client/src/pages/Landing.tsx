@@ -1,243 +1,249 @@
-import { tr, useUiPreferences } from '../i18n/index.js';
 import {
-  Camera,
+  ArrowDown,
   ArrowRight,
-  ShieldCheck,
+  Camera,
+  Check,
   ScanLine,
-  Timer,
-  Zap,
+  ShieldCheck,
+  Swords,
   Trophy,
   Users,
-  ChevronRight,
+  Zap,
 } from 'lucide-react';
-import { allChallengesPool, TIERS, supportsRussian } from '@battle/shared';
-import { RankEmblem } from '../components/GameArt.jsx';
+import { allChallengesPool, supportsRussian } from '@battle/shared';
+import { tr, useUiPreferences } from '../i18n/index.js';
+import { LandingDemo } from '../components/landing/LandingDemo.js';
+import { LandingModes } from '../components/landing/LandingModes.js';
+import { LandingLink } from '../components/landing/LandingLink.js';
+import { useLandingMotion } from '../components/landing/useLandingMotion.js';
+import '../styles/landing.css';
+
+const STEPS = [
+  {
+    Icon: Users,
+    title: 'A friend. Or a worthy rival.',
+    text: 'Find an opponent or share a private room link. Two players. One challenge. It’s on.',
+  },
+  {
+    Icon: ScanLine,
+    title: 'Think fast. Grab faster.',
+    text: 'Something red? Something round? Find your answer, show the camera, and lock it in.',
+  },
+  {
+    Icon: Trophy,
+    title: 'Make the everyday legendary.',
+    text: 'The better answer takes the point. Speed breaks a close tie. First to three wins.',
+  },
+];
+const QUESTIONS = [
+  {
+    question: 'What do I need to play?',
+    answer:
+      'A browser, a working camera, and whatever is around you. No download or microphone needed. Allow camera access when you enter a match.',
+  },
+  {
+    question: 'Do I need an account?',
+    answer:
+      'You can jump into quick play or a friendly room with just a name. Create an account when you want ranked matches, saved progress, and rewards.',
+  },
+  {
+    question: 'Who decides the winner?',
+    answer:
+      'Answers are checked on the server. The better match to the prompt wins; speed breaks a close tie. AI rounds receive a second check. If a ranked check is unreliable, your rating and XP stay unchanged.',
+  },
+  {
+    question: 'What happens to my camera feed?',
+    answer:
+      'Camera frames are shared with your opponent. AI rounds also send snapshots to the configured referee provider. There is no microphone access or server photo archive.',
+  },
+];
 
 export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) {
   const { locale } = useUiPreferences();
+  const root = useLandingMotion();
+  const challengeCount = allChallengesPool().filter(
+    (c) => locale === 'en' || supportsRussian(c.prompt),
+  ).length;
   return (
-    <main className="landing">
-      <section className="landing-hero">
-        <div className="hero-copy">
-          <span className="eyebrow">
-            <i className="live-dot" />
-            {tr(' Real rooms. Real rivals.')}
-          </span>
-          <h1>
-            {tr('Turn your room')}
-            <br />
-            {tr('into a ')}
-            <em>{tr('rivalry.')}</em>
+    <main className="lp" ref={root}>
+      <section className="lp-hero lp-wrap" aria-labelledby="landing-title">
+        <div className="lp-hero__copy">
+          <div className="lp-kicker lp-hero__eyebrow">
+            <span className="lp-signal" />
+            {tr('THE REAL-WORLD 1V1 GAME')}
+          </div>
+          <h1 id="landing-title">
+            <span>{tr('YOUR ROOM.')}</span>
+            <span>{tr('THEIR')}</span>
+            <span className="lp-hero__punch">
+              {tr('PROBLEM.')}
+              <span className="lp-period" aria-hidden="true">
+                ↗
+              </span>
+            </span>
           </h1>
-          <p>
+          <p className="lp-hero__description">
             {tr(
-              'A camera. A challenger. Twenty seconds to find something red. Your everyday stuff is about to get competitive.',
+              'Turn the things around you into a winning move. One rival. One camera. A whole new way to play.',
             )}
           </p>
-          <div className="hero-actions">
-            <button className="btn btn--primary btn--lg" onClick={() => onNavigate('/play')}>
-              {tr('Let’s play ')}
-              <ArrowRight size={18} />
-            </button>
-            <button className="text-link" onClick={() => onNavigate('/register')}>
-              {tr('Create an account ')}
-              <ChevronRight size={15} />
-            </button>
+          <div className="lp-hero__actions">
+            <LandingLink className="lp-button lp-button--lime" href="/play" onNavigate={onNavigate}>
+              {tr('Find your rival')}
+              <ArrowRight size={19} />
+            </LandingLink>
+            <a className="lp-text-button" href="#how-it-works">
+              {tr('How it works')}
+              <ArrowDown size={16} />
+            </a>
           </div>
-          <div className="hero-facts">
-            <span>
-              <Camera size={15} />
-              {tr(' Camera only')}
-            </span>
-            <span>
-              <Users size={15} />
-              {tr(' 1 vs 1')}
-            </span>
-            <span>
-              <Timer size={15} />
-              {tr(' Quick rounds')}
-            </span>
-          </div>
+          <p className="lp-hero__note">
+            <Check size={14} />
+            {tr('Free to jump in. Nothing to download.')}
+          </p>
         </div>
-        <div className="demo-arena" aria-label={tr('Illustrated example of a DuelBattle round')}>
-          <div className="demo-top">
+        <div className="lp-hero__visual">
+          <div className="lp-visual-label">
             <span>
-              <i className="live-dot" />
-              {tr(' IN THE ARENA')}
+              <Swords size={14} />
+              {tr('TWO ROOMS. ONE ARENA.')}
             </span>
             <span>{tr('EXAMPLE ROUND')}</span>
           </div>
-          <div className="demo-task">
-            <span className="eyebrow">{tr('Find it. Show it. Beat them.')}</span>
-            <h2>
-              {tr('Show something ')}
-              <span>{tr('red.')}</span>
-            </h2>
-            <div className="demo-timer">
-              <i />
-              <b>
-                {'12.4'}
-                <span>{tr('s')}</span>
-              </b>
-            </div>
+          <LandingDemo />
+          <div className="lp-visual-caption">
+            <span className="lp-caption-line" />
+            <span>{tr('Yes, that mug could be your winning move.')}</span>
+            <ArrowRight size={15} />
           </div>
-          <div className="demo-players">
-            <div className="demo-you">
-              <img src="/friends.jpg" alt={tr('A player holding a red mug to the camera')}
-                width="1200" height="800" fetchPriority="high" />
-              <span>
-                <i className="live-dot" />
-                {tr(' YOU ')}
-                <b>
-                  {tr('Answer verified ')}
-                  <ShieldCheck size={13} />
-                </b>
-              </span>
-            </div>
-            <div className="demo-rival">
-              <img
-                src="/friends.jpg"
-                alt={tr('A player holding a red trainer to the camera')}
-                width="1200"
-                height="800"
-              />
-              <span>
-                {tr('YOUR RIVAL ')}
-                <b>{tr('Answer ready')}</b>
-              </span>
-            </div>
-            <span className="versus">{tr('VS')}</span>
-          </div>
-          <div className="demo-result">
-            <Zap size={17} />
-            <strong>{tr('Everyday objects. Unexpected victories.')}</strong>
-            <span>{tr('First to 3')}</span>
-          </div>
+        </div>
+        <div className="lp-hero__index" aria-hidden="true">
+          <span>DUELBATTLE</span>
+          <span>{tr('LESS SCROLLING. MORE PLAYING.')}</span>
         </div>
       </section>
-      <div className="landing-ribbon">
-        <span>
-          <ScanLine size={19} />
-          {tr(' Find your edge')}
-        </span>
-        <span>{tr('Fast hands')}</span>
-        <span>{tr('Quick thinking')}</span>
-        <span>{tr('Good rivalry')}</span>
-        <span>
-          {tr(
-            allChallengesPool()
-              .filter((c) => locale === 'en' || supportsRussian(c.prompt))
-              .length.toLocaleString(),
-          )}
-          {tr(' challenges')}
-        </span>
-      </div>
-      <section className="landing-section">
-        <div className="section-heading">
+      <div className="lp-proof">
+        <div className="lp-wrap lp-proof__inner">
           <div>
-            <span className="eyebrow">{tr('From “what?” to “got it!”')}</span>
-            <h2>
-              {tr('Simple rules.')}
+            <Camera size={20} />
+            <span>
+              {tr('Real objects.')} <strong>{tr('Real competition.')}</strong>
+            </span>
+          </div>
+          <div>
+            <strong className="lp-proof__number">{challengeCount.toLocaleString(locale)}</strong>
+            <span>{tr('ways to think on your feet')}</span>
+          </div>
+          <div>
+            <span className="lp-proof__number">
+              1 <span>vs</span> 1
+            </span>
+            <span>{tr('A proper head-to-head.')}</span>
+          </div>
+          <div>
+            <Zap size={19} />
+            <span>{tr('All in your browser.')}</span>
+          </div>
+        </div>
+      </div>
+      <section
+        id="how-it-works"
+        className="lp-workflow lp-wrap lp-section"
+        aria-labelledby="how-title"
+      >
+        <div className="lp-section-head" data-reveal>
+          <div>
+            <span className="lp-kicker">{tr('01 / THE GAME PLAN')}</span>
+            <h2 id="how-title">
+              {tr('Big rivalry.')}
               <br />
-              {tr('Ridiculous possibilities.')}
+              <span className="lp-muted">{tr('Ridiculously simple.')}</span>
             </h2>
           </div>
-          <p>{tr('No downloads. No equipment. Just the things around you and someone to beat.')}</p>
+          <p>
+            {tr('Your room is already full of possibilities. All it takes is someone to beat.')}
+          </p>
         </div>
-        <div className="how-grid">
-          {[
-            {
-              Icon: Users,
-              n: '01',
-              title: 'Meet your match',
-              copy: 'Jump into matchmaking or send a private room link to a friend.',
-            },
-            {
-              Icon: Camera,
-              n: '02',
-              title: 'Make your move',
-              copy: 'Read the prompt. Grab your answer. Hold it up and lock it in.',
-            },
-            {
-              Icon: Trophy,
-              n: '03',
-              title: 'Earn the rematch',
-              copy: 'The better answer wins. A close call? Speed breaks the tie.',
-            },
-          ].map(({ Icon, n, title, copy }) => (
-            <article key={n}>
-              <div>
-                <Icon size={27} />
-                <span>{tr(n)}</span>
+        <div className="lp-steps">
+          {STEPS.map(({ Icon, title, text }, index) => (
+            <article key={title} className="lp-step" data-reveal>
+              <div className="lp-step__top">
+                <span>0{index + 1}</span>
+                <Icon size={25} strokeWidth={1.5} />
               </div>
               <h3>{tr(title)}</h3>
-              <p>{tr(copy)}</p>
+              <p>{tr(text)}</p>
             </article>
           ))}
         </div>
       </section>
-      <section className="landing-progression">
-        <div>
-          <span className="eyebrow">{tr('Build a reputation')}</span>
-          <h2>
-            {tr('From quick hands')}
+      <LandingModes onNavigate={onNavigate} />
+      <section className="lp-trust lp-wrap lp-section" aria-labelledby="trust-title">
+        <div className="lp-trust__copy" data-reveal>
+          <span className="lp-kicker">{tr('03 / GOOD TO KNOW')}</span>
+          <ShieldCheck size={40} strokeWidth={1.3} className="lp-trust__icon" />
+          <h2 id="trust-title">
+            {tr('Good rivalry.')}
             <br />
-            {tr('to a household name.')}
+            <span className="lp-muted">{tr('Ground rules included.')}</span>
           </h2>
           <p>
             {tr(
-              'Find your level in five placement matches. Climb an original eight-tier ladder, unlock achievements, and turn a good evening into a great record.',
+              'A little competitive chaos. A clear way to play. Here’s what happens behind the camera.',
             )}
           </p>
-          <button className="text-link" onClick={() => onNavigate('/register')}>
-            {tr('Start your climb ')}
-            <ArrowRight size={16} />
-          </button>
         </div>
-        <div className="landing-ranks">
-          {[2, 4, 7].map((i) => (
-            <div key={i}>
-              <RankEmblem rating={TIERS[i]!.floor} size={i === 7 ? 134 : 106} />
-              <strong>{tr(TIERS[i]!.name)}</strong>
-              <span>
-                {tr(TIERS[i]!.floor)}
-                {tr('+ MMR')}
-              </span>
-            </div>
+        <div className="lp-faq" data-reveal>
+          {QUESTIONS.map(({ question, answer }, index) => (
+            <details key={question}>
+              <summary>
+                <span className="lp-faq__number">0{index + 1}</span>
+                <span>{tr(question)}</span>
+                <span className="lp-faq__plus" aria-hidden="true" />
+              </summary>
+              <p>{tr(answer)}</p>
+            </details>
           ))}
         </div>
       </section>
-      <section className="landing-section">
-        <div className="fair-grid">
-          <ShieldCheck size={40} />
+      <section className="lp-finale" aria-labelledby="finale-title">
+        <div className="lp-wrap lp-finale__inner" data-reveal>
           <div>
-            <span className="eyebrow">{tr('Rivalry, with respect')}</span>
-            <h2>
-              {tr('Your opponent is a rival.')}
-              <br />
-              {tr('Your rating has a referee.')}
+            <span className="lp-kicker">{tr('YOUR NEXT GREAT RIVALRY STARTS AT HOME.')}</span>
+            <h2 id="finale-title">
+              {tr('GAME ON?')}
+              <span aria-hidden="true">↗</span>
             </h2>
-            <p>
-              {tr(
-                'Ranked answers are checked on the server. AI rounds get an independent second check. If a check cannot be trusted, the match changes no rating or XP. Friendly custom rounds stay outside the ladder.',
-              )}
-            </p>
-            <p className="fine-print">
-              {tr(
-                'Camera frames are shared with your opponent. AI rounds also send snapshots to the configured referee provider. No microphone. No server photo archive.',
-              )}
-            </p>
+          </div>
+          <div className="lp-finale__action">
+            <LandingLink className="lp-button lp-button--dark" href="/play" onNavigate={onNavigate}>
+              {tr('Let’s settle this')}
+              <ArrowRight size={20} />
+            </LandingLink>
+            <span>{tr('Your camera. Your stuff. Your moment.')}</span>
           </div>
         </div>
       </section>
-      <section className="landing-cta">
-        <span className="eyebrow">{tr('The next great rivalry starts somewhere.')}</span>
-        <h2>{tr('Why not in your room?')}</h2>
-        <button className="btn btn--primary btn--lg" onClick={() => onNavigate('/register')}>
-          {tr('Let’s battle ')}
-          <ArrowRight size={18} />
-        </button>
-      </section>
+      <footer className="lp-footer lp-wrap">
+        <a className="lp-brand" href="#landing-title" aria-label={tr('DuelBattle home')}>
+          <span className="lp-brand__mark">
+            <Zap size={20} fill="currentColor" />
+          </span>
+          <span>
+            DUEL<span className="lp-brand__half">BATTLE</span>
+          </span>
+        </a>
+        <span>{tr('Make a little room for rivalry.')}</span>
+        <div>
+          <LandingLink href="/register" onNavigate={onNavigate}>
+            {tr('Create an account')}
+          </LandingLink>
+          <LandingLink href="/settings" onNavigate={onNavigate}>
+            {tr('Settings & privacy')}
+          </LandingLink>
+          <span>© {new Date().getFullYear()} DuelBattle</span>
+        </div>
+      </footer>
     </main>
   );
 }

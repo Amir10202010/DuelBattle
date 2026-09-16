@@ -17,6 +17,7 @@ import { Avatar } from './Identity.jsx';
 import { AudioControls } from './AudioControls.jsx';
 import { useEconomy } from '../hooks/useEconomy.js';
 import { CoinCounter } from './currency/Coins.jsx';
+import { LandingNav } from './landing/LandingNav.js';
 
 const LINKS = [
   { page: 'dashboard', label: 'Home', Icon: Home },
@@ -40,6 +41,9 @@ export function Nav({
 }) {
   useUiPreferences();
   const { data: economy } = useEconomy();
+  if (publicOnly && page === 'home') {
+    return <LandingNav signedIn={Boolean(profile)} onNavigate={onNavigate} />;
+  }
   const go = (path: string) => (e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
