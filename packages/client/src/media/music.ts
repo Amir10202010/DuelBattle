@@ -20,7 +20,8 @@ const MELODY = [
 const frequency = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 
 export class MusicPlayer {
-  private settings: MusicSettings = { enabled: false, volume: 0.28, unavailable: false, playback: 'idle' };
+  private settings: MusicSettings = { enabled: true, volume: 0.28, unavailable: false, playback: 'idle' };
+  private active = false;
   private attempt = 0;
   private listeners = new Set<() => void>();
   private ctx: AudioContext | null = null;
@@ -66,6 +67,11 @@ export class MusicPlayer {
     else this.pause();
   }
 
+  setActive(active: boolean) {
+    this.active = active;
+    if (active) this.unlock(); else this.pause();
+  }
+
   setVolume(volume: number) {
     if (!Number.isFinite(volume)) return;
     this.update({ volume: Math.max(0, Math.min(1, volume)) });
@@ -80,13 +86,13 @@ export class MusicPlayer {
 
   private mix() {
     if (!this.ctx || !this.master) return;
-    const level = this.settings.enabled ? this.settings.volume * (this.ducked ? 0.2 : 0.65) : 0;
+    const level = this.active && this.settings.enabled ? this.settings.volume * (this.ducked ? 0.2 : 0.65) : 0;
     this.master.gain.setTargetAtTime(level, this.ctx.currentTime, 0.15);
   }
 
-  // Called only by a user gesture, or to restore an already-playing visible tab.
+  // Try when entering the game; gestures retry if the browser blocks autoplay.
   unlock = () => {
-    if (!this.settings.enabled || document.hidden) return;
+    if (!this.active || !this.settings.enabled || document.hidden) return;
     if (this.sleepTimer !== null) clearTimeout(this.sleepTimer);
     this.sleepTimer = null;
     try {
@@ -113,7 +119,7 @@ export class MusicPlayer {
       const ctx = this.ctx;
       const attempt = ++this.attempt;
       const start = (running: boolean) => {
-        if (attempt !== this.attempt || !this.settings.enabled || document.hidden) return;
+        if (attempt !== this.attempt || !this.active || !this.settings.enabled || document.hidden) return;
         if (!running) { this.update({ playback: 'blocked', unavailable: true }); return; }
         this.update({ playback: 'running', unavailable: false });
         this.mix();

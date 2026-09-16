@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { PublicProfile } from '@battle/shared';
 
 export interface AuthState {
+  challenge?: string;
+  developmentCode?: string;
   account: { username: string; onboarded: boolean } | null;
   profile: PublicProfile | null;
   serverTime?: number;

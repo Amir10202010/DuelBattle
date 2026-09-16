@@ -56,9 +56,10 @@ class FakeAudioContext {
   }
 }
 
-async function freshBoard() {
+async function freshBoard(active = true) {
   vi.resetModules();
   const module = await import('../src/media/sound.js');
+  if (active) module.sound.setActive(true);
   return module.sound;
 }
 
@@ -73,14 +74,14 @@ afterEach(() => {
 });
 
 describe('sound board', () => {
-  it('starts silent until the player explicitly enables sound', async () => {
-    const sound = await freshBoard();
-    expect(sound.isMuted).toBe(true);
+  it('keeps the landing silent even when audio is enabled by default', async () => {
+    const sound = await freshBoard(false);
+    expect(sound.isMuted).toBe(false);
     sound.play('go');
     expect(FakeAudioContext.instances).toHaveLength(0);
   });
   it('makes no audio context until something asks for sound', async () => {
-    await freshBoard();
+    await freshBoard(false);
     expect(FakeAudioContext.instances).toHaveLength(0);
   });
 

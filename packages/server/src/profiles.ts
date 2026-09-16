@@ -4,7 +4,10 @@ import {
   STARTING_RATING,
   avatarFor,
   normalizeAvatar,
+  DEFAULT_LOADOUT,
+  normalizeLoadout,
   type MatchRecord,
+  type MatchRewards,
   type PublicProfile,
 } from '@battle/shared';
 import { log } from './log.js';
@@ -41,6 +44,7 @@ export function blankProfile(id: string, now: number): PlayerProfile {
     id,
     name: '',
     avatar: avatarFor(id),
+    loadout: { ...DEFAULT_LOADOUT },
     rating: STARTING_RATING,
     peakRating: STARTING_RATING,
     matchesPlayed: 0,
@@ -71,6 +75,7 @@ export function hydrate(row: Partial<PlayerProfile> & { id: string }, now: numbe
     ...blank,
     ...row,
     avatar: normalizeAvatar(row.avatar ?? blank.avatar),
+    loadout: normalizeLoadout(row.loadout),
     peakRating: Math.max(row.peakRating ?? 0, row.rating ?? blank.rating),
     xp: Math.max(0, Math.floor(row.xp ?? 0)),
     achievements: Array.isArray(row.achievements)
@@ -85,6 +90,7 @@ export function publicView(profile: PlayerProfile, own: boolean): PublicProfile 
   const {
     name,
     avatar,
+    loadout,
     rating,
     peakRating,
     matchesPlayed,
@@ -99,6 +105,7 @@ export function publicView(profile: PlayerProfile, own: boolean): PublicProfile 
   return {
     name,
     avatar,
+    loadout,
     rating,
     peakRating,
     matchesPlayed,
@@ -114,6 +121,7 @@ export function publicView(profile: PlayerProfile, own: boolean): PublicProfile 
 }
 
 export interface ProfileStore {
+  rewardMatch?(id: string, receipt: string, reward: MatchRewards, at: number): number;
   queueCooldown?(id: string): number;
   setQueueCooldown?(id: string, until: number): void;
   auditEvaluation?(roundId: string, verdict: unknown, at: number): void;

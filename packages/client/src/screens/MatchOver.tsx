@@ -1,4 +1,5 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
+import { CoinIcon } from '../components/currency/Coins.jsx';
 import { useEffect, useState } from 'react';
 import {
   getAchievement,
@@ -271,6 +272,7 @@ function Payout({
         </div>
       )}
       <div className="payout__head">
+        {!!rewards.coins && <span className="coin-counter"><CoinIcon size={28}/><strong>+{rewards.coins}</strong></span>}
         <span className="payout__xp display">
           {'+'}
           {tr(rewards.xp)}

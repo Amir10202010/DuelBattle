@@ -1,10 +1,11 @@
 import { getPreferences } from './preferences.js';
 import { ru, en } from './messages.js';
 import { gameEn, gameRu } from './gameCopy.js';
+import { characterRu } from './characterCopy.js';
 import { RUSSIAN_PROMPTS } from '@battle/shared';
 export { useUiPreferences } from './preferences.js';
 
-const dictionaries = { en: { ...en, ...gameEn }, ru: { ...ru, ...RUSSIAN_PROMPTS, ...gameRu } };
+const dictionaries = { en: { ...en, ...gameEn }, ru: { ...ru, ...RUSSIAN_PROMPTS, ...gameRu, ...characterRu } };
 function patterns(dictionary: Record<string, string>) {
   return Object.entries(dictionary)
     .filter(([key]) => key.includes('{0}'))

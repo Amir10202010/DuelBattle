@@ -13,7 +13,10 @@ import { Nav } from './components/Nav.jsx';
 import { AuthGate, ErrorState, Skeleton } from './components/PageState.jsx';
 import { Landing } from './pages/Landing.jsx';
 import { Home } from './pages/Home.jsx';
-import { Auth, Onboarding } from './pages/Auth.jsx';
+import { Onboarding } from './pages/Auth.jsx';
+import { Auth } from './pages/SignIn.jsx';
+import { EconomyProvider } from './hooks/useEconomy.jsx';
+import { EconomyFeedback } from './components/currency/Coins.jsx';
 const Play = lazy(() => import('./pages/Play.jsx').then((m) => ({ default: m.Play })));
 const Leaderboard = lazy(() =>
   import('./pages/Leaderboard.jsx').then((m) => ({ default: m.Leaderboard })),
@@ -22,6 +25,7 @@ const Profile = lazy(() => import('./pages/Profile.jsx').then((m) => ({ default:
 const Ranks = lazy(() => import('./pages/Ranks.jsx').then((m) => ({ default: m.Ranks })));
 const Awards = lazy(() => import('./pages/Awards.jsx').then((m) => ({ default: m.Awards })));
 const Settings = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.Settings })));
+const Store = lazy(() => import('./pages/Store.jsx').then((m) => ({ default: m.Store })));
 const Room = lazy(() => import('./screens/Room.jsx').then((m) => ({ default: m.Room })));
 
 export function App() {
@@ -30,10 +34,12 @@ export function App() {
   storeRef.current ??= new MatchStore();
   const store = storeRef.current;
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  useMusic(snapshot.screen === 'room' ? snapshot.match : null, store);
   const auth = useAuth();
   const camera = useCamera();
   const route = useRoute();
+  const inGame = snapshot.screen === 'room' || !['home', 'login', 'register', 'recover'].includes(route.page);
+  useMusic(snapshot.screen === 'room' ? snapshot.match : null, store, inGame);
+  useEffect(() => { sound.setActive(inGame); return () => sound.setActive(false); }, [inGame]);
   useDocumentTitle(snapshot.match, snapshot.you);
   const profile = auth.account ? (snapshot.profile ?? auth.profile) : null;
   useEffect(() => {
@@ -133,6 +139,7 @@ export function App() {
   const page = route.code && !inRoom ? 'play' : route.page;
   const publicOnly = ['home', 'login', 'register', 'recover', 'onboarding'].includes(page);
   const protectedPage = [
+    'store',
     'dashboard',
     'leaderboard',
     'profile',
@@ -141,6 +148,7 @@ export function App() {
     'onboarding',
   ].includes(page);
   const gateName = {
+    store: 'the store',
     dashboard: 'your game home',
     leaderboard: 'the leaderboard',
     profile: 'your player profile',
@@ -183,6 +191,7 @@ export function App() {
   else if (page === 'profile') content = <Profile profile={profile} onNavigate={route.go} />;
   else if (page === 'ranks') content = <Ranks profile={profile} />;
   else if (page === 'awards') content = <Awards profile={profile} />;
+  else if (page === 'store') content = <Store />;
   else if (page === 'settings')
     content = (
       <Settings
@@ -205,7 +214,8 @@ export function App() {
       <Skeleton />
     );
   return (
-    <>
+    <EconomyProvider accountKey={auth.account?.username ?? null} revision={`${profile?.xp}:${route.page}:${snapshot.match?.phase === 'matchResult'}`}>
+      <EconomyFeedback />
       <a className="skip-link" href="#main-content">
         {tr('Skip to content')}
       </a>
@@ -272,6 +282,6 @@ export function App() {
         )}
       </Suspense>
       <Toasts toasts={snapshot.toasts} />
-    </>
+    </EconomyProvider>
   );
 }

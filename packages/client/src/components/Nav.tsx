@@ -9,15 +9,19 @@ import {
   ArrowRight,
   Zap,
   UserRound,
+  ShoppingBag,
 } from 'lucide-react';
 import { levelFor, type PublicProfile } from '@battle/shared';
 import { pagePath, type Page } from '../hooks/useRoute.js';
 import { Avatar } from './Identity.jsx';
 import { AudioControls } from './AudioControls.jsx';
+import { useEconomy } from '../hooks/useEconomy.js';
+import { CoinCounter } from './currency/Coins.jsx';
 
 const LINKS = [
   { page: 'dashboard', label: 'Home', Icon: Home },
   { page: 'play', label: 'Battle', Icon: Swords },
+  { page: 'store', label: 'Store', Icon: ShoppingBag },
   { page: 'leaderboard', label: 'Leaderboard', Icon: Trophy },
   { page: 'awards', label: 'Rewards', Icon: Gift },
   { page: 'ranks', label: 'Ranks', Icon: Gem },
@@ -35,6 +39,7 @@ export function Nav({
   publicOnly?: boolean;
 }) {
   useUiPreferences();
+  const { data: economy } = useEconomy();
   const go = (path: string) => (e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
@@ -62,7 +67,6 @@ export function Nav({
         {tr(brand)}
         <span className="public-nav__note">{tr('Your room is the game.')}</span>
         <div>
-          <AudioControls />
           {profile ? (
             <a className="btn btn--primary" href="/home" onClick={go('/home')}>
               {tr('Enter home ')}
@@ -127,6 +131,7 @@ export function Nav({
           <strong>{tr(LINKS.find((l) => l.page === page)?.label ?? 'Settings')}</strong>
         </div>
         <div className="topbar-right">
+          {profile && economy && <a href="/store" onClick={go('/store')}><CoinCounter value={economy.coins}/></a>}
           <AudioControls />
           {profile ? (
             <a className="topbar-player" href="/profile" onClick={go('/profile')}>
@@ -148,7 +153,7 @@ export function Nav({
         </div>
       </header>
       <nav className="bottom-nav" aria-label={tr('Mobile navigation')}>
-        {LINKS.filter((l) => l.page !== 'ranks').map(({ page: to, label, Icon }) => (
+        {LINKS.filter((l) => l.page !== 'ranks' && l.page !== 'leaderboard').map(({ page: to, label, Icon }) => (
           <a
             key={to}
             href={pagePath(to)}
@@ -157,7 +162,7 @@ export function Nav({
             aria-current={page === to ? 'page' : undefined}
           >
             <Icon size={20} />
-            <span>{tr(label === 'Leaderboard' ? 'Ladder' : label)}</span>
+              <span>{tr(label)}</span>
           </a>
         ))}
       </nav>

@@ -1,4 +1,5 @@
 import type { MatchResult } from './rating.js';
+import type { Loadout } from './cosmetics.js';
 
 /** One finished match, as it reads on a profile card. */
 export interface MatchRecord {
@@ -43,6 +44,7 @@ export interface Avatar {
  * to the person it belongs to and to nobody else.
  */
 export interface PublicProfile {
+  loadout?: Loadout;
   /** The name they last played under. Empty until they have played once. */
   name: string;
   avatar: Avatar;
@@ -80,6 +82,7 @@ export interface RatingDelta {
  * pretending they are the same number.
  */
 export interface MatchRewards {
+  coins?: number;
   dailyBonus?: number;
   xp: number;
   /** Level before and after, so a level-up can be announced. */

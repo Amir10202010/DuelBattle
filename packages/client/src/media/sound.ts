@@ -1,6 +1,7 @@
 import { preparePlayback, resumeAudio, type PlaybackState } from './audioPlayback.js';
 
 export type Cue =
+  | 'purchase' | 'equip' | 'hit' | 'finisher'
   | 'button'
   | 'hurry'
   | 'hurryFinal'
@@ -40,6 +41,10 @@ interface Note {
  * than timbre, because these are all sub-second cues under a live camera.
  */
 const CUES: Record<Cue, Note[]> = {
+  purchase: [{ freq: 660, at: 0, duration: .12, gain: .13 }, { freq: 880, at: .09, duration: .13, gain: .14 }, { freq: 1320, at: .19, duration: .3, gain: .12 }],
+  equip: [{ freq: 440, to: 880, at: 0, duration: .1, gain: .13, type: 'triangle' }],
+  hit: [{ freq: 170, to: 48, at: 0, duration: .16, gain: .3, type: 'triangle' }, { freq: 780, to: 240, at: .02, duration: .07, gain: .1 }],
+  finisher: [{ freq: 140, to: 38, at: 0, duration: .32, gain: .3, type: 'triangle' }, { freq: 523, at: .12, duration: .16, gain: .1 }, { freq: 784, at: .23, duration: .28, gain: .12 }],
   button: [{ freq: 520, to: 720, at: 0, duration: 0.045, gain: 0.065, type: 'triangle' }],
   hurry: [{ freq: 440, to: 330, at: 0, duration: 0.075, gain: 0.09, type: 'triangle' }],
   hurryFinal: [
@@ -137,9 +142,9 @@ const MUTE_KEY = 'battle.muted.v1';
 
 function readMuted(): boolean {
   try {
-    return localStorage.getItem(MUTE_KEY) !== '0';
+    return localStorage.getItem(MUTE_KEY) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -151,6 +156,7 @@ function readMuted(): boolean {
  * suspended context that nobody resumes is a silent game with no error.
  */
 class SoundBoard {
+  private active = false;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private muted = readMuted();
@@ -175,11 +181,17 @@ class SoundBoard {
     return this.muted;
   }
 
+  setActive(active: boolean) {
+    this.active = active;
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(active && !this.muted ? 1 : 0, this.ctx.currentTime, .02);
+    if (active && !this.muted) void this.unlock();
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     for (const listener of this.listeners) listener();
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.01);
+      this.master.gain.setTargetAtTime(muted || !this.active ? 0 : 1, this.ctx.currentTime, 0.01);
     }
     try {
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
@@ -190,6 +202,7 @@ class SoundBoard {
 
   /** Safe to call on every gesture; only the first one does any work. */
   unlock(): Promise<void> | void {
+    if (!this.active) return;
     preparePlayback();
     if (!this.ctx || this.ctx.state === 'closed') {
       const Ctor =
@@ -218,7 +231,7 @@ class SoundBoard {
   }
 
   play(cue: Cue): void {
-    if (this.muted) return;
+    if (this.muted || !this.active) return;
     const ready = this.unlock();
     if (this.ctx && this.ctx.state !== 'running') {
       const requestedAt = Date.now();
@@ -235,7 +248,7 @@ class SoundBoard {
   private render(cue: Cue): void {
     const ctx = this.ctx;
     const master = this.master;
-    if (this.muted || !ctx || !master || ctx.state !== 'running') return;
+    if (this.muted || !this.active || !ctx || !master || ctx.state !== 'running') return;
 
     const start = ctx.currentTime;
     for (const note of CUES[cue]) {

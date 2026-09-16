@@ -4,23 +4,27 @@ import {
   AuthError,
   type AuthService,
   credentialsSchema,
-  registrationSchema,
   sessionCookie,
 } from './auth.js';
 import { TokenBuckets } from './limiter.js';
 import { config } from './config.js';
+import { AuthProviders } from './authProviders.js';
+import { dailyCoins, economyView, ensureWallet, equip, purchase, unequip } from './economy.js';
+import { COSMETIC_SLOTS } from '@battle/shared';
 
 const recoverySchema = credentialsSchema.extend({ code: z.string().regex(/^[a-f0-9]{48}$/) });
 
 export function authHttp(auth: AuthService) {
+  const providers = new AuthProviders(auth);
   const mutationBudget = new TokenBuckets({ burst: 8, refillPerSec: 0.05 });
+  const economyBudget = new TokenBuckets({ burst: 30, refillPerSec: 1 });
   return async (
     req: IncomingMessage,
     res: ServerResponse,
     path: string,
     ip: string,
   ): Promise<boolean> => {
-    if (!path.startsWith('/api/auth/')) return false;
+    if (!path.startsWith('/api/auth/') && !path.startsWith('/api/economy')) return false;
     const respond = (status: number, body: unknown) => {
       res.writeHead(status, {
         'content-type': 'application/json',
@@ -30,6 +34,23 @@ export function authHttp(auth: AuthService) {
       res.end(JSON.stringify(body));
     };
     try {
+      if (path === '/api/auth/providers' && req.method === 'GET') { respond(200, providers.options()); return true; }
+      if (req.method === 'GET' && (path === '/api/auth/google' || path === '/api/auth/google/callback')) {
+        if (!mutationBudget.take(ip, Date.now())) throw new AuthError(429, 'Too many attempts. Try again shortly.');
+        if (path.endsWith('/callback')) await providers.googleCallback(req, res);
+        else providers.googleStart(res);
+        return true;
+      }
+      if (path === '/api/economy' && req.method === 'GET') {
+        const account = auth.account(req);
+        if (!account) throw new AuthError(401, 'Sign in to continue.');
+        if (!economyBudget.take(account.id, Date.now())) throw new AuthError(429, 'Too many attempts. Wait a little and try again.');
+        const result = auth.db.transaction(() => {
+          ensureWallet(auth.db.sql, account.id, Date.now());
+          return economyView(auth.db.sql, account.id, auth.db.get(account.id)!.xp, Date.now());
+        });
+        respond(200, result); return true;
+      }
       if (path === '/api/auth/session' && req.method === 'GET') {
         const account = auth.account(req);
         respond(
@@ -50,7 +71,7 @@ export function authHttp(auth: AuthService) {
       ) {
         throw new AuthError(403, 'Open DuelBattle directly and try again.');
       }
-      if (!mutationBudget.take(ip, Date.now())) {
+      if (!path.startsWith('/api/economy/') && !mutationBudget.take(ip, Date.now())) {
         res.setHeader('retry-after', '20');
         throw new AuthError(429, 'Too many attempts. Wait a little and try again.');
       }
@@ -67,10 +88,12 @@ export function authHttp(auth: AuthService) {
       } catch {
         throw new AuthError(400, 'Check the form and try again.');
       }
-      if (path === '/api/auth/register') {
-        const result = await auth.register(registrationSchema.parse(input));
-        res.setHeader('set-cookie', sessionCookie(result.token, config.nodeEnv === 'production'));
-        respond(201, { ...auth.view(auth.resolve(result.token)!), recovery: result.recovery });
+      if (path === '/api/auth/register' || path === '/api/auth/email/start') {
+        respond(202, await providers.startEmail(input));
+      } else if (path === '/api/auth/email/verify') {
+        const token = await providers.verifyEmail(input);
+        res.setHeader('set-cookie', sessionCookie(token, config.nodeEnv === 'production'));
+        respond(201, auth.view(auth.resolve(token)!));
       } else if (path === '/api/auth/login') {
         const token = await auth.login(credentialsSchema.parse(input));
         res.setHeader('set-cookie', sessionCookie(token, config.nodeEnv === 'production'));
@@ -82,7 +105,28 @@ export function authHttp(auth: AuthService) {
       } else {
         const account = auth.account(req);
         if (!account) throw new AuthError(401, 'Sign in to continue.');
-        if (path === '/api/auth/logout') {
+        if (path.startsWith('/api/economy/')) {
+          if (!economyBudget.take(account.id, Date.now())) throw new AuthError(429, 'Too many attempts. Wait a little and try again.');
+          const result = auth.db.transaction(() => {
+            ensureWallet(auth.db.sql, account.id, Date.now());
+            const profile = auth.db.get(account.id)!;
+            let granted = 0;
+            if (path === '/api/economy/daily') {
+              z.object({}).strict().parse(input);
+              granted = dailyCoins(auth.db.sql, account.id, Date.now());
+            } else if (path === '/api/economy/unequip') {
+              const { slot } = z.object({ slot: z.enum(COSMETIC_SLOTS) }).strict().parse(input);
+              unequip(auth.db.sql, account.id, slot);
+            } else {
+              const { itemId } = z.object({ itemId: z.string().min(1).max(40) }).strict().parse(input);
+              if (path === '/api/economy/buy') purchase(auth.db.sql, account.id, itemId, profile.xp, Date.now());
+              else if (path === '/api/economy/equip') equip(auth.db.sql, account.id, itemId);
+              else throw new AuthError(404, 'This action could not be found.');
+            }
+            return { ...economyView(auth.db.sql, account.id, profile.xp, Date.now()), granted };
+          });
+          respond(200, result);
+        } else if (path === '/api/auth/logout') {
           auth.logout(req);
           res.setHeader('set-cookie', sessionCookie('', config.nodeEnv === 'production'));
           respond(200, { account: null, profile: null });

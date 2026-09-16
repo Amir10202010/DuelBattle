@@ -12,7 +12,8 @@ export const credentialsSchema = z
       .string()
       .trim()
       .toLowerCase()
-      .regex(/^[a-z0-9_]{3,24}$/, 'Use 3–24 letters, numbers or underscores.'),
+      .max(254)
+      .regex(/^(?:[a-z0-9_]{3,24}|[^\s@]+@[^\s@]+\.[^\s@]+)$/, 'Enter your email or player ID.'),
     password: z.string().min(12, 'Use at least 12 characters.').max(128),
   })
   .strict();
@@ -41,6 +42,7 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  if (!/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(stored)) stored = `${'0'.repeat(32)}:${'0'.repeat(128)}`;
   const [salt, hex] = stored.split(':');
   const actual = await derive(password, salt!);
   const expected = Buffer.from(hex!, 'hex');
@@ -134,7 +136,7 @@ export class AuthService {
 
   async login(input: z.infer<typeof credentialsSchema>): Promise<string> {
     const row = this.db.sql
-      .prepare('SELECT id,password_hash FROM accounts WHERE username=?')
+      .prepare(input.username.includes('@') ? 'SELECT id,password_hash FROM accounts WHERE email=? COLLATE NOCASE' : 'SELECT id,password_hash FROM accounts WHERE username=?')
       .get(input.username);
     // Same expensive work for unknown usernames; no quick account enumeration.
     const dummy = `${'0'.repeat(32)}:${'0'.repeat(128)}`;
@@ -142,7 +144,7 @@ export class AuthService {
       verifyPassword(input.password, row ? String(row.password_hash) : dummy),
     );
     if (!row || !valid)
-      throw new AuthError(401, 'Player ID or password does not match. Try again.');
+      throw new AuthError(401, 'Email, player ID or password does not match.');
     return this.session(String(row.id));
   }
 

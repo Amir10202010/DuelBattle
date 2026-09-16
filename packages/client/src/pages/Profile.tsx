@@ -12,6 +12,7 @@ import {
 import { Avatar, LevelBar } from '../components/Identity.jsx';
 import { RankEmblem, RewardArt } from '../components/GameArt.jsx';
 import { BattleHistory } from '../components/BattleHistory.jsx';
+import { Customization } from '../components/avatar/Customization.jsx';
 export function Profile({
   profile,
   onNavigate,
@@ -35,6 +36,8 @@ export function Profile({
   const favorites = [...categories].sort((a, b) => b[1] - a[1]).slice(0, 3);
   return (
     <main className="page">
+      <header className="page-heading"><div><span className="eyebrow">{tr('Your hero')}</span><h1>{tr('Locker')}</h1></div><a className="btn" href="/store">{tr('Open store')}<ArrowRight size={16}/></a></header>
+      <Customization />
       <section className="player-cover">
         <span className="eyebrow">{tr('Player dossier')}</span>
         <div className="player-cover__main">

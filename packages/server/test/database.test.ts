@@ -133,7 +133,7 @@ describe('accounts and sessions', () => {
     database();
     const auth = new AuthService(db);
     db.sql
-      .prepare('INSERT INTO accounts VALUES(?,?,?,?,?,?)')
+      .prepare('INSERT INTO accounts(id,username,password_hash,recovery_hash,onboarded,created_at) VALUES(?,?,?,?,?,?)')
       .run('a', 'player', 'hash', 'recovery', 1, Date.now());
     const token = auth.session('a');
     db.sql.exec('UPDATE sessions SET expires_at=1');
@@ -155,7 +155,7 @@ describe('database leaderboard', () => {
         wins: 5,
       });
       db.sql
-        .prepare('INSERT INTO accounts VALUES(?,?,?,?,?,?)')
+        .prepare('INSERT INTO accounts(id,username,password_hash,recovery_hash,onboarded,created_at) VALUES(?,?,?,?,?,?)')
         .run(id, id, 'hash', 'recovery', 1, Date.now());
     }
     db.save({

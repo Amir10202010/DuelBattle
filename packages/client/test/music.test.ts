@@ -41,16 +41,30 @@ beforeEach(() => {
   vi.stubGlobal('AudioContext', Context);
   Object.defineProperty(document, 'hidden', { configurable: true, value: false });
   localStorage.clear();
+  localStorage.setItem('battle.music.v1', JSON.stringify({ enabled: false, volume: .28 }));
   Context.instances = [];
   music = new MusicPlayer();
+  music.setActive(true);
 });
 afterEach(() => { music.pause(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('background music', () => {
-  it('does not create audio or timers before explicit opt-in', () => {
+  it('automatically starts in the game, but never on the landing', async () => {
+    localStorage.clear();
+    music = new MusicPlayer();
+    music.unlock();
+    expect(Context.instances).toHaveLength(0);
+    music.setActive(true);
+    expect(Context.instances[0]!.notes.length).toBeGreaterThan(0);
+    music.setActive(false);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(Context.instances[0]!.state).toBe('suspended');
+  });
+  it('respects saved mute without creating audio or a scheduler', () => {
+    const schedule = vi.spyOn(globalThis, 'setInterval');
     music.unlock(); music.restore(); music.setScene('battle');
     expect(Context.instances).toHaveLength(0);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(schedule).not.toHaveBeenCalled();
   });
   it('starts a composed score and keeps one scheduler across gestures and scenes', async () => {
     const schedule = vi.spyOn(globalThis, 'setInterval');

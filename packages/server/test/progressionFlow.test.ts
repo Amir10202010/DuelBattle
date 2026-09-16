@@ -72,7 +72,7 @@ function accounts() {
   for (const id of ['a', 'b']) {
     db.save({ ...blankProfile(id, 0), name: id });
     db.sql
-      .prepare('INSERT INTO accounts VALUES(?,?,?,?,?,?)')
+      .prepare('INSERT INTO accounts(id,username,password_hash,recovery_hash,onboarded,created_at) VALUES(?,?,?,?,?,?)')
       .run(id, id, 'fixture', 'fixture', 1, 0);
   }
 }

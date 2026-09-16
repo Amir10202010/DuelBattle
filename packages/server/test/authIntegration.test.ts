@@ -74,12 +74,20 @@ const accountInput = {
   password: 'Integration-test-password',
 };
 
+async function verifiedRegistration(request: Awaited<ReturnType<typeof setup>>['request']) {
+  const start = await request('register', { email: 'player@example.test' });
+  expect(start.status).toBe(202);
+  expect(start.headers.get('set-cookie')).toBeNull();
+  const { challenge, developmentCode: code } = await start.json();
+  return request('email/verify', { challenge, code, name: accountInput.name, password: accountInput.password });
+}
+
 describe('real authentication HTTP and socket boundaries', () => {
   it('registers, onboards, restores and signs out with a revocable cookie', async () => {
     const { request, url } = await setup();
     const anonymous = await fetch(`${url}/api/auth/session`);
     expect((await anonymous.json()).account).toBeNull();
-    const registered = await request('register', accountInput);
+    const registered = await verifiedRegistration(request);
     expect(registered.status).toBe(201);
     const cookie = registered.headers.get('set-cookie')!.split(';')[0]!;
     const created = await registered.json();
@@ -89,7 +97,7 @@ describe('real authentication HTTP and socket boundaries', () => {
     const onboarded = await request('onboard', {}, cookie);
     expect((await onboarded.json()).account.onboarded).toBe(true);
     const restored = await fetch(`${url}/api/auth/session`, { headers: { cookie } });
-    expect((await restored.json()).account.username).toBe(accountInput.username);
+    expect((await restored.json()).account.username).toBe(created.account.username);
     expect((await request('logout', {}, cookie)).status).toBe(200);
     const ended = await fetch(`${url}/api/auth/session`, { headers: { cookie } });
     expect((await ended.json()).account).toBeNull();
@@ -150,7 +158,7 @@ describe('real authentication HTTP and socket boundaries', () => {
   });
   it('rejects socket authority after the account session is revoked', async () => {
     const { request, port } = await setup();
-    const registered = await request('register', accountInput);
+    const registered = await verifiedRegistration(request);
     const cookie = registered.headers.get('set-cookie')!.split(';')[0]!;
     const player = await socketAt(port, cookie);
     player.send({ t: 'leaderboard', board: 'rating' });
@@ -165,5 +173,32 @@ describe('real authentication HTTP and socket boundaries', () => {
       code: 'session-expired',
       fatal: true,
     });
+  });
+  it('protects the shop, ignores duplicate purchases and rejects forged prices and ownership', async () => {
+    const { request, url, db } = await setup();
+    expect((await fetch(`${url}/api/economy`)).status).toBe(401);
+    const registered = await verifiedRegistration(request);
+    const cookie = registered.headers.get('set-cookie')!.split(';')[0]!;
+    const post = (action: string, body: unknown) => fetch(`${url}/api/economy/${action}`, {
+      method: 'POST', headers: { origin: url, 'x-battle-request': '1', 'content-type': 'application/json', cookie },
+      body: JSON.stringify(body),
+    });
+    const initial = await fetch(`${url}/api/economy`, { headers: { cookie } });
+    expect(await initial.json()).toMatchObject({ coins: 160, loadout: { weapon: 'mitten' } });
+    expect((await post('buy', { itemId: 'visor', price: 0, accountId: 'someone-else' })).status).toBe(400);
+    expect((await post('equip', { itemId: 'comet' })).status).toBe(403);
+    const purchases = await Promise.all([post('buy', { itemId: 'visor' }), post('buy', { itemId: 'visor' })]);
+    for (const response of purchases) expect(await response.json()).toMatchObject({ coins: 80 });
+    expect(db.sql.prepare("SELECT count(*) AS n FROM economy_ledger WHERE receipt='purchase:visor'").get()!.n).toBe(1);
+    expect(await (await post('equip', { itemId: 'visor' })).json()).toMatchObject({ loadout: { accessory: 'visor' } });
+    const session = await fetch(`${url}/api/auth/session`, { headers: { cookie } });
+    expect((await session.json()).profile.loadout.accessory).toBe('visor');
+    expect((await (await post('unequip', { slot: 'accessory' })).json()).loadout.accessory).toBeUndefined();
+    expect((await post('buy', { itemId: 'comet' })).status).toBe(409);
+    const claim = await post('daily', {});
+    expect(await claim.json()).toMatchObject({ coins: 110, granted: 30 });
+    expect(await (await post('daily', {})).json()).toMatchObject({ coins: 110, granted: 0 });
+    await request('logout', {}, cookie);
+    expect((await post('buy', { itemId: 'visor' })).status).toBe(401);
   });
 });

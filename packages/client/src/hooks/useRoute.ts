@@ -21,6 +21,7 @@ export const PAGES = [
   'ranks',
   'awards',
   'settings',
+  'store',
 ] as const;
 
 export type Page = (typeof PAGES)[number];
@@ -38,6 +39,7 @@ const PATHS: Record<Page, string> = {
   ranks: '/ranks',
   awards: '/awards',
   settings: '/settings',
+  store: '/store',
 };
 
 export function pagePath(page: Page): string {

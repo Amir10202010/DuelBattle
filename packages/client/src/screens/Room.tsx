@@ -19,6 +19,7 @@ import { CameraGate } from './CameraGate.jsx';
 import { Lobby } from './Lobby.jsx';
 import { Arena } from './Arena.jsx';
 import { MatchOver } from './MatchOver.jsx';
+import { DuelActors } from '../components/battle/DuelActors.jsx';
 
 /** Live frames are sent four times a second: enough to feel live, small enough to ignore. */
 const FRAME_INTERVAL_MS = 250;
@@ -75,6 +76,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
   return (
     <div className="room" id="main-content" role="main">
       <Announcer match={match} youId={youId} />
+      <DuelActors match={match} youId={youId} standings={snapshot.standings}/>
       <header className="room__bar">
         <span className="room__code mono" title={tr('Room code')}>
           {tr(match.roomCode)}

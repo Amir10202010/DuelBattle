@@ -221,6 +221,10 @@ export function recordMatch(
 
     store.save(updateA.profile);
     store.save(updateB.profile);
+    if (matchId && store.rewardMatch) {
+      updateA.rewards.coins = store.rewardMatch(a.id, matchId, updateA.rewards, at);
+      updateB.rewards.coins = store.rewardMatch(b.id, matchId, updateB.rewards, at);
+    }
     return { [a.id]: updateA, [b.id]: updateB };
   };
   return store.transaction ? store.transaction(settle) : settle();

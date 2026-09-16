@@ -13,6 +13,11 @@ services:
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_ORIGIN: https://${DOMAIN:?Set DOMAIN in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     volumes:
       - game-data:/app/data
     expose:

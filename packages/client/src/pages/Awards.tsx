@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Check, LockKeyhole, Sparkles, Gift } from 'lucide-react';
 import { ACHIEVEMENTS, achievementOrder, type PublicProfile } from '@battle/shared';
 import { RewardArt } from '../components/GameArt.jsx';
+import { DailyReward } from '../components/rewards/DailyReward.jsx';
 const FILTERS = ['All', 'Achievements', 'Ranks', 'Streaks', 'Special', 'Locked'] as const;
 export function Awards({ profile }: { profile: PublicProfile | null }) {
   useUiPreferences();
@@ -33,6 +34,7 @@ export function Awards({ profile }: { profile: PublicProfile | null }) {
           {tr(' collected')}
         </span>
       </header>
+      <DailyReward />
       <section className="collection-banner">
         <div className="collection-banner__art">
           <RewardArt group="dominance" rarity="legendary" />

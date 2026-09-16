@@ -4,11 +4,12 @@ import { music } from '../media/music.js';
 import { AUDIO_GESTURES, isAudioControl } from '../media/audioPlayback.js';
 import type { MatchStore } from '../net/store.js';
 
-export function useMusic(match: PublicMatchState | null, store: Pick<MatchStore, 'serverNow'>) {
+export function useMusic(match: PublicMatchState | null, store: Pick<MatchStore, 'serverNow'>, active: boolean) {
+  useEffect(() => { music.setActive(active); return () => music.setActive(false); }, [active]);
   useEffect(() => {
     const visibility = () => { if (document.hidden) music.pause(); else music.restore(); };
     const unlock = (event: Event) => { if (!isAudioControl(event)) music.unlock(); };
-    // A saved preference still waits for a gesture on a fresh page.
+    // Retry blocked autoplay on the first completed gesture inside the game.
     for (const event of AUDIO_GESTURES) document.addEventListener(event, unlock, true);
     document.addEventListener('visibilitychange', visibility);
     return () => {

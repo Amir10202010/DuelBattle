@@ -12,6 +12,7 @@ import './styles/app.css';
 import './styles/appearance.css';
 import './styles/playfulness.css';
 import './styles/experience.css';
+import './styles/characters.css';
 import { App } from './App.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 

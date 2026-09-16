@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { hydrate, type PlayerProfile, type ProfileStore } from './profiles.js';
 import type { BoardKind } from './leaderboard.js';
+import { migrateEconomy, matchCoins } from './economy.js';
+import { normalizeLoadout, type MatchRewards } from '@battle/shared';
 
 /** One authoritative store. All game writes commit before a result is announced. */
 export class Database implements ProfileStore {
@@ -58,6 +60,27 @@ export class Database implements ProfileStore {
         INSERT OR IGNORE INTO migrations VALUES(1, unixepoch()*1000);
         INSERT OR IGNORE INTO migrations VALUES(2, unixepoch()*1000);
       `);
+      const columns = this.sql.prepare('PRAGMA table_info(accounts)').all().map((row) => row.name);
+      if (!columns.includes('email')) this.sql.exec('ALTER TABLE accounts ADD COLUMN email TEXT;');
+      if (!columns.includes('google_sub')) this.sql.exec('ALTER TABLE accounts ADD COLUMN google_sub TEXT;');
+      this.sql.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS accounts_email ON accounts(email COLLATE NOCASE) WHERE email IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS accounts_google ON accounts(google_sub) WHERE google_sub IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS email_challenges (
+          id TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL,
+          purpose TEXT NOT NULL CHECK(purpose IN ('register','reset')),
+          attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+          expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS email_challenges_email ON email_challenges(email,created_at DESC);
+        CREATE INDEX IF NOT EXISTS email_challenges_expiry ON email_challenges(expires_at);
+        CREATE TABLE IF NOT EXISTS oauth_challenges (
+          state_hash TEXT PRIMARY KEY, nonce TEXT NOT NULL, verifier TEXT NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS oauth_challenges_expiry ON oauth_challenges(expires_at);
+        INSERT OR IGNORE INTO migrations VALUES(4, unixepoch()*1000);
+      `);
+      migrateEconomy(this.sql);
     });
   }
 
@@ -75,7 +98,11 @@ export class Database implements ProfileStore {
 
   get(id: string): PlayerProfile | undefined {
     const row = this.sql.prepare('SELECT payload FROM profiles WHERE id=?').get(id);
-    return row ? hydrate(JSON.parse(String(row.payload)) as PlayerProfile, Date.now()) : undefined;
+    if (!row) return undefined;
+    const profile = hydrate(JSON.parse(String(row.payload)) as PlayerProfile, Date.now());
+    const equipped = this.sql.prepare('SELECT loadout FROM wallets WHERE account_id=?').get(id);
+    if (equipped) profile.loadout = normalizeLoadout(JSON.parse(String(equipped.loadout)));
+    return profile;
   }
 
   save(profile: PlayerProfile): void {
@@ -93,6 +120,10 @@ export class Database implements ProfileStore {
         profile.bestStreak,
         profile.matchesPlayed,
       );
+  }
+
+  rewardMatch(id: string, receipt: string, reward: MatchRewards, at: number) {
+    return matchCoins(this.sql, id, receipt, reward, at);
   }
 
   all(): PlayerProfile[] {
