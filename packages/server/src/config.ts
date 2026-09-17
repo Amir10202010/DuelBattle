@@ -68,10 +68,18 @@ export const config = {
   yoloToken: process.env.YOLO_TOKEN ?? '',
   /** Persistent SQLite database and legacy identity key. Required in production. */
   dataDir: process.env.DATA_DIR ?? './data',
-  /** Sustained client messages per second before we start dropping. */
-  messageRatePerSec: int('MESSAGE_RATE_PER_SEC', 25),
-  /** Image-bearing messages get their own, much tighter budget. */
-  imageRatePerSec: int('IMAGE_RATE_PER_SEC', 8),
+  /**
+   * Sustained client messages per second before we start dropping.
+   *
+   * The live camera stream is the bulk of it: a client paced off its webcam
+   * sends about fifteen frames a second, and every one is a message. The
+   * budget has to clear that with room for the handshake, pings and the
+   * handful of actions a player can take in the same second, or the limiter
+   * starts eating video on a perfectly healthy connection.
+   */
+  messageRatePerSec: int('MESSAGE_RATE_PER_SEC', 45),
+  /** Image-bearing messages get their own budget; a frame is small, a snapshot is not. */
+  imageRatePerSec: int('IMAGE_RATE_PER_SEC', 22),
   /** Connections from one IP. Keeps a single browser from exhausting the box. */
   maxConnectionsPerIp: int('MAX_CONNECTIONS_PER_IP', 12),
   /**

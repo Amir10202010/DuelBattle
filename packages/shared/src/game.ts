@@ -832,9 +832,17 @@ function deckFor(state: MatchState, ctx: EngineContext): readonly Challenge[] {
   const playable = candidates.filter((c) => c.judging === 'auto' || (ctx.aiAvailable && isAiVerifiable(c)));
   // A provider outage or an old/custom deck must never produce an empty picker.
   const party = playable.filter((c) => c.tags.includes('party'));
-  // Alternate a short pose gag with scavenger rounds, instead of letting a
-  // thousand-topic pool bury the playful challenges. Explicit themed pools still work.
-  if (ctx.aiAvailable && (state.roundNumber + 1) % 2 === 0 && party.length) return party;
+  /*
+   * Two silly rounds for every scavenger round.
+   *
+   * Left to itself a thousand-topic pool buries the playful deck completely,
+   * and the game turns into a race to own the right objects — which rewards
+   * whoever has the fuller desk rather than whoever is funnier. Rounds one,
+   * four and seven still go looking for something real; everything between
+   * them is a face to pull, and needs nothing but the player. Explicit themed
+   * pools are untouched.
+   */
+  if (ctx.aiAvailable && (state.roundNumber + 1) % 3 !== 1 && party.length) return party;
   return playable.length ? playable : allChallengesPool().filter((c) => c.judging === 'auto');
 }
 

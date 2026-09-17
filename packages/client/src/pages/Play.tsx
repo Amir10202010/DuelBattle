@@ -107,14 +107,11 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
 
   return (
     <main className="page page--play">
+      {/* One line, set large. The two cards below already say what each mode
+          costs and what it gives; an eyebrow and a lede above them were three
+          sizes of small grey text competing with the only button that matters. */}
       <header className="page__head">
-        <span className="eyebrow">{tr('Choose your next rivalry')}</span>
         <h1 className="page__title display">{tr('Your next move.')}</h1>
-        <p className="page__lede">
-          {tr(
-            'Two players, two cameras, one prompt at a time. Everything you need to win is already within arm’s reach.',
-          )}
-        </p>
       </header>
 
       {needsName && (
@@ -170,24 +167,14 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
 
       <div className="play__grid">
         <section className="play__primary plate">
-          <span className="eyebrow">
-            <Radar size={14} aria-hidden="true" />
-            {tr('Matchmaking')}
-          </span>
           <h2 className="display">
+            <Radar size={20} aria-hidden="true" />
             {tr(
               playMode === 'ranked' && profile
                 ? 'Find someone your size.'
                 : 'Someone is always up for it.',
             )}
           </h2>
-          <p>
-            {tr(
-              playMode === 'ranked' && profile
-                ? 'Win rounds. Climb the ranks. Every finished duel pays out XP and coins.'
-                : 'Play for the fun of it. No rating to lose, no waiting to be ranked.',
-            )}
-          </p>
           <button className="playbutton" onClick={find} disabled={busy}>
             <Swords size={24} strokeWidth={2.4} aria-hidden="true" />
             <span>{tr(joining ? 'One moment…' : 'Find an opponent')}</span>
@@ -205,11 +192,6 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
           </div>
           {mode === 'pick' ? (
             <>
-              <p className="dim">
-                {tr(
-                  'Share a private room link, write your own prompts, and settle the rivalry your way.',
-                )}
-              </p>
               <div className="play__actions">
                 <button className="btn btn--block" onClick={open} disabled={busy}>
                   {tr(joining ? 'Opening a room…' : 'Open a room')}

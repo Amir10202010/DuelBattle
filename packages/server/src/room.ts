@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import {
+  AI_CONFIDENCE_FLOOR,
   challengeInRoom,
   allChallengesPool,
   supportsRussian,
@@ -52,9 +53,19 @@ export interface RoomOptions {
 
 /** A live frame is only usable as a baseline while it still reflects the room. */
 const BASELINE_MAX_AGE_MS = 4_000;
+/** How long a room stops asking a referee that is genuinely in trouble. */
+const AI_REST_MS = 30_000;
 
-/** Live frames are relayed at most this often, regardless of what a client sends. */
-const FRAME_RELAY_INTERVAL_MS = 150;
+/**
+ * Live frames are relayed at most this often, regardless of what a client sends.
+ *
+ * The ceiling exists so one client cannot make the server fan out video faster
+ * than the game needs; it should sit just under what a sender can produce, not
+ * halve it. At 150ms it was throwing away two frames in three from a webcam
+ * running at a perfectly ordinary rate, which is most of why the opponent's
+ * picture looked like a flipbook.
+ */
+const FRAME_RELAY_INTERVAL_MS = 55;
 const RUSSIAN_POOL = allChallengesPool().filter((challenge) => supportsRussian(challenge.prompt));
 
 interface Seat {
@@ -781,7 +792,12 @@ export class Room {
           const camera = round.submissions[assessment.playerId]?.auto;
           const color = camera?.evaluation?.criterion === 'color' ? camera : undefined;
           verdicts[assessment.playerId] = {
-            matched: assessment.valid && (!color || color.matched),
+            // A reading the referee is unsure of establishes nothing, so it
+            // wins no point — but only for the photo it was unsure about.
+            matched:
+              assessment.valid &&
+              assessment.confidence >= AI_CONFIDENCE_FLOOR &&
+              (!color || color.matched),
             confidence: assessment.confidence,
             reason: assessment.reason,
             evaluation: {
@@ -795,7 +811,13 @@ export class Room {
         return verdicts;
       })
       .catch((err: unknown) => {
-        this.aiUnavailableUntil = Date.now() + 120_000;
+        // A round nobody could settle says nothing about the next round. Only a
+        // provider that is failing takes the referee off the board, and then
+        // for long enough to recover rather than long enough to be noticed: a
+        // room without a referee also loses the pose rounds, which is most of
+        // the game.
+        const providerFault = !(err instanceof JudgeUnavailable) || err.kind === 'provider';
+        if (providerFault) this.aiUnavailableUntil = Date.now() + AI_REST_MS;
         try {
           this.profiles?.auditEvaluation?.(
             roundId,

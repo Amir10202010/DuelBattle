@@ -1,6 +1,6 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Share2, Users } from 'lucide-react';
+import { Check, Copy, Share2, Swords, Users } from 'lucide-react';
 import {
   MATCH_LENGTHS,
   opponentOf,
@@ -51,7 +51,7 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
   return (
     <div className={`lobby ${arriving ? 'lobby--found' : ''}`}>
       <header className="lobby__head">
-        <span className="eyebrow">
+        <span className={`lobby__mode ${match.ranked ? 'lobby__mode--ranked' : ''}`}>
           {tr(match.ranked ? 'Ranked duel' : 'Friendly room')}
           <i>{'·'}</i>
           {tr('first to ')}
@@ -193,15 +193,19 @@ function ReadyBar({
     );
   }
 
+  // You are the only thing left between this room and a match. Say so on the
+  // button rather than in a line of grey text beside it.
+  const urged = Boolean(opponent?.ready) && !ready;
+
   return (
     <div className="readybar">
       <div className="readybar__states" aria-hidden="true">
-        <span className={ready ? 'is-ready' : ''}>
-          {ready && <Check size={13} />}
+        <span className={`readybar__seat--you ${ready ? 'is-ready' : ''}`}>
+          {ready && <Check size={14} strokeWidth={3} />}
           {tr('You')}
         </span>
-        <span className={opponent?.ready ? 'is-ready' : ''}>
-          {opponent?.ready && <Check size={13} />}
+        <span className={`readybar__seat--them ${opponent?.ready ? 'is-ready' : ''}`}>
+          {opponent?.ready && <Check size={14} strokeWidth={3} />}
           {opponent?.name}
         </span>
       </div>
@@ -209,16 +213,19 @@ function ReadyBar({
         {tr(
           ready
             ? 'Waiting for your opponent…'
-            : first
-              ? `First to ${match.settings.winTarget} rounds wins. Stand where you can reach things.`
-              : 'Ready when you are.',
+            : urged
+              ? 'They are ready. You are the last one.'
+              : first
+                ? `First to ${match.settings.winTarget} rounds wins. Stand where you can reach things.`
+                : 'Ready when you are.',
         )}
       </p>
       <button
-        className={`btn btn--lg ${ready ? '' : 'btn--primary'}`}
+        className={`readybar__go ${ready ? 'is-set' : ''} ${urged ? 'is-urged' : ''}`}
         onClick={() => store.setReady(!ready)}
       >
-        {tr(ready ? 'Not ready' : 'I’m ready')}
+        {ready ? <Check size={19} strokeWidth={3} /> : <Swords size={19} strokeWidth={2.4} />}
+        <span>{tr(ready ? 'Not ready' : 'I’m ready')}</span>
       </button>
     </div>
   );

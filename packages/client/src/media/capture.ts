@@ -10,7 +10,12 @@ export const LIVE_FRAME_HEIGHT = 240;
 export const EVIDENCE_WIDTH = 640;
 export const EVIDENCE_HEIGHT = 480;
 
-export const LIVE_FRAME_QUALITY = 0.55;
+/*
+ * Live frames now go out three times as often, so each one is worth a little
+ * less. At this size the difference is invisible next to the difference
+ * between four frames a second and fifteen.
+ */
+export const LIVE_FRAME_QUALITY = 0.48;
 /** Tried once when a frame comes out over budget, before giving up on it. */
 export const LIVE_FRAME_FALLBACK_QUALITY = 0.35;
 export const EVIDENCE_QUALITY = 0.78;

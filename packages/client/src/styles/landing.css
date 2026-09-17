@@ -252,12 +252,11 @@ html[data-theme='dark'] .shell--landing {
 }
 .lp-period {
   display: inline-block;
-  margin-left: 9px;
-  vertical-align: top;
-  font-family: 'Onest Variable', sans-serif;
-  font-size: 0.51em;
-  line-height: 1.4;
-  font-weight: 400;
+  width: 0.42em;
+  height: 0.42em;
+  margin-left: 11px;
+  vertical-align: 0.34em;
+  overflow: visible;
 }
 .lp-hero__description {
   max-width: 350px;
@@ -1095,12 +1094,13 @@ html[data-theme='dark'] .shell--landing {
   line-height: 1;
   margin-top: 10px;
 }
-.lp-finale h2 > span {
+.lp-finale__arrow {
   display: inline-block;
-  font-family: 'Onest Variable', sans-serif;
-  font-size: 0.68em;
-  font-weight: 400;
+  width: 0.5em;
+  height: 0.5em;
   margin-left: 23px;
+  vertical-align: 0.08em;
+  overflow: visible;
 }
 .lp-finale__action {
   display: flex;
@@ -1860,7 +1860,7 @@ html[lang='ru'] .lp-finale h2 {
   .lp-finale h2 {
     font-size: clamp(80px, 21vw, 130px);
   }
-  .lp-finale h2 > span {
+  .lp-finale__arrow {
     margin-left: 14px;
   }
   .lp-finale__action {

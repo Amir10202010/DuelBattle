@@ -16,6 +16,7 @@ import {
   opponentOf,
   type DetectorSpec,
   type PublicMatchState,
+  type PublicProfile,
   type RoundJudging,
   type PublicPlayer,
   MAX_IMAGE_BYTES,
@@ -28,6 +29,7 @@ import { useLocalDetection } from '../hooks/useVision.js';
 import { useCountdownSound } from '../hooks/useMatchSound.js';
 import { sound } from '../media/sound.js';
 import { EVIDENCE_QUALITY, createEvidenceCapture } from '../media/capture.js';
+import { DuelActors } from '../components/battle/DuelActors.jsx';
 
 interface ArenaProps {
   store: MatchStore;
@@ -36,10 +38,12 @@ interface ArenaProps {
   camera: CameraState;
   /** `${roundId}:${playerId}` -> JPEG data URL of a submitted answer. */
   evidence: Record<string, string>;
+  /** Loadouts, so the point animation swings the weapon somebody actually owns. */
+  standings: Record<string, PublicProfile>;
   now: number;
 }
 
-export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps) {
+export function Arena({ store, match, youId, camera, evidence, standings, now }: ArenaProps) {
   useUiPreferences();
   const round = match.round;
   const challenge = currentChallenge(match);
@@ -98,8 +102,11 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
     return () => window.removeEventListener('keydown', onKey);
   }, [isChallenge, done, lockIn]);
 
-  const tracking = useSceneVision(camera.videoRef, store, opponentId, camera.status === 'ready',
-    (match.phase === 'countdown' || isChallenge) && !match.paused);
+  const tracking = useSceneVision(
+    camera.videoRef,
+    camera.status === 'ready',
+    (match.phase === 'countdown' || isChallenge) && !match.paused,
+  );
   const showVision = isChallenge && !match.paused;
   const selfState =
     match.phase === 'roundResult' ? resultState(match, youId) : done ? 'locked' : 'live';
@@ -125,6 +132,9 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           <span className="vision-controls__dot" aria-hidden="true" />
           {tr(tracking.status === 'loading' ? 'Loading tracking…' : tracking.status === 'unavailable'
             ? 'Tracking unavailable' : tracking.enabled ? 'Tracking on' : 'Tracking off')}
+          {tracking.status === 'ready' && tracking.enabled && tracking.fps > 0 && (
+            <span className="vision-controls__rate mono">{tracking.fps} {tr('fps')}</span>
+          )}
         </button>
       </div>
       <div className="arena__stages">
@@ -137,8 +147,6 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           state={selfState}
           overlay={
             <>
-              {showVision && tracking.enabled && <VisionOverlay scene={tracking.scenes.self} mirrored
-                region={detection.result?.region?.box} />}
               {camera.status !== 'ready' && <CameraTrouble camera={camera} />}
               {match.phase === 'roundResult' && round && (
                 <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
@@ -151,7 +159,11 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
             </>
           }
         >
-          <SelfVideo videoRef={camera.videoRef} />
+          <SelfVideo videoRef={camera.videoRef}>
+            {showVision && tracking.enabled && (
+              <VisionOverlay tracking={tracking} mirrored region={detection.result?.region?.box} />
+            )}
+          </SelfVideo>
         </StageFrame>
 
         <StageFrame
@@ -160,7 +172,10 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
           state={peerState}
           overlay={
             <>
-              {showVision && tracking.enabled && <VisionOverlay scene={tracking.scenes.peer} />}
+              {/* No tracking over the opponent. It was analysed from the relayed
+                  JPEG stream, which meant a skeleton drawn over a picture that
+                  was already several frames old — it never lined up with the
+                  person, and it halved the rate on your own camera to do it. */}
               {(match.phase === 'judging' || match.phase === 'roundResult') &&
                 round &&
                 opponentId && <EvidenceShot image={evidence[`${round.id}:${opponentId}`]} />}
@@ -175,6 +190,10 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
         >
           <PeerVideo store={store} playerId={opponentId} />
         </StageFrame>
+
+        {/* Under the cameras, over the bottom of them: a point is part of the
+            round, so it plays where the round is. */}
+        <DuelActors match={match} youId={youId} standings={standings} placement="round" />
       </div>
 
       <ActionRow

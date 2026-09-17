@@ -58,6 +58,29 @@ const QUESTIONS = [
   },
 ];
 
+/**
+ * The rising arrow beside a headline.
+ *
+ * Drawn rather than typed. As the character U+2197 it was at the mercy of
+ * whatever face the fallback stack landed on, and a font without the glyph
+ * renders it as a hollow box — in the hero that box inherits the accent, so a
+ * missing arrow showed up as a yellow square with nothing inside it.
+ */
+function RiseArrow({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M6.5 17.5 17.5 6.5M8.6 6.5h8.9v8.9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) {
   const { locale } = useUiPreferences();
   const root = useLandingMotion();
@@ -77,9 +100,7 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
             <span>{tr('THEIR')}</span>
             <span className="lp-hero__punch">
               {tr('PROBLEM.')}
-              <span className="lp-period" aria-hidden="true">
-                ↗
-              </span>
+              <RiseArrow className="lp-period" />
             </span>
           </h1>
           <p className="lp-hero__description">
@@ -212,7 +233,7 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
             <span className="lp-kicker">{tr('YOUR NEXT GREAT RIVALRY STARTS AT HOME.')}</span>
             <h2 id="finale-title">
               {tr('GAME ON?')}
-              <span aria-hidden="true">↗</span>
+              <RiseArrow className="lp-finale__arrow" />
             </h2>
           </div>
           <div className="lp-finale__action">

@@ -635,6 +635,7 @@ export const ru: Record<string, string> = {
     'Побеждает первый, кто выиграет {0} раунда. Держи предметы под рукой.',
   'Match length': 'Длина матча',
   'Ready when you are.': 'Готов к матчу?',
+  'They are ready. You are the last one.': 'Соперник готов. Дело за тобой.',
   "I'm ready": 'Я готов',
   'Not ready': 'Не готов',
   'Waiting for an opponent': 'Ждём соперника',

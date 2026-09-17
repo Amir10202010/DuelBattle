@@ -9,6 +9,7 @@ import { publicMatch } from './fixtures.js';
 class FakeConnection implements GameConnection {
   readonly sent: ClientMessage[] = [];
   latencyMs: number | null = 21;
+  bufferedBytes = 0;
   private readonly handlers: Partial<ConnectionEvents> = {};
 
   on<K extends keyof ConnectionEvents>(event: K, handler: ConnectionEvents[K]): void {

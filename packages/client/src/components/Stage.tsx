@@ -50,9 +50,18 @@ export function StageFrame({
 
 interface SelfVideoProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  /**
+   * Anything that has to line up with the picture, pixel for pixel.
+   *
+   * The camera window is the only element on the screen whose box is exactly
+   * the field of view that gets photographed, so the tracking overlay lives
+   * inside it rather than over the stage. That single move is what stopped the
+   * skeleton from sitting an inch off the person it belongs to.
+   */
+  children?: React.ReactNode;
 }
 
-export const SelfVideo = memo(function SelfVideo({ videoRef }: SelfVideoProps) {
+export const SelfVideo = memo(function SelfVideo({ videoRef, children }: SelfVideoProps) {
   useUiPreferences();
   const windowRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 320, height: 240 });
@@ -69,16 +78,17 @@ export const SelfVideo = memo(function SelfVideo({ videoRef }: SelfVideoProps) {
   }, []);
   return (
     <div className="stage__camera-window" ref={windowRef} style={size}>
-    <video
-      ref={videoRef}
-      className="stage__video stage__video--mirrored"
-      playsInline
-      muted
-      autoPlay
-      // The element is decorative: every state it can be in is described in text
-      // elsewhere on the screen.
-      aria-hidden="true"
-    />
+      <video
+        ref={videoRef}
+        className="stage__video stage__video--mirrored"
+        playsInline
+        muted
+        autoPlay
+        // The element is decorative: every state it can be in is described in text
+        // elsewhere on the screen.
+        aria-hidden="true"
+      />
+      {children}
     </div>
   );
 });
@@ -91,36 +101,66 @@ interface PeerVideoProps {
 /**
  * The opponent's camera, drawn from the relayed frame stream.
  *
- * Frames arrive several times a second, so they are written straight onto the
- * image element rather than through React state — this component renders once
- * and then never again for the rest of the match.
+ * Frames are decoded off the rendering path and painted onto a canvas, rather
+ * than swapped into an `<img>` by assigning `src`. Assigning `src` hands the
+ * browser a decode to do at paint time; at four frames a second nobody noticed,
+ * and at fifteen it is a visible hitch on every frame. Decoding first and
+ * painting a finished picture keeps the stream smooth, and an out-of-order
+ * decode is dropped rather than shown, so the video never jumps backwards.
+ *
+ * This component renders once and then never again for the rest of the match:
+ * frames never touch React state.
  */
 export const PeerVideo = memo(function PeerVideo({ store, playerId }: PeerVideoProps) {
   useUiPreferences();
-  const imgRef = useRef<HTMLImageElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const staleTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!playerId) return;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d', { alpha: false });
+    if (!canvas || !context) return;
+    let stopped = false;
+    let newest = 0;
+    let issued = 0;
+
     const markLive = () => {
-      const el = imgRef.current;
-      if (!el) return;
-      el.dataset.live = 'true';
+      canvas.dataset.live = 'true';
       if (staleTimer.current !== null) window.clearTimeout(staleTimer.current);
       // If frames stop, fade to the placeholder rather than freezing on a
       // stale picture that implies the opponent is still there.
       staleTimer.current = window.setTimeout(() => {
-        if (imgRef.current) imgRef.current.dataset.live = 'false';
+        if (canvasRef.current) canvasRef.current.dataset.live = 'false';
       }, 2_500);
     };
 
     const unsubscribe = store.onPeerFrame((image, from) => {
-      if (from !== playerId || !imgRef.current) return;
-      imgRef.current.src = image;
-      markLive();
+      if (from !== playerId || stopped) return;
+      const ticket = ++issued;
+      const picture = new Image();
+      picture.decoding = 'async';
+      picture.src = image;
+      const paint = () => {
+        // A frame that finished decoding after a newer one is already history.
+        if (stopped || ticket <= newest || !picture.naturalWidth) return;
+        newest = ticket;
+        if (canvas.width !== picture.naturalWidth || canvas.height !== picture.naturalHeight) {
+          canvas.width = picture.naturalWidth;
+          canvas.height = picture.naturalHeight;
+        }
+        context.drawImage(picture, 0, 0);
+        markLive();
+      };
+      picture.decode().then(paint, () => {
+        // Safari has historically rejected decode() for images it will still
+        // draw; one retry through the load event costs nothing.
+        picture.onload = paint;
+      });
     });
 
     return () => {
+      stopped = true;
       unsubscribe();
       if (staleTimer.current !== null) window.clearTimeout(staleTimer.current);
     };
@@ -128,7 +168,14 @@ export const PeerVideo = memo(function PeerVideo({ store, playerId }: PeerVideoP
 
   return (
     <>
-      <img ref={imgRef} className="stage__video stage__peer" alt={''} data-live="false" />
+      <canvas
+        ref={canvasRef}
+        className="stage__video stage__peer"
+        width={320}
+        height={240}
+        data-live="false"
+        aria-hidden="true"
+      />
       <div className="stage__placeholder" aria-hidden="true">
         <span className="eyebrow">{tr('no signal')}</span>
       </div>

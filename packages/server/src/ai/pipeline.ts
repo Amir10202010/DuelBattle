@@ -10,7 +10,17 @@ const assessment = photoAssessmentSchema.omit({ slot: true }).extend({
   detector: z.enum(['yolov8', 'unavailable']).optional(),
   detections: z.array(z.unknown()).max(32).optional(),
 });
-const CONFIDENCE = 0.8;
+/**
+ * Below this a reading is not cautious, it is incoherent, and the round has to
+ * be thrown away.
+ *
+ * It used to sit at 0.8, above the confidence floor that already zeroes an
+ * uncertain answer — so a referee that said "probably, 0.75" did not score that
+ * photo zero, it cancelled the whole round for both players. Two separate
+ * mechanisms were doing the same job, and the stricter one was doing it to the
+ * wrong person. The floor handles doubt; this only catches nonsense.
+ */
+const COHERENT = 0.5;
 
 /** Also validates injected adapters. No AI provider can write a game verdict directly. */
 export function validateAssessments(raw: unknown, ids: string[]): PlayerAssessment[] {
@@ -20,14 +30,17 @@ export function validateAssessments(raw: unknown, ids: string[]): PlayerAssessme
     new Set(parsed.map((a) => a.playerId)).size !== ids.length ||
     parsed.some((a) => !ids.includes(a.playerId))
   )
-    throw new JudgeUnavailable('The referee could not verify every answer.');
+    throw new JudgeUnavailable('The referee could not verify every answer.', 'evidence');
   for (const a of parsed) {
+    // Internal contradictions only: a reading that calls an answer good and
+    // then scores it as a miss, or rejects one and then scores it well, has not
+    // understood its own rubric.
     if (
-      a.confidence < CONFIDENCE ||
-      (a.valid && (a.fulfillment < 42 || !a.objects.length)) ||
+      a.confidence < COHERENT ||
+      (a.valid && (a.fulfillment < 35 || !a.objects.length)) ||
       (!a.valid && a.fulfillment > 55)
     )
-      throw new JudgeUnavailable('The referee needs clearer evidence.');
+      throw new JudgeUnavailable('The referee needs clearer evidence.', 'evidence');
   }
   return parsed.map((a) => ({
     playerId: a.playerId,
@@ -42,6 +55,22 @@ export function validateAssessments(raw: unknown, ids: string[]): PlayerAssessme
     score: a.valid ? a.fulfillment + a.presentation : 0,
   }));
 }
+
+/**
+ * How far two independent readings of the same photograph may drift before the
+ * round is unscoreable.
+ *
+ * Presentation is a judgement call and fulfillment is a judgement call with a
+ * number on it, so two passes over the same picture legitimately land a dozen
+ * points apart, especially on the silly rounds where the whole point is how
+ * inventively somebody pulled a face. The old window was tight enough that
+ * ordinary variance read as a malfunction. These are wide enough to tolerate
+ * taste and narrow enough that a genuinely unstable reading still fails.
+ */
+const MAX_FULFILLMENT_DRIFT = 26;
+const MAX_SCORE_DRIFT = 34;
+/** A provider in trouble is rested; a difficult photo is not held against the next one. */
+const PROVIDER_REST_MS = 30_000;
 
 export class VerifiedJudge implements AiJudge {
   private unavailableUntil = 0;
@@ -67,29 +96,49 @@ export class VerifiedJudge implements AiJudge {
       primary = validateAssessments(readings[0], ids);
       second = validateAssessments(readings[1], ids);
     } catch (error) {
-      this.unavailableUntil = Date.now() + 120_000;
+      // Only a provider that is actually failing earns a rest.
+      if (!(error instanceof JudgeUnavailable) || error.kind === 'provider') {
+        this.unavailableUntil = Date.now() + PROVIDER_REST_MS;
+      }
       throw error;
     }
     input.signal.throwIfAborted();
     const result = primary.map((a) => {
       const b = second.find((value) => value.playerId === a.playerId)!;
+      // How far apart the two numbers are only means anything when the two
+      // passes are grading the same thing. When one of them rejected the photo
+      // outright its scores are zero by construction, and comparing them to a
+      // grade would count one disagreement twice.
       if (
-        a.valid !== b.valid ||
-        Math.abs(a.fulfillment - b.fulfillment) > 18 ||
-        Math.abs(a.score - b.score) > 25
+        a.valid &&
+        b.valid &&
+        (Math.abs(a.fulfillment - b.fulfillment) > MAX_FULFILLMENT_DRIFT ||
+          Math.abs(a.score - b.score) > MAX_SCORE_DRIFT)
       ) {
-        this.unavailableUntil = Date.now() + 120_000;
-        throw new JudgeUnavailable('The photo checks disagree.');
+        throw new JudgeUnavailable('The photo checks disagree.', 'evidence');
       }
+      /*
+       * Two passes that disagree about whether an answer counts settle on "it
+       * does not", for that player alone.
+       *
+       * This used to void the round. That punished the wrong person: if the
+       * referee was unsure about one photograph, the opponent lost a round they
+       * had clearly won, and the match reported that nothing could be checked.
+       * Requiring both passes to agree before a point is awarded is strictly
+       * more cautious per player, and it never costs anybody a round somebody
+       * else's picture was ambiguous in.
+       */
+      const valid = a.valid && b.valid;
       return {
         ...a,
+        valid,
         confidence: Math.min(a.confidence, b.confidence),
         fulfillment: Math.min(a.fulfillment, b.fulfillment),
         presentation: Math.min(a.presentation, b.presentation),
-        score: a.valid
+        score: valid
           ? Math.min(a.fulfillment, b.fulfillment) + Math.min(a.presentation, b.presentation)
           : 0,
-        reason: a.reason,
+        reason: a.valid === b.valid ? a.reason : 'The two photo checks did not agree on this one.',
       };
     });
     log.info('evaluation complete', {

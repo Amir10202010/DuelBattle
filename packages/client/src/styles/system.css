@@ -76,10 +76,18 @@
   --font-display: var(--font-ui);
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
-  --t-2xs: 10px;
-  --t-xs: 11px;
-  --t-sm: 12px;
-  --t-md: 13px;
+  /*
+   * The small end of the scale, one notch up.
+   *
+   * Ten- and eleven-pixel grey type is mouse print: it crowds a screen without
+   * being readable on it, and a game that is played on a phone at arm's length
+   * gets no value from a label nobody can decipher. Everything above --t-base
+   * is unchanged; this only lifts the floor.
+   */
+  --t-2xs: 11px;
+  --t-xs: 12px;
+  --t-sm: 13px;
+  --t-md: 14px;
   --t-base: 15px;
   --t-lg: 17px;
   --t-xl: 21px;
@@ -197,9 +205,23 @@ html[data-theme='light'] {
 }
 
 html,
-body,
-#root {
+body {
   min-height: 100%;
+}
+
+/*
+ * The app column is at least a screen tall.
+ *
+ * A percentage min-height resolves against a containing block that is itself
+ * auto-height, which is to say against nothing: `#root { min-height: 100% }`
+ * quietly did nothing, and every short page — the play screen, the ladder, the
+ * rank list — stopped where its content stopped and left the footer stranded
+ * half way up the window. Viewport units have a height to resolve against, and
+ * the dynamic one keeps the promise on phones whose toolbars come and go.
+ */
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 body {

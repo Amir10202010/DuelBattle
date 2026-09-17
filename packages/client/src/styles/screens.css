@@ -500,15 +500,16 @@
 }
 
 .play__primary h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
   font-size: var(--t-2xl);
 }
 
-.play__primary p {
-  flex: 1;
-  color: var(--text-dim);
-  font-size: var(--t-md);
-  line-height: 1.6;
-  max-width: 36ch;
+.play__primary h2 > svg {
+  flex: 0 0 auto;
+  color: var(--acid-text);
 }
 
 .play__friend h2 {
@@ -522,6 +523,12 @@
   flex-direction: column;
   gap: var(--sp-2);
   margin-top: auto;
+}
+
+.play__friend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
 .lookup {

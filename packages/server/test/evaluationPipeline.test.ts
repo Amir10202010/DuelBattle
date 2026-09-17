@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { getChallenge, type PlayerAssessment } from '@battle/shared';
+import { AI_CONFIDENCE_FLOOR, getChallenge, type PlayerAssessment } from '@battle/shared';
 import { validateAssessments, VerifiedJudge } from '../src/ai/pipeline.js';
-import type { AiJudge } from '../src/ai/judge.js';
+import { JudgeUnavailable, type AiJudge } from '../src/ai/judge.js';
 const sample = (over: Partial<PlayerAssessment> = {}): PlayerAssessment => ({
   playerId: 'p1',
   valid: true,
@@ -32,9 +32,9 @@ describe('AI trust boundary', () => {
     expect(() => validateAssessments([sample(), sample()], ['p1', 'p2'])).toThrow();
     expect(() => validateAssessments([sample({ playerId: 'attacker' })], ['p1'])).toThrow();
   });
-  it('rejects ambiguous and internally inconsistent assessments', () => {
+  it('rejects incoherent and internally inconsistent assessments', () => {
     for (const value of [
-      sample({ confidence: 0.79 }),
+      sample({ confidence: 0.3 }),
       sample({ valid: false }),
       sample({ fulfillment: 1 }),
       sample({ objects: [] }),
@@ -42,6 +42,15 @@ describe('AI trust boundary', () => {
       expect(() => validateAssessments([value], ['p1'])).toThrow();
     }
     expect(() => validateAssessments([{ ...sample(), rating: 9999 }], ['p1'])).toThrow();
+  });
+
+  it('lets an unsure but coherent reading through, for the floor to zero', () => {
+    // Doubt is not incoherence. A reading at 0.6 used to void the round for
+    // both players; it now survives validation and is refused a point by the
+    // confidence floor, which is a decision about one photo rather than two.
+    const [reading] = validateAssessments([sample({ confidence: 0.6 })], ['p1']);
+    expect(reading).toMatchObject({ confidence: 0.6, valid: true });
+    expect(reading!.confidence).toBeLessThan(AI_CONFIDENCE_FLOOR);
   });
   it('independently verifies and uses conservative criterion values', async () => {
     const pipeline = new VerifiedJudge(
@@ -56,15 +65,17 @@ describe('AI trust boundary', () => {
       score: 73,
     });
   });
-  it('refuses validity conflicts, wide scoring conflicts and provider outages', async () => {
+  it('settles a validity conflict against the disputed photo, not the round', async () => {
     const reject = sample({ valid: false, fulfillment: 0, presentation: 0, score: 0, objects: [] });
-    await expect(
-      new VerifiedJudge(judge([sample()]), judge([reject])).judge(input()),
-    ).rejects.toThrow();
+    const result = await new VerifiedJudge(judge([sample()]), judge([reject])).judge(input());
+    expect(result[0]).toMatchObject({ valid: false, score: 0 });
+  });
+
+  it('refuses wide scoring conflicts and provider outages', async () => {
     await expect(
       new VerifiedJudge(
         judge([sample({ fulfillment: 70 })]),
-        judge([sample({ fulfillment: 42 })]),
+        judge([sample({ fulfillment: 40 })]),
       ).judge(input()),
     ).rejects.toThrow();
     await expect(
@@ -74,6 +85,32 @@ describe('AI trust boundary', () => {
         },
       }).judge(input()),
     ).rejects.toThrow();
+  });
+
+  it('tolerates the ordinary drift between two readings of one photo', async () => {
+    const pipeline = new VerifiedJudge(
+      judge([sample({ fulfillment: 62, presentation: 26 })]),
+      judge([sample({ fulfillment: 45, presentation: 12 })]),
+    );
+    await expect(pipeline.judge(input())).resolves.toMatchObject([{ score: 57 }]);
+  });
+
+  it('rests the referee for a provider fault and not for a difficult photo', async () => {
+    const outage = new VerifiedJudge({
+      judge: async () => {
+        throw new JudgeUnavailable('out of quota');
+      },
+    });
+    await expect(outage.judge(input())).rejects.toThrow();
+    expect(outage.available).toBe(false);
+
+    // One unreadable pair of photographs says nothing about the next round, and
+    // a room without a referee loses the pose rounds entirely.
+    const ambiguous = new VerifiedJudge({
+      judge: async () => [sample({ confidence: 0.2 })],
+    });
+    await expect(ambiguous.judge(input())).rejects.toThrow();
+    expect(ambiguous.available).toBe(true);
   });
   it('checks the shared deadline before an additional provider request', async () => {
     const abort = new AbortController();

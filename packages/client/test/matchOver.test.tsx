@@ -34,6 +34,7 @@ function props(over: Partial<Parameters<typeof MatchOver>[0]> = {}) {
       close: () => {},
       send: () => {},
       latencyMs: null,
+      bufferedBytes: 0,
       serverNow: () => Date.now(),
     }),
     match: publicMatch({ phase: 'matchResult', winnerId: 'p1', endReason: 'target-reached' }),

@@ -377,6 +377,11 @@ export class MatchStore {
     this.connection.send({ t: 'frame', image, seq });
   }
 
+  /** Unsent bytes on the socket, so the camera stream can back off when it matters. */
+  outboundBacklog(): number {
+    return this.connection.bufferedBytes;
+  }
+
   submit(roundId: string, image: string): void {
     this.connection.send({ t: 'submit', roundId, image });
   }

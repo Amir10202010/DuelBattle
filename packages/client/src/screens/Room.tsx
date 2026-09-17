@@ -21,8 +21,22 @@ import { Arena } from './Arena.jsx';
 import { MatchOver } from './MatchOver.jsx';
 import { DuelActors } from '../components/battle/DuelActors.jsx';
 
-/** Live frames are sent four times a second: enough to feel live, small enough to ignore. */
-const FRAME_INTERVAL_MS = 250;
+/**
+ * How often the camera goes out to the opponent, and when it holds back.
+ *
+ * Four frames a second is a slideshow. It was chosen when every frame was also
+ * being analysed at the other end, which is no longer true, so the budget can
+ * go where it is actually seen. Fifteen a second reads as video rather than as
+ * a series of photographs.
+ *
+ * The backlog ceiling is the other half of it. On a weak uplink, sending more
+ * frames than the connection can carry does not make the opponent's picture
+ * smoother; it makes it later, permanently, because every extra frame queues
+ * behind the last one. Two frames' worth of unsent bytes is the point at which
+ * skipping this one is the kinder choice.
+ */
+const FRAME_INTERVAL_MS = 68;
+const BACKLOG_LIMIT_BYTES = 120_000;
 
 interface RoomProps {
   store: MatchStore;
@@ -76,7 +90,9 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
   return (
     <div className="room" id="main-content" role="main">
       <Announcer match={match} youId={youId} />
-      <DuelActors match={match} youId={youId} standings={snapshot.standings}/>
+      {/* The finisher only. A scored point plays inside the arena, under the
+          cameras, where it belongs to the round rather than to the window. */}
+      <DuelActors match={match} youId={youId} standings={snapshot.standings} placement="match" />
       <header className="room__bar">
         <span className="room__code mono" title={tr('Room code')}>
           {match.roomCode}
@@ -126,6 +142,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
           youId={youId}
           camera={camera}
           evidence={snapshot.evidence}
+          standings={snapshot.standings}
           now={now}
         />
       )}
@@ -155,6 +172,11 @@ function phaseLabel(match: PublicMatchState): string {
 /**
  * Streams the local camera to the server, which relays it to the opponent and
  * keeps the last frame before each prompt as that round's baseline.
+ *
+ * Paced off the camera rather than off a timer. `requestVideoFrameCallback`
+ * fires once per frame the camera actually delivers, so a 30fps webcam is never
+ * encoded twice for the same picture and a 15fps one is never waited on. The
+ * interval below is a floor on the gap between sends, not a metronome.
  */
 function useFrameSender(store: MatchStore, camera: CameraState, active: boolean): void {
   const seqRef = useRef(0);
@@ -163,17 +185,69 @@ function useFrameSender(store: MatchStore, camera: CameraState, active: boolean)
   useEffect(() => {
     if (!active) return;
     const capture = captureRef.current;
+    let stopped = false;
+    let sentAt = 0;
+    let animation: number | null = null;
+    let videoCallback: number | null = null;
+
     const tick = () => {
-      const image = capture.toBoundedDataUrl(
-        camera.videoRef.current,
-        LIVE_FRAME_QUALITY,
-        LIVE_FRAME_FALLBACK_QUALITY,
-        MAX_FRAME_BYTES,
-      );
-      if (image) store.sendFrame(image, seqRef.current++);
+      if (stopped) return;
+      const now = performance.now();
+      if (
+        now - sentAt >= FRAME_INTERVAL_MS &&
+        !document.hidden &&
+        store.outboundBacklog() < BACKLOG_LIMIT_BYTES
+      ) {
+        const image = capture.toBoundedDataUrl(
+          camera.videoRef.current,
+          LIVE_FRAME_QUALITY,
+          LIVE_FRAME_FALLBACK_QUALITY,
+          MAX_FRAME_BYTES,
+        );
+        if (image) {
+          sentAt = now;
+          store.sendFrame(image, seqRef.current++);
+        }
+      }
+      schedule();
     };
+
+    /*
+     * The camera's next frame, with a timer underneath it.
+     *
+     * A background tab presents no video frames, so a callback registered on
+     * the way out never fires and the stream would stay dead after the player
+     * came back. The timer keeps the loop turning; `tick` is the thing that
+     * decides a hidden tab has nothing worth sending.
+     */
+    const schedule = () => {
+      if (stopped) return;
+      const video = camera.videoRef.current;
+      if (animation !== null) window.clearTimeout(animation);
+      if (videoCallback !== null && video && 'cancelVideoFrameCallback' in video) {
+        video.cancelVideoFrameCallback(videoCallback);
+        videoCallback = null;
+      }
+      let fired = false;
+      const run = () => {
+        if (fired || stopped) return;
+        fired = true;
+        tick();
+      };
+      if (video && 'requestVideoFrameCallback' in video) {
+        videoCallback = video.requestVideoFrameCallback(run);
+      }
+      animation = window.setTimeout(run, FRAME_INTERVAL_MS * 3);
+    };
+
     tick();
-    const timer = window.setInterval(tick, FRAME_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    return () => {
+      stopped = true;
+      if (animation !== null) window.clearTimeout(animation);
+      const video = camera.videoRef.current;
+      if (videoCallback !== null && video && 'cancelVideoFrameCallback' in video) {
+        video.cancelVideoFrameCallback(videoCallback);
+      }
+    };
   }, [store, camera.videoRef, active]);
 }

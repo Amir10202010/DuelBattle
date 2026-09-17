@@ -44,36 +44,70 @@ interface ScoreStripProps {
   youId: string | null;
 }
 
-/** Round wins as pips, so the state of the match reads without counting. */
+/**
+ * The scoreboard: one object, not two cards side by side.
+ *
+ * A duel has a single score — "two, one" — and reading it used to mean reading
+ * two separate panels and doing the subtraction yourself. Here the two sides
+ * share a bar and meet in the middle at the number they are both racing to, so
+ * the state of the match lands in one glance: who is ahead, by how much, and
+ * how close either of them is to finishing it.
+ *
+ * Round wins are segments rather than dots, filling towards the centre. One win
+ * from the end, a side starts flashing match point, which is the moment the
+ * whole match changes shape and the only one worth shouting about.
+ */
 export const ScoreStrip = memo(function ScoreStrip({ match, youId }: ScoreStripProps) {
   useUiPreferences();
   const seats = match.seats.map((id) => (id ? (match.players[id] ?? null) : null));
   const target = match.settings.winTarget;
+  const scores = seats.map((player) => player?.score ?? 0);
+  const best = Math.max(...scores);
 
   return (
     <div className="scorestrip">
-      {seats.map((player, index) => (
-        <div key={index} className={`scorestrip__side scorestrip__side--seat${index}`}>
-          <span className="scorestrip__name">
-            {player?.name ?? '—'}
-            {player && player.id === youId && <span className="scorestrip__you">{tr('you')}</span>}
-          </span>
-          <span className="scorestrip__pips" aria-hidden="true">
-            {Array.from({ length: target }, (_, i) => (
-              <i
-                key={i}
-                className={`${i < (player?.score ?? 0) ? 'is-won' : ''} ${match.phase === 'roundResult' && match.round?.outcome?.winnerId === player?.id && i === (player?.score ?? 0) - 1 ? 'is-earned' : ''}`}
-              />
-            ))}
-          </span>
-          <span key={player?.score ?? 0} className="scorestrip__score mono">
-            {player?.score ?? 0}
-          </span>
-          <span className="sr-only">
-            {player?.name ?? tr('Empty seat')}: {player?.score ?? 0} / {target}
-          </span>
-        </div>
-      ))}
+      {seats.map((player, index) => {
+        const score = scores[index] ?? 0;
+        const won = match.phase === 'roundResult' && match.round?.outcome?.winnerId === player?.id;
+        const classes = [
+          'scorestrip__side',
+          `scorestrip__side--seat${index}`,
+          score === best && score > (scores[index === 0 ? 1 : 0] ?? 0) ? 'is-lead' : '',
+          score === target - 1 ? 'is-matchpoint' : '',
+          won ? 'is-scoring' : '',
+        ].filter(Boolean).join(' ');
+
+        return (
+          <div key={index} className={classes}>
+            <span className="scorestrip__name">
+              {player?.name ?? '—'}
+              {player && player.id === youId && (
+                <span className="scorestrip__you">{tr('you')}</span>
+              )}
+            </span>
+            <span className="scorestrip__pips" aria-hidden="true">
+              {Array.from({ length: target }, (_, i) => (
+                <i
+                  key={i}
+                  className={`${i < score ? 'is-won' : ''} ${won && i === score - 1 ? 'is-earned' : ''}`}
+                />
+              ))}
+            </span>
+            <span key={score} className="scorestrip__score">
+              {score}
+            </span>
+            <span className="sr-only">
+              {player?.name ?? tr('Empty seat')}: {score} / {target}
+            </span>
+          </div>
+        );
+      })}
+
+      {/* What both sides are racing to, once, between them. */}
+      <div className="scorestrip__target" aria-hidden="true">
+        <b>{target}</b>
+        <span>{tr('to win')}</span>
+      </div>
     </div>
   );
 });

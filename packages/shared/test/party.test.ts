@@ -6,11 +6,16 @@ import { createMatch, reduce, tick, type Action, type MatchState } from '../src/
 
 describe('short party rounds', () => {
   it('has translated, photo-checkable tasks with short deadlines', () => {
-    expect(PARTY_CHALLENGES).toHaveLength(12);
+    // A deck this size is the point: half the rounds in a match come from it,
+    // and a dozen gags ran out inside two matches.
+    expect(PARTY_CHALLENGES.length).toBeGreaterThanOrEqual(24);
+    expect(new Set(PARTY_CHALLENGES.map((c) => c.prompt)).size).toBe(PARTY_CHALLENGES.length);
     for (const task of PARTY_CHALLENGES) {
       expect(getChallenge(task.id)).toEqual(task);
       expect(isAiVerifiable(task)).toBe(true);
       expect(supportsRussian(task.prompt)).toBe(true);
+      expect(task.hint).toBeTruthy();
+      expect(supportsRussian(task.hint!)).toBe(true);
       expect(task.durationMs).toBeLessThanOrEqual(20_000);
     }
   });

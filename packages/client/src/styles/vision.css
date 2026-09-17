@@ -15,46 +15,34 @@
   transform: translate(-50%, -50%);
 }
 
+/*
+ * The overlay lives inside the camera window, not over the stage.
+ *
+ * The window is the one box on screen whose edges are exactly the field of
+ * view that gets photographed. Anything drawn against a different box — the
+ * stage, say, which is a different shape — is drawn in a different coordinate
+ * space from the picture underneath it, which is how a skeleton ends up beside
+ * the person instead of on them.
+ */
 .vision-overlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  animation: vision-fade var(--d-enter) var(--ease) both;
 }
 
-.vision-overlay line,
-.vision-overlay rect {
-  fill: none;
-  stroke-width: 1.1;
-  vector-effect: non-scaling-stroke;
+@keyframes vision-fade {
+  from {
+    opacity: 0;
+  }
 }
 
-.vision-overlay__body {
-  stroke: #acf2ee;
-  fill: #eafffd;
-  opacity: 0.65;
-}
-
-.vision-overlay__hands {
-  stroke: #bef77c;
-  fill: #e2ffba;
-}
-
-.vision-overlay__object {
-  stroke: #e1e8f0;
-}
-
-.vision-overlay__object.is-near-hand {
-  stroke: #bef77c;
-}
-
-.vision-overlay text {
-  fill: #fff;
-  stroke: #101720;
-  stroke-width: 2.5;
-  paint-order: stroke;
-  font: 600 9px var(--font-ui);
+@media (prefers-reduced-motion: reduce) {
+  .vision-overlay {
+    animation: none;
+  }
 }
 
 /* The last five seconds ---------------------------------------------------- */

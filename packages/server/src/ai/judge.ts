@@ -14,7 +14,21 @@ import type { ObjectDetector } from './detector.js';
  * message is safe to show a player.
  */
 export class JudgeUnavailable extends Error {
-  constructor(readonly publicReason: string) {
+  /**
+   * Why there is no verdict, which decides whether to stop asking.
+   *
+   * 'provider' means the service itself is in trouble — out of quota, refusing
+   * the key, unreachable — and there is no point putting the next round through
+   * the same door for a while. 'evidence' means the service answered fine and
+   * this particular pair of photographs could not be settled, which says
+   * nothing at all about the next pair. Treating the second as the first is how
+   * one blurry answer used to cost the following two minutes of a match its
+   * referee, and with it the rounds that need one.
+   */
+  constructor(
+    readonly publicReason: string,
+    readonly kind: 'provider' | 'evidence' = 'provider',
+  ) {
     super(publicReason);
     this.name = 'JudgeUnavailable';
   }

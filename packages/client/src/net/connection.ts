@@ -12,6 +12,17 @@ export interface GameConnection {
   close(): void;
   send(message: ClientMessage): void;
   readonly latencyMs: number | null;
+  /**
+   * Bytes written to the socket that have not left the machine yet.
+   *
+   * The live camera stream is the only thing on this connection big enough to
+   * matter, and it is the only thing that can afford to be dropped. A sender
+   * that keeps pushing frames into a socket the uplink cannot clear does not
+   * produce a smoother picture at the other end — it produces the same picture,
+   * later and later, until the opponent is watching several seconds into the
+   * past. Reading the backlog is how a frame decides to skip itself.
+   */
+  readonly bufferedBytes: number;
   serverNow(): number;
 }
 
@@ -83,6 +94,10 @@ export class Connection implements GameConnection {
 
   get connectionStatus(): ConnectionStatus {
     return this.status;
+  }
+
+  get bufferedBytes(): number {
+    return this.socket?.readyState === WebSocket.OPEN ? this.socket.bufferedAmount : 0;
   }
 
   /** Round-trip time of the best sample so far, in milliseconds. */
