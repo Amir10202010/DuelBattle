@@ -5,10 +5,11 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
+  Crown,
   Flame,
   Minus,
-  Trophy,
   RefreshCw,
+  Trophy,
 } from 'lucide-react';
 import {
   PLACEMENT_MATCHES,
@@ -19,11 +20,16 @@ import {
 import type { BoardState, MatchStore } from '../net/store.js';
 import { Avatar } from '../components/Identity.jsx';
 import { RankEmblem } from '../components/GameArt.jsx';
+
 const BOARDS = [
-  { kind: 'rating', label: 'Rating' },
-  { kind: 'wins', label: 'Victories' },
-  { kind: 'streak', label: 'Best streaks' },
+  { kind: 'rating', label: 'Rating', unit: 'MMR' },
+  { kind: 'wins', label: 'Wins', unit: 'WINS' },
+  { kind: 'streak', label: 'Streaks', unit: 'STREAK' },
 ];
+const PAGE = 25;
+/** Which player a podium place is standing in, in the order they read best. */
+const PODIUM_ORDER = [1, 0, 2];
+
 export function Leaderboard({
   store,
   board,
@@ -40,9 +46,11 @@ export function Leaderboard({
   useUiPreferences();
   const [kind, setKind] = useState('rating');
   const [offset, setOffset] = useState(0);
+
   useEffect(() => {
     store.requestBoard(kind, offset);
   }, [store, kind, offset]);
+
   const current =
     board?.kind === kind &&
     ((board.offset ?? 0) === offset || (offset >= board.total && (board.offset ?? 0) < offset))
@@ -50,28 +58,33 @@ export function Leaderboard({
       : null;
   const pageOffset = current?.offset ?? offset;
   const top = pageOffset === 0 ? (current?.entries.slice(0, 3) ?? []) : [];
+  const rest = pageOffset === 0 ? (current?.entries.slice(3) ?? []) : (current?.entries ?? []);
   const outside =
     current?.you && !current.entries.some((e) => e.position === current.you!.position);
+  const unit = BOARDS.find((b) => b.kind === kind)?.unit ?? 'MMR';
+  const value = (entry: LeaderboardEntry) =>
+    kind === 'rating' ? entry.rating : kind === 'wins' ? entry.wins : entry.bestStreak;
+
   return (
-    <main className="page">
-      <header className="page-heading">
+    <main className="page ladder">
+      <header className="page__head page__head--row">
         <div>
-          <span className="eyebrow">{tr('The competition')}</span>
-          <h1>{tr('Meet the people to beat.')}</h1>
-          <p>{tr('Real players. Earned positions. Your next rival might be right here.')}</p>
+          <h1 className="page__title display">{tr('Meet the people to beat.')}</h1>
         </div>
-        <span className="status-tag">
-          <Trophy size={15} />
-          {tr(current?.total ?? '—')}
-          {tr(' ranked players')}
-        </span>
+        {Boolean(current?.total) && (
+          <span className="headcount">
+            <b className="num">{current?.total}</b>
+            <span className="eyebrow">{tr('ranked players')}</span>
+          </span>
+        )}
       </header>
-      <div className="board-controls">
-        <div className="filter-row" role="group" aria-label={tr('Leaderboard order')}>
+
+      <div className="ladder__controls">
+        <div className="tabs" role="group" aria-label={tr('Leaderboard order')}>
           {BOARDS.map((b) => (
             <button
               key={b.kind}
-              className={`filter ${kind === b.kind ? 'is-active' : ''}`}
+              className={kind === b.kind ? 'is-active' : ''}
               aria-pressed={kind === b.kind}
               onClick={() => {
                 setKind(b.kind);
@@ -86,45 +99,44 @@ export function Leaderboard({
           className="icon-button"
           onClick={() => store.requestBoard(kind, offset)}
           disabled={loading}
-          aria-label={tr('Refresh leaderboard')}
+          aria-label={tr('Refresh the ladder')}
           title={tr('Refresh')}
         >
-          <RefreshCw size={17} />
+          <RefreshCw size={17} className={loading ? 'is-spinning' : ''} />
         </button>
       </div>
+
       {error ? (
-        <div className="empty" role="alert">
-          <Trophy size={32} />
+        <div className="blank" role="alert">
+          <Trophy size={30} />
           <h2>{tr('The ladder is taking a breather.')}</h2>
           <p>{tr(error)}</p>
-          <button className="btn" onClick={() => store.requestBoard(kind, offset)}>
+          <button className="btn btn--primary" onClick={() => store.requestBoard(kind, offset)}>
+            <RefreshCw size={16} />
             {tr('Try again')}
           </button>
         </div>
       ) : loading && !current ? (
-        <div className="board-skeleton" role="status" aria-label={tr('Loading leaderboard')}>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <i key={i} />
+        <div className="ladder__skeleton" role="status" aria-label={tr('Loading the ladder')}>
+          {Array.from({ length: 8 }, (_, i) => (
+            <span className="skel" key={i} />
           ))}
         </div>
       ) : current && current.total === 0 ? (
-        <div className="board-empty">
-          <div className="empty-podium">
-            <RankEmblem rating={1300} size={85} />
-            <RankEmblem rating={1900} size={120} />
-            <RankEmblem rating={1100} size={85} />
+        <div className="blank ladder__empty">
+          <div className="ladder__empty-art" aria-hidden="true">
+            <RankEmblem rating={1300} size={78} />
+            <RankEmblem rating={1900} size={104} />
+            <RankEmblem rating={1100} size={78} />
           </div>
-          <span className="eyebrow">{tr('Every rivalry starts with someone')}</span>
           <h2>{tr('The first chapter is unwritten.')}</h2>
           <p>
             {tr('Finish ')}
-            {tr(PLACEMENT_MATCHES)}
-            {tr(' ranked matches to claim your spot.')}
-            <br />
-            {tr('The podium is waiting for its first champions.')}
+            {PLACEMENT_MATCHES}
+            {tr(' ranked battles to claim your spot. The podium is waiting for its champions.')}
           </p>
           <a className="btn btn--primary" href="/play">
-            {tr('Start your placement ')}
+            {tr('Start your placement')}
             <ChevronRight size={16} />
           </a>
         </div>
@@ -133,166 +145,186 @@ export function Leaderboard({
           <>
             {top.length > 0 && (
               <section className="podium" aria-label={tr('Top players')}>
-                {top.map((player, i) => (
-                  <article
-                    key={player.position}
-                    className={`podium-player podium-player--${i + 1} ${current.you?.position === player.position ? 'is-you' : ''}`}
-                  >
-                    <span className="podium-place">
-                      {i === 0 ? <Trophy size={20} /> : `0${i + 1}`}
-                    </span>
-                    <Avatar avatar={player.avatar} name={player.name} size={i === 0 ? 64 : 52} />
-                    <h2>
-                      {player.name}
-                      {current.you?.position === player.position && <small>{tr('YOU')}</small>}
-                    </h2>
-                    <span>{tr(rankFor(player.rating).label)}</span>
-                    <strong>
-                      {tr(
-                        kind === 'rating'
-                          ? player.rating
-                          : kind === 'wins'
-                            ? player.wins
-                            : player.bestStreak,
-                      )}
-                      <small>
-                        {tr(kind === 'rating' ? 'MMR' : kind === 'wins' ? 'WINS' : 'STREAK')}
-                      </small>
-                    </strong>
-                    <div className="podium-base">
-                      {tr(
-                        i === 0
-                          ? 'THE ONE TO BEAT'
-                          : i === 1
-                            ? 'CLOSE ON THEIR HEELS'
-                            : 'IN GOOD COMPANY',
-                      )}
-                    </div>
-                  </article>
-                ))}
+                {PODIUM_ORDER.filter((i) => top[i]).map((i) => {
+                  const player = top[i]!;
+                  const you = current.you?.position === player.position;
+                  return (
+                    <article
+                      key={player.position}
+                      className={`podium__place podium__place--${i + 1} plate ${you ? 'is-you' : ''}`}
+                    >
+                      <span className="podium__rank num">
+                        {i === 0 ? <Crown size={19} /> : `0${i + 1}`}
+                      </span>
+                      <Avatar avatar={player.avatar} name={player.name} size={i === 0 ? 62 : 50} />
+                      <h2>
+                        {player.name}
+                        {you && <small>{tr('YOU')}</small>}
+                      </h2>
+                      <span className="podium__tier">{tr(rankFor(player.rating).label)}</span>
+                      <strong className="num">
+                        {value(player)}
+                        <small>{tr(unit)}</small>
+                      </strong>
+                      <span className="podium__base">
+                        {tr(
+                          i === 0
+                            ? 'The one to beat'
+                            : i === 1
+                              ? 'Close on their heels'
+                              : 'In good company',
+                        )}
+                      </span>
+                    </article>
+                  );
+                })}
               </section>
             )}
-            <section className="leaderboard-panel" aria-label={tr('Ranked players')}>
-              <div className="leaderboard-head">
+
+            <section className="board" aria-label={tr('Ranked players')}>
+              <div className="board__head">
                 <span>{tr('Rank')}</span>
-                <span>{tr('Player / division')}</span>
+                <span>{tr('Player')}</span>
                 <span>{tr('Form')}</span>
                 <span>{tr('Wins')}</span>
                 <span>{tr('Streak')}</span>
-                <span>{tr('MMR')}</span>
+                <span>{tr(unit)}</span>
               </div>
-              <ol className="leaderboard-list">
-                {current.entries.map((entry) => (
+              <ol className="board__list">
+                {rest.map((entry) => (
                   <BoardRow
                     key={entry.position}
                     entry={entry}
+                    value={value(entry)}
                     you={current.you?.position === entry.position}
                   />
                 ))}
               </ol>
+              {rest.length === 0 && top.length > 0 && (
+                <p className="board__note">
+                  {tr('Everybody ranked so far is on the podium. Play to push them off it.')}
+                </p>
+              )}
             </section>
-            <div className="board-pagination">
-              <span>
-                {tr(pageOffset + 1)}
-                {'–'}
-                {tr(Math.min(pageOffset + 25, current.total))}
-                {tr(' of ')}
-                {tr(current.total)}
-              </span>
-              <div>
-                <button
-                  className="icon-button"
-                  aria-label={tr('Previous page')}
-                  disabled={pageOffset === 0 || loading}
-                  onClick={() => setOffset(Math.max(0, pageOffset - 25))}
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label={tr('Next page')}
-                  disabled={pageOffset + 25 >= current.total || loading}
-                  onClick={() => setOffset(pageOffset + 25)}
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            </div>
+
             {outside && current.you && (
-              <section className="your-position">
-                <span className="eyebrow">{tr('Your place on the ladder')}</span>
-                <ol>
-                  <BoardRow entry={current.you} you />
+              <section className="board board--you" aria-label={tr('Your place on the ladder')}>
+                <div className="board__youhead">
+                  <span className="eyebrow">{tr('Your place on the ladder')}</span>
+                  <button
+                    className="text-link"
+                    onClick={() => setOffset(Math.floor((current.you!.position - 1) / PAGE) * PAGE)}
+                  >
+                    {tr('Jump to it')}
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+                <ol className="board__list">
+                  <BoardRow entry={current.you} value={value(current.you)} you />
                 </ol>
-                <button
-                  className="text-link"
-                  onClick={() => setOffset(Math.floor((current.you!.position - 1) / 25) * 25)}
-                >
-                  {tr('Jump to my position ')}
-                  <ChevronRight size={15} />
-                </button>
               </section>
+            )}
+
+            {current.total > PAGE && (
+              <div className="board__pager">
+                <span className="num">
+                  {pageOffset + 1}
+                  {'–'}
+                  {Math.min(pageOffset + PAGE, current.total)}
+                  {tr(' of ')}
+                  {current.total}
+                </span>
+                <div>
+                  <button
+                    className="icon-button"
+                    aria-label={tr('Previous page')}
+                    disabled={pageOffset === 0 || loading}
+                    onClick={() => setOffset(Math.max(0, pageOffset - PAGE))}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label={tr('Next page')}
+                    disabled={pageOffset + PAGE >= current.total || loading}
+                    onClick={() => setOffset(pageOffset + PAGE)}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              </div>
             )}
           </>
         )
       )}
+
       {profile && profile.matchesPlayed < PLACEMENT_MATCHES && (
-        <div className="placement-note">
+        <aside className="placement">
           <RankEmblem size={46} placing />
           <p>
             <strong>
-              {tr(PLACEMENT_MATCHES - profile.matchesPlayed)}
-              {tr(' matches to make your mark.')}
+              {PLACEMENT_MATCHES - profile.matchesPlayed}
+              {tr(' battles to make your mark.')}
             </strong>
-            <span>{tr('Finish placement to appear on the leaderboard.')}</span>
+            <span>{tr('Finish placement to appear on the ladder.')}</span>
           </p>
-          <a className="text-link" href="/play">
-            {tr('Play ')}
+          <a className="btn btn--primary btn--sm" href="/play">
+            {tr('Play')}
             <ChevronRight size={15} />
           </a>
-        </div>
+        </aside>
       )}
-      <p className="page-note">
-        {tr(
-          'Movement is since the player’s previous ranked match. Recent form shows up to five results, newest first.',
-        )}
-      </p>
+
     </main>
   );
 }
-function BoardRow({ entry, you = false }: { entry: LeaderboardEntry; you?: boolean }) {
+
+function BoardRow({
+  entry,
+  value,
+  you = false,
+}: {
+  entry: LeaderboardEntry;
+  value: number;
+  you?: boolean;
+}) {
   useUiPreferences();
   const movement = entry.movement ?? 0;
   return (
-    <li className={`leaderboard-row ${you ? 'is-you' : ''}`}>
-      <div className="position-cell">
-        <b>{tr(entry.position)}</b>
+    <li className={`board__row ${you ? 'is-you' : ''}`}>
+      <div className="board__pos">
+        <b className="num">{entry.position}</b>
         <span
+          className={`board__move ${movement > 0 ? 'is-up' : movement < 0 ? 'is-down' : ''}`}
           title={tr(`${movement > 0 ? 'Up' : 'Down'} ${Math.abs(movement)} places`)}
-          className={movement > 0 ? 'is-up' : movement < 0 ? 'is-down' : ''}
         >
           {movement > 0 ? (
-            <ArrowUpRight size={13} />
+            <ArrowUpRight size={12} />
           ) : movement < 0 ? (
-            <ArrowDownRight size={13} />
+            <ArrowDownRight size={12} />
           ) : (
-            <Minus size={12} />
+            <Minus size={11} />
           )}
-          {tr(movement !== 0 && Math.abs(movement))}
+          {movement !== 0 && Math.abs(movement)}
         </span>
       </div>
-      <div className="player-cell">
-        <Avatar avatar={entry.avatar} name={entry.name} size={38} />
+      <div className="board__player">
+        <Avatar avatar={entry.avatar} name={entry.name} size={36} />
         <div>
           <strong>
             {entry.name}
             {you && <small>{tr('YOU')}</small>}
           </strong>
-          <span>{tr(rankFor(entry.rating).label)}</span>
+          <span>
+            {tr(rankFor(entry.rating).label)}
+            <i>{'·'}</i>
+            {tr('Lv ')}
+            {entry.level}
+          </span>
         </div>
       </div>
       <div
-        className="form-cell"
+        className="board__form"
         aria-label={tr(`Recent results: ${entry.recent?.join(', ') || 'No recent results'}`)}
       >
         {entry.recent?.map((r, i) => (
@@ -301,12 +333,12 @@ function BoardRow({ entry, you = false }: { entry: LeaderboardEntry; you?: boole
           </i>
         ))}
       </div>
-      <span className="wins-cell">{tr(entry.wins)}</span>
-      <span className={`streak-cell ${entry.streak >= 3 ? 'is-hot' : ''}`}>
-        {entry.streak >= 3 && <Flame size={15} />}
-        {tr(entry.streak)}
+      <span className="board__wins num">{entry.wins}</span>
+      <span className={`board__streak num ${entry.streak >= 3 ? 'is-hot' : ''}`}>
+        {entry.streak >= 3 && <Flame size={14} />}
+        {entry.streak}
       </span>
-      <strong className="mmr-cell">{tr(entry.rating.toLocaleString())}</strong>
+      <strong className="board__value num">{value.toLocaleString()}</strong>
     </li>
   );
 }

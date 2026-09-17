@@ -1,6 +1,6 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { useCallback, useState } from 'react';
-import { Check, Copy, Share2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Copy, Share2, Users } from 'lucide-react';
 import {
   MATCH_LENGTHS,
   opponentOf,
@@ -26,19 +26,10 @@ interface LobbyProps {
 /**
  * The room before the match.
  *
- * One question at a time, in the order they actually arise: is somebody here,
- * how long are we playing, are you ready. Everything that is not one of those
- * three is below them or gone.
- *
- * What went: a panel of three sampled prompts that never changed after the page
- * loaded and told a waiting player nothing they could act on, and a bare camera
- * dropdown wedged between two buttons — a setting, and now on the settings
- * page, where somebody can work out which of three webcams is the right one
- * without an opponent watching them do it.
- *
- * What arrived: the room code stays reachable after the opponent turns up,
- * because the moment you most need to send the link again is the moment they
- * have dropped out of it.
+ * One question at a time, in the order they arise: is somebody here, how long
+ * are we playing, are you ready. The arrival of an opponent is the one moment
+ * worth making noise about, so it gets a reveal — the two stages slam into
+ * place behind a VS, once, and then the room settles into the ready state.
  */
 export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
   useUiPreferences();
@@ -47,26 +38,30 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
   const yourSeat = you?.seat ?? 0;
   const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
   const bothReady = Boolean(you?.ready && opponent?.ready);
+  const arriving = useArrival(opponent?.id ?? null);
 
   const headline = !opponent
     ? 'Every rivalry starts here.'
-    : bothReady
-      ? 'Here we go.'
-      : `${opponent.name} is in the room.`;
+    : arriving
+      ? `${opponent.name} is in.`
+      : bothReady
+        ? 'Here we go.'
+        : 'Ready when you both are.';
 
   return (
-    <div className="lobby">
+    <div className={`lobby ${arriving ? 'lobby--found' : ''}`}>
       <header className="lobby__head">
-        <p className="eyebrow">
+        <span className="eyebrow">
           {tr(match.ranked ? 'Ranked duel' : 'Friendly room')}
-          {tr(' · first to ')}
-          {tr(match.settings.winTarget)}
-        </p>
+          <i>{'·'}</i>
+          {tr('first to ')}
+          {match.settings.winTarget}
+        </span>
         <h1 className="lobby__title display">{tr(headline)}</h1>
         {opponent && (
           <div className="lobby__standings">
             <span className="lobby__side">
-              <span className="lobby__who">{you?.name ?? 'You'}</span>
+              <span className="lobby__who">{you?.name ?? tr('You')}</span>
               <RatingLine profile={standings[youId]} delta={undefined} />
             </span>
             {match.ranked && <Stakes you={standings[youId]} them={standings[opponent.id]} />}
@@ -102,18 +97,17 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
         <ReadyBar store={store} match={match} youId={youId} hasOpponent={Boolean(opponent)} />
       </div>
 
-      {match.ranked && (
-        <details className="compact-rules">
+      {match.ranked ? (
+        <details className="lobby__fine">
           <summary>{tr('Ranked rules')}</summary>
           <p>
             {tr(
-              'Leaving a live match can count as a loss and pauses ranked matchmaking for five minutes. Reconnect time is shared across the match.',
+              'Leaving a live battle can count as a loss and pauses ranked matchmaking for five minutes. Reconnect time is shared across the match.',
             )}
           </p>
         </details>
-      )}
-      {!match.ranked && (
-        <details className="lobby__extras">
+      ) : (
+        <details className="lobby__fine">
           <summary>{tr('Write your own rounds')}</summary>
           <Deck store={store} match={match} youId={youId} />
         </details>
@@ -124,6 +118,26 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
       {opponent && <ShareLine code={match.roomCode} />}
     </div>
   );
+}
+
+/**
+ * True for a beat after an opponent takes the other seat.
+ *
+ * Only on the transition from empty to occupied: a reconnect is not an arrival,
+ * and replaying the reveal every time the socket blinks would be noise.
+ */
+function useArrival(opponentId: string | null): boolean {
+  const [arriving, setArriving] = useState(false);
+  const previous = useRef<string | null>(opponentId);
+  useEffect(() => {
+    const had = previous.current;
+    previous.current = opponentId;
+    if (!opponentId || had === opponentId) return;
+    setArriving(true);
+    const timer = window.setTimeout(() => setArriving(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [opponentId]);
+  return arriving;
 }
 
 /** How long you are both signing up for. Either player can change it. */
@@ -141,11 +155,11 @@ function MatchLength({ store, match }: { store: MatchStore; match: PublicMatchSt
             aria-pressed={active}
             onClick={() => store.setWinTarget(length.winTarget)}
           >
-            <span className="length__label">{tr(length.label)}</span>
-            <span className="length__detail">
+            <strong>{tr(length.label)}</strong>
+            <small>
               {tr('first to ')}
-              {tr(length.winTarget)}
-            </span>
+              {length.winTarget}
+            </small>
           </button>
         );
       })}
@@ -166,22 +180,32 @@ function ReadyBar({
 }) {
   useUiPreferences();
   const you = match.players[youId];
+  const opponent = opponentOf(match, youId);
   const ready = you?.ready ?? false;
   const first = match.roundNumber === 0 && match.history.length === 0;
 
   if (!hasOpponent) {
     return (
       <div className="readybar readybar--waiting">
-        <span className="readybar__hint">
-          {tr('Send the link. The match starts the moment you are both ready.')}
-        </span>
+        <Users size={17} />
+        <span>{tr('Send the link. The battle starts the moment you are both ready.')}</span>
       </div>
     );
   }
 
   return (
     <div className="readybar">
-      <p className="readybar__hint">
+      <div className="readybar__states" aria-hidden="true">
+        <span className={ready ? 'is-ready' : ''}>
+          {ready && <Check size={13} />}
+          {tr('You')}
+        </span>
+        <span className={opponent?.ready ? 'is-ready' : ''}>
+          {opponent?.ready && <Check size={13} />}
+          {opponent?.name}
+        </span>
+      </div>
+      <p className="readybar__hint" role="status">
         {tr(
           ready
             ? 'Waiting for your opponent…'
@@ -194,7 +218,7 @@ function ReadyBar({
         className={`btn btn--lg ${ready ? '' : 'btn--primary'}`}
         onClick={() => store.setReady(!ready)}
       >
-        {tr(ready ? 'Not ready' : "I'm ready")}
+        {tr(ready ? 'Not ready' : 'I’m ready')}
       </button>
     </div>
   );
@@ -227,7 +251,7 @@ function InvitePanel({ code, seat }: { code: string; seat: 0 | 1 }) {
       return;
     }
     try {
-      await navigator.share({ title: 'Battle', text: 'Play a round with me', url });
+      await navigator.share({ title: 'DuelBattle', text: 'Play a round with me', url });
     } catch {
       // A dismissed share sheet is not an error.
     }
@@ -235,25 +259,24 @@ function InvitePanel({ code, seat }: { code: string; seat: 0 | 1 }) {
 
   return (
     <section className={`invite invite--seat${seat}`}>
-      <p className="eyebrow">{tr('Waiting for an opponent')}</p>
-      <button className="invite__code" onClick={() => copy(code, 'code')} title={tr('Copy code')}>
-        {code.split('').map((char, i) => (
-          <span key={i}>{tr(char)}</span>
-        ))}
-      </button>
-      <p className="invite__hint dim">
-        {tr(copied === 'code' ? 'Code copied.' : 'Read it out, or send the link.')}
-      </p>
-      <div className="invite__actions">
-        <button className="btn btn--primary" onClick={() => void share()}>
-          {tr(copied === 'link' ? 'Link copied' : 'Send invite link')}
-        </button>
-      </div>
       <div className="invite__pulse" aria-hidden="true">
         <i />
         <i />
         <i />
       </div>
+      <span className="eyebrow">{tr('Waiting for an opponent')}</span>
+      <button className="invite__code" onClick={() => copy(code, 'code')} title={tr('Copy code')}>
+        {code.split('').map((char, i) => (
+          <span key={i}>{char}</span>
+        ))}
+      </button>
+      <p className="invite__hint dim" role="status">
+        {tr(copied === 'code' ? 'Code copied.' : 'Read it out, or send the link.')}
+      </p>
+      <button className="btn btn--primary" onClick={() => void share()}>
+        {copied === 'link' ? <Check size={16} /> : <Share2 size={16} />}
+        {tr(copied === 'link' ? 'Link copied' : 'Send invite link')}
+      </button>
     </section>
   );
 }
@@ -263,8 +286,8 @@ function ShareLine({ code }: { code: string }) {
   const [copied, copy] = useCopier();
   return (
     <p className="shareline">
-      <span className="shareline__label">{tr('Room')}</span>
-      <span className="shareline__code mono">{tr(code)}</span>
+      <span className="eyebrow">{tr('Room')}</span>
+      <span className="shareline__code mono">{code}</span>
       <button className="shareline__btn" onClick={() => copy(roomUrl(code), 'link')}>
         {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
         {tr(copied ? 'Link copied' : 'Copy link')}
@@ -273,7 +296,7 @@ function ShareLine({ code }: { code: string }) {
         <button
           className="shareline__btn"
           onClick={() =>
-            void navigator.share?.({ title: 'Battle', url: roomUrl(code) }).catch(() => {})
+            void navigator.share?.({ title: 'DuelBattle', url: roomUrl(code) }).catch(() => {})
           }
         >
           <Share2 size={13} aria-hidden="true" />

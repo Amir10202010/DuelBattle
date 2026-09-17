@@ -1,43 +1,160 @@
-.stage__camera-window { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); overflow: hidden; }
-.vision-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.vision-overlay line, .vision-overlay rect { fill: none; stroke-width: 1.1; vector-effect: non-scaling-stroke; }
-.vision-overlay__body { stroke: #acf2ee; fill: #eafffd; opacity: .65; }
-.vision-overlay__hands { stroke: #bef77c; fill: #e2ffba; }
-.vision-overlay__object { stroke: #e1e8f0; }
-.vision-overlay__object.is-near-hand { stroke: #bef77c; }
-.vision-overlay text { fill: white; stroke: #101720; stroke-width: 2.5; paint-order: stroke; font: 600 9px var(--font-body, sans-serif); }
-.vision-controls { display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-height: 26px; }
-.vision-controls button { display: inline-flex; align-items: center; gap: 5px; background: var(--ink-1); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 11px; cursor: pointer; }
-.vision-controls button[aria-pressed='true'] { color: var(--text); }
-.vision-controls__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
-.vision-controls[data-status='ready'] .vision-controls__dot { background: var(--good); }
-.round-comparison { width: min(100%, 460px); margin: 6px auto 0; }
-.round-comparison__scores { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; text-align: center; }
-.round-comparison__side { position: relative; display: grid; gap: 2px; min-width: 0; }
-.round-comparison__player { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.round-comparison__side strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.round-comparison__value { color: var(--muted); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.round-comparison__value.is-valid { color: var(--text); }
-.round-comparison__versus { position: absolute; left: -23px; top: 21px; font-size: 23px; color: var(--muted); }
-.round-comparison__explanation { text-align: center; margin: 3px 0; color: var(--muted); font-size: 12px; }
-.round-comparison__details { text-align: left; font-size: 12px; color: var(--muted); }
-.round-comparison__details summary { text-align: center; cursor: pointer; }
-.round-comparison__details p { margin: 4px 0; line-height: 1.4; }
-@media (max-width: 600px) {
-  .round-comparison__value { font-size: 19px; }
-  .round-comparison__side strong { font-size: 13px; }
+/*
+ * What the camera can see, drawn over the camera.
+ *
+ * The overlay is a hint, never a verdict: the server decides every round, and
+ * nothing drawn here is sent anywhere. The deadline cue is the opposite — it is
+ * the loudest thing in the room for five seconds, because that is exactly how
+ * long "you are about to lose this round" is worth shouting.
+ */
+
+.stage__camera-window {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
 }
 
-.badge--party { color: var(--text); background: var(--ink-2); border-color: var(--line-strong); }
-.party-instruction { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
-.deadline-edge { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 3px #ffbe55; animation: deadline-edge 1s ease-out infinite; }
-.deadline-cue { position: absolute; right: 12px; bottom: 25px; width: 86px; height: 86px; color: #fff0ce; border-radius: 50%; background: #261b0de6; pointer-events: none; display: grid; place-items: center; }
-.deadline-cue svg { position: absolute; inset: 0; transform: rotate(-90deg); width: 100%; height: 100%; fill: none; stroke-width: 4; }
-.deadline-cue__track { stroke: #ffd99426; }
-.deadline-cue__arc { stroke: #ffc45f; transition: stroke-dasharray .15s linear; }
-.deadline-cue b { font-size: 50px; line-height: 1; font-variant-numeric: tabular-nums; animation: deadline-pop .22s ease-out both; }
-.deadline-cue span { position: absolute; top: calc(100% + 3px); color: white; font-weight: 800; font-size: 12px; text-shadow: 0 1px 4px black; }
-@keyframes deadline-pop { from { transform: scale(1.22); } to { transform: scale(1); } }
-@keyframes deadline-edge { from { opacity: .9; } to { opacity: .25; } }
-@media (max-width: 600px) { .deadline-cue { width: 64px; height: 64px; right: 8px; bottom: 22px; } .deadline-cue b { font-size: 38px; } }
-@media (prefers-reduced-motion: reduce) { .deadline-cue b, .deadline-edge { animation: none; } .deadline-cue__arc { transition: none; } }
+.vision-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.vision-overlay line,
+.vision-overlay rect {
+  fill: none;
+  stroke-width: 1.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.vision-overlay__body {
+  stroke: #acf2ee;
+  fill: #eafffd;
+  opacity: 0.65;
+}
+
+.vision-overlay__hands {
+  stroke: #bef77c;
+  fill: #e2ffba;
+}
+
+.vision-overlay__object {
+  stroke: #e1e8f0;
+}
+
+.vision-overlay__object.is-near-hand {
+  stroke: #bef77c;
+}
+
+.vision-overlay text {
+  fill: #fff;
+  stroke: #101720;
+  stroke-width: 2.5;
+  paint-order: stroke;
+  font: 600 9px var(--font-ui);
+}
+
+/* The last five seconds ---------------------------------------------------- */
+
+.deadline-edge {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 3px var(--warn);
+  pointer-events: none;
+  animation: deadline-edge 1s ease-out infinite;
+}
+
+.deadline-cue {
+  position: absolute;
+  right: 12px;
+  bottom: 25px;
+  display: grid;
+  place-items: center;
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  background: rgb(38 27 13 / 90%);
+  color: #fff0ce;
+  pointer-events: none;
+}
+
+.deadline-cue svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke-width: 4;
+  transform: rotate(-90deg);
+}
+
+.deadline-cue__track {
+  stroke: rgb(255 217 148 / 15%);
+}
+
+.deadline-cue__arc {
+  stroke: var(--warn);
+  transition: stroke-dasharray 0.15s linear;
+}
+
+.deadline-cue b {
+  font-size: 50px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  animation: deadline-pop 0.22s ease-out both;
+}
+
+.deadline-cue span {
+  position: absolute;
+  top: calc(100% + 3px);
+  color: #fff;
+  font-size: var(--t-sm);
+  font-weight: 800;
+  text-shadow: 0 1px 4px #000;
+  white-space: nowrap;
+}
+
+@keyframes deadline-pop {
+  from {
+    transform: scale(1.22);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes deadline-edge {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+
+@media (max-width: 600px) {
+  .deadline-cue {
+    right: 8px;
+    bottom: 22px;
+    width: 64px;
+    height: 64px;
+  }
+
+  .deadline-cue b {
+    font-size: 38px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deadline-cue b,
+  .deadline-edge {
+    animation: none;
+  }
+
+  .deadline-cue__arc {
+    transition: none;
+  }
+}

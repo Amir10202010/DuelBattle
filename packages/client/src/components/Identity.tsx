@@ -110,24 +110,32 @@ export const LevelBar = memo(function LevelBar({
 }) {
   useUiPreferences();
   const level = levelFor(xp);
+  const percent = Math.round(level.progress * 100);
   return (
     <div className={`levelbar ${compact ? 'levelbar--compact' : ''}`}>
       <div className="levelbar__head">
         <span className="levelbar__level">
           {tr('Level ')}
-          {tr(level.level)}
+          {level.level}
         </span>
         {!compact && (
-          <span className="levelbar__xp mono">
-            {tr(level.into)}
+          <span className="levelbar__xp num">
+            {level.into}
             {' / '}
-            {tr(level.cost)}
-            {tr('XP')}
+            {level.cost}
+            {tr(' XP')}
           </span>
         )}
       </div>
-      <div className="levelbar__track">
-        <div className="levelbar__fill" style={{ width: `${Math.round(level.progress * 100)}%` }} />
+      <div
+        className="bar bar--thin"
+        role="progressbar"
+        aria-label={tr('Progress to the next level')}
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <i style={{ width: `${percent}%` }} />
       </div>
     </div>
   );

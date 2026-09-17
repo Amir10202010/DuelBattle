@@ -1,212 +1,242 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { ArrowRight, Settings, Flame, Trophy, Swords, Target } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowRight, Flame, Settings, Swords, Target, TrendingDown, Trophy } from 'lucide-react';
 import {
-  ACHIEVEMENTS,
-  getAchievement,
+  demotionRisk,
   isPlaced,
   nextRank,
   rankFor,
-  demotionRisk,
   type PublicProfile,
 } from '@battle/shared';
-import { Avatar, LevelBar } from '../components/Identity.jsx';
-import { RankEmblem, RewardArt } from '../components/GameArt.jsx';
+import { LevelBar } from '../components/Identity.jsx';
+import { RankEmblem } from '../components/GameArt.jsx';
 import { BattleHistory } from '../components/BattleHistory.jsx';
 import { Customization } from '../components/avatar/Customization.jsx';
+import { MarkPicker } from '../components/avatar/MarkPicker.jsx';
+import { Hero } from '../components/avatar/Hero.jsx';
+import { useEconomy } from '../hooks/useEconomy.js';
+import type { MatchStore } from '../net/store.js';
+
+type Tab = 'loadout' | 'history';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'loadout', label: 'Loadout' },
+  { id: 'history', label: 'History' },
+];
+
+/**
+ * The locker: your player, not your account.
+ *
+ * The card at the top is the only place where the hero, the rank emblem, the
+ * level and the record appear together — it is the thing a player is building.
+ * Everything you can change about how you look is under one tab beneath it,
+ * hero and ladder mark together, because a player has one idea of "me".
+ */
 export function Profile({
   profile,
+  store,
   onNavigate,
 }: {
   profile: PublicProfile | null;
+  store: MatchStore;
   onNavigate: (path: string) => void;
 }) {
   useUiPreferences();
+  const { data: economy } = useEconomy();
+  const [tab, setTab] = useState<Tab>('loadout');
   if (!profile) return null;
+
   const placed = isPlaced(profile.matchesPlayed);
   const rank = rankFor(profile.rating);
   const next = nextRank(profile.rating);
   const down = demotionRisk(profile.rating);
-  const unlocked = profile.achievements
-    .map(getAchievement)
-    .filter((a): a is NonNullable<typeof a> => !!a);
+  const winRate = profile.matchesPlayed
+    ? Math.round((profile.wins / profile.matchesPlayed) * 100)
+    : null;
+
   const categories = new Map<string, number>();
   for (const record of profile.history ?? [])
     for (const category of record.categories ?? [])
       categories.set(category, (categories.get(category) ?? 0) + 1);
   const favorites = [...categories].sort((a, b) => b[1] - a[1]).slice(0, 3);
+
   return (
-    <main className="page">
-      <header className="page-heading"><div><span className="eyebrow">{tr('Your hero')}</span><h1>{tr('Locker')}</h1></div><a className="btn" href="/store">{tr('Open store')}<ArrowRight size={16}/></a></header>
-      <Customization />
-      <section className="player-cover">
-        <span className="eyebrow">{tr('Player dossier')}</span>
-        <div className="player-cover__main">
-          <Avatar avatar={profile.avatar} size={88} name={profile.name} />
-          <div>
-            <h1>{profile.name}</h1>
-            <span className="player-cover__rank">
-              {tr(placed ? rank.label : 'Placement in progress')}
-            </span>
-            <p>
-              {tr(
-                placed
-                  ? rank.tier.blurb
-                  : `${profile.matchesPlayed} of 5 ranked matches. Find your place.`,
-              )}
-            </p>
+    <main className="page locker-page">
+      <section className="playercard plate">
+        <div className="playercard__char">
+          <div className="hero-plinth">
+            <Hero
+              loadout={economy?.loadout ?? profile.loadout}
+              size={280}
+              label={tr('Your hero')}
+            />
           </div>
-          <button
-            className="icon-button"
-            title={tr('Edit player')}
-            aria-label={tr('Edit player')}
-            onClick={() => onNavigate('/settings')}
-          >
-            <Settings size={19} />
-          </button>
         </div>
-        <RankEmblem rating={profile.rating} size={172} placing={!placed} />
-      </section>
-      <section className="home-stats profile-stats">
-        {[
-          { Icon: Swords, label: 'Battles', value: profile.matchesPlayed },
-          { Icon: Trophy, label: 'Wins', value: profile.wins },
-          {
-            Icon: Target,
-            label: 'Win rate',
-            value: profile.matchesPlayed
-              ? `${Math.round((profile.wins / profile.matchesPlayed) * 100)}%`
-              : '—',
-          },
-          { Icon: Flame, label: 'Best streak', value: profile.bestStreak },
-        ].map(({ Icon, label, value }) => (
-          <div key={label}>
-            <span>
-              <Icon size={16} />
-              {tr(label)}
-            </span>
-            <strong>{tr(value)}</strong>
-          </div>
-        ))}
-      </section>
-      <div className="profile-grid">
-        <section className="panel">
-          <div className="card-heading">
-            <h2>{tr('Your climb')}</h2>
-            <button className="text-link" onClick={() => onNavigate('/ranks')}>
-              {tr('The ladder ')}
-              <ArrowRight size={15} />
-            </button>
-          </div>
-          <div className="rating-summary">
-            <strong>
-              {tr(profile.rating)}
-              <small>{tr('MMR')}</small>
-            </strong>
-            <span>
-              {tr('Personal best ')}
-              <b>{tr(profile.peakRating)}</b>
-            </span>
-          </div>
-          <div className="progress-track">
-            <i style={{ width: `${rank.progress * 100}%` }} />
-          </div>
-          <p className="progress-caption">
-            {tr(
-              next
-                ? `${next.pointsAway} MMR to ${tr(next.rank.label)}`
-                : 'At the summit. Make it yours.',
-            )}
-          </p>
-          {placed && down && down.pointsAway <= 40 && (
-            <p className="rank-risk">
-              {tr(down.pointsAway + 1)}
-              {tr(' MMR loss would move you to ')}
-              {tr(down.rank.label)}
-              {tr('. Your XP and earned badges stay.')}
-            </p>
-          )}
-          <LevelBar xp={profile.xp} />
-        </section>
-        <section className="panel">
-          <div className="card-heading">
-            <h2>{tr('Your style')}</h2>
-            <Target size={18} />
-          </div>
-          <p className="dim">{tr('Most played challenge categories in your recent battles.')}</p>
-          {favorites.length ? (
-            <div className="favorite-topics">
-              {favorites.map(([category, count]) => (
-                <span key={category}>
-                  {tr(category)}
-                  <b>{tr(count)}</b>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="compact-empty">
-              {tr('Play a few ranked duels to discover your strengths.')}
-            </p>
-          )}
-          <div className="profile-record">
-            <span>
-              {tr(profile.wins)}
-              {tr(' wins')}
-            </span>
-            <span>
-              {tr(profile.losses)}
-              {tr(' losses')}
-            </span>
-            <span>
-              {tr(profile.draws)}
-              {tr(' draws')}
-            </span>
-          </div>
-        </section>
-      </div>
-      <section className="panel profile-awards">
-        <div className="card-heading">
-          <h2>{tr('Earned, never given')}</h2>
-          <button className="text-link" onClick={() => onNavigate('/awards')}>
-            {tr('Collection ')}
-            {tr(unlocked.length)}
-            {'/'}
-            {tr(ACHIEVEMENTS.length)} <ArrowRight size={15} />
-          </button>
-        </div>
-        {unlocked.length ? (
-          <ul className="trophy-shelf">
-            {unlocked
-              .slice(-6)
-              .reverse()
-              .map((a) => (
-                <li key={a.id}>
-                  <RewardArt group={a.group} rarity={a.rarity} />
-                  <strong>{tr(a.name)}</strong>
-                  <span>{tr(a.rarity)}</span>
-                </li>
-              ))}
-          </ul>
-        ) : (
-          <div className="trophy-empty">
-            <RewardArt group="first" locked />
-            <div>
-              <h3>{tr('The first one is waiting.')}</h3>
-              <p>{tr('Finish an eligible ranked match to earn your first achievement.')}</p>
-            </div>
-          </div>
-        )}
-      </section>
-      <section className="panel">
-        <div className="card-heading">
-          <h2>{tr('Battle history')}</h2>
-          <span className="dim">
-            {tr('Last ')}
-            {tr(profile.history?.length ?? 0)}
-            {tr(' matches')}
+
+        <div className="playercard__id">
+          <h1 className="display">{profile.name || tr('New player')}</h1>
+          <span className="playercard__tier">
+            <RankEmblem rating={profile.rating} size={26} placing={!placed} />
+            {tr(placed ? rank.label : 'Placement in progress')}
+          </span>
+          <span className="playercard__mmr num">
+            {profile.rating}
+            <small>{tr('rating')}</small>
           </span>
         </div>
-        <BattleHistory history={profile.history ?? []} onPlay={() => onNavigate('/play')} />
+
+        <div className="playercard__meta">
+          <div
+            className="bar"
+            role="progressbar"
+            aria-valuenow={Math.round(rank.progress * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={tr('Progress to the next rank')}
+          >
+            <i style={{ width: `${Math.round(rank.progress * 100)}%` }} />
+          </div>
+          {next && (
+            <p className="playercard__climb">
+              {tr(`${next.pointsAway} rating to `)}
+              <b>{tr(next.rank.label)}</b>
+            </p>
+          )}
+
+          <LevelBar xp={profile.xp} />
+
+          {placed && down && down.pointsAway <= 40 && (
+            <p className="playercard__risk">
+              <TrendingDown size={14} />
+              {tr('Drop ')}
+              {down.pointsAway + 1}
+              {tr(' rating and you move to ')}
+              <b>{tr(down.rank.label)}</b>
+            </p>
+          )}
+        </div>
+
+        <div className="playercard__actions">
+          <button className="btn" onClick={() => onNavigate('/store')}>
+            {tr('Store')}
+            <ArrowRight size={15} />
+          </button>
+          <button
+            className="icon-button"
+            title={tr('Account settings')}
+            aria-label={tr('Account settings')}
+            onClick={() => onNavigate('/settings')}
+          >
+            <Settings size={18} />
+          </button>
+        </div>
       </section>
+
+      <section className="stats" aria-label={tr('Your record')}>
+        <div className="stat">
+          <span>
+            <Swords size={14} />
+            {tr('Battles')}
+          </span>
+          <strong>{profile.matchesPlayed}</strong>
+        </div>
+        <div className="stat">
+          <span>
+            <Trophy size={14} />
+            {tr('Wins')}
+          </span>
+          <strong>{profile.wins}</strong>
+        </div>
+        <div className="stat">
+          <span>
+            <Target size={14} />
+            {tr('Win rate')}
+          </span>
+          <strong>{winRate === null ? '—' : `${winRate}%`}</strong>
+        </div>
+        <div className={`stat ${profile.bestStreak >= 3 ? 'stat--hot' : ''}`}>
+          <span>
+            <Flame size={14} />
+            {tr('Best streak')}
+          </span>
+          <strong>{profile.bestStreak}</strong>
+        </div>
+      </section>
+
+      <div className="tabs tabs--block" role="tablist" aria-label={tr('Locker sections')}>
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            role="tab"
+            id={`locker-tab-${id}`}
+            aria-selected={tab === id}
+            aria-controls={`locker-panel-${id}`}
+            className={tab === id ? 'is-active' : ''}
+            onClick={() => setTab(id)}
+          >
+            {tr(label)}
+          </button>
+        ))}
+      </div>
+
+      <div
+        role="tabpanel"
+        id={`locker-panel-${tab}`}
+        aria-labelledby={`locker-tab-${tab}`}
+        key={tab}
+        className="locker-panel"
+      >
+        {tab === 'loadout' && (
+          <>
+            <MarkPicker avatar={profile.avatar} store={store} />
+            <Customization />
+          </>
+        )}
+
+        {tab === 'history' && (
+          <div className="locker-columns">
+            <section className="panel">
+              <div className="panel__head">
+                <h2>{tr('Battle history')}</h2>
+              </div>
+              <BattleHistory history={profile.history ?? []} onPlay={() => onNavigate('/play')} />
+            </section>
+
+            <section className="panel">
+              <div className="panel__head">
+                <h2>{tr('Your style')}</h2>
+                <Target size={17} />
+              </div>
+              {favorites.length ? (
+                <ul className="topiclist">
+                  {favorites.map(([category, count]) => (
+                    <li key={category}>
+                      <span>{tr(category)}</span>
+                      <b className="num">{count}</b>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="dim">{tr('Play a few ranked duels to discover your strengths.')}</p>
+              )}
+              <div className="record">
+                <div>
+                  <b className="num">{profile.wins}</b>
+                  <span>{tr('wins')}</span>
+                </div>
+                <div>
+                  <b className="num">{profile.losses}</b>
+                  <span>{tr('losses')}</span>
+                </div>
+                <div>
+                  <b className="num">{profile.draws}</b>
+                  <span>{tr('draws')}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
     </main>
   );
 }

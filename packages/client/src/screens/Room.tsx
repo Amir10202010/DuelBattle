@@ -79,14 +79,14 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
       <DuelActors match={match} youId={youId} standings={snapshot.standings}/>
       <header className="room__bar">
         <span className="room__code mono" title={tr('Room code')}>
-          {tr(match.roomCode)}
+          {match.roomCode}
         </span>
         <span className="room__phase eyebrow">{tr(phaseLabel(match))}</span>
         <div className="room__right">
           <ConnectionBadge status={snapshot.status} latencyMs={snapshot.latencyMs} />
           <AudioControls />
           <button
-            className="btn btn--ghost room__leave"
+            className="btn btn--sm room__leave"
             onClick={onLeave}
             title={tr(
               match.ranked && matchRunning ? 'Leaving can count as a ranked loss' : 'Leave room',

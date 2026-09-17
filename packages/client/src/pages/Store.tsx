@@ -1,20 +1,22 @@
-import { ShoppingBag } from 'lucide-react';
 import { Customization } from '../components/avatar/Customization.jsx';
+import { DailyReward } from '../components/rewards/DailyReward.jsx';
 import { tr, useUiPreferences } from '../i18n/index.js';
+
+/**
+ * The store, kept next to the way coins are earned.
+ *
+ * Nothing sold here changes a match. That is said once, plainly, in the header
+ * rather than in a disclaimer at the bottom, because it is the first question a
+ * competitive player asks about a shop.
+ */
 export function Store() {
   useUiPreferences();
   return (
     <main className="page page--store">
-      <header className="page-heading">
-        <div>
-          <span className="eyebrow">{tr('Made for your hero')}</span>
-          <h1>
-            <ShoppingBag size={27} /> {tr('Store')}
-          </h1>
-          <p>{tr('Pick your look. Keep your edge.')}</p>
-        </div>
-        <span className="status-tag">{tr('Looks only. Same fair game.')}</span>
+      <header className="page__head">
+        <h1 className="page__title display">{tr('Pick your look.')}</h1>
       </header>
+      <DailyReward />
       <Customization shop />
     </main>
   );

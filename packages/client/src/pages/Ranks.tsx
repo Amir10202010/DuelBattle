@@ -1,126 +1,159 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { ChevronRight, ShieldCheck } from 'lucide-react';
-import { TIERS, isPlaced, rankFor, nextRank, type PublicProfile } from '@battle/shared';
+import { useState } from 'react';
+import { Check, LockKeyhole } from 'lucide-react';
+import {
+  TIERS,
+  isPlaced,
+  rankFor,
+  nextRank,
+  type PublicProfile,
+  type Tier,
+} from '@battle/shared';
 import { RankEmblem } from '../components/GameArt.jsx';
+import { Dialog } from '../components/Dialog.jsx';
+
+/**
+ * The ladder, as eight things you can hold rather than eight paragraphs.
+ *
+ * Each tile is an emblem, a name and a range. What the tier is called in
+ * flavour, which divisions it has and how far off it is goes in the sheet, so
+ * the page reads at a glance and still answers the question when asked.
+ */
 export function Ranks({ profile }: { profile: PublicProfile | null }) {
   useUiPreferences();
+  const [open, setOpen] = useState<string | null>(null);
   if (!profile) return null;
+
   const here = rankFor(profile.rating);
   const up = nextRank(profile.rating);
   const placed = isPlaced(profile.matchesPlayed);
+  const selected = TIERS.find((tier) => tier.name === open) ?? null;
+
   return (
-    <main className="page">
-      <header className="page-heading">
-        <div>
-          <span className="eyebrow">{tr('The rank journey')}</span>
-          <h1>{tr('A reputation you can earn.')}</h1>
-          <p>
-            {tr(
-              'Eight original tiers. Three divisions below the summit. Your next step is always in sight.',
-            )}
-          </p>
-        </div>
-        <span className="status-tag">
-          <ShieldCheck size={15} />
-          {tr(' Skill decides')}
-        </span>
+    <main className="page ranks">
+      <header className="page__head">
+        <h1 className="page__title display">{tr('A reputation you can earn.')}</h1>
       </header>
-      <section className="rank-journey">
-        <RankEmblem rating={profile.rating} placing={!placed} size={115} />
+
+      <section className="standing plate">
+        <RankEmblem rating={profile.rating} placing={!placed} size={112} />
         <div>
-          <span className="eyebrow">{tr('Current standing')}</span>
-          <h2>{tr(placed ? here.label : 'Placement in progress')}</h2>
-          <p>
+          <h2 className="display">{tr(placed ? here.label : 'Placement in progress')}</h2>
+          <div
+            className="bar"
+            role="progressbar"
+            aria-valuenow={Math.round(here.progress * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={tr('Progress through this rank')}
+          >
+            <i style={{ width: `${Math.round(here.progress * 100)}%` }} />
+          </div>
+          <p className="dim">
             {tr(
               placed
                 ? up
-                  ? `${up.pointsAway} MMR until ${tr(up.rank.label)}`
+                  ? `${up.pointsAway} rating until ${tr(up.rank.label)}`
                   : 'Welcome to the summit.'
-                : `${profile.matchesPlayed}/5 matches completed. Every player starts at 1000 MMR.`,
+                : `${profile.matchesPlayed} of 5 placement battles played.`,
             )}
           </p>
         </div>
-        <strong>
-          {tr(profile.rating)}
-          <small>{tr('MMR')}</small>
+        <strong className="standing__value num">
+          {profile.rating}
+          <small>{tr('rating')}</small>
         </strong>
       </section>
-      <ol className="rank-grid" aria-label={tr('Rank ladder')}>
+
+      <ol className="tiers" aria-label={tr('Rank ladder')}>
         {TIERS.map((tier, i) => {
           const active = tier.name === here.tier.name && placed;
           const earned = placed && profile.peakRating >= tier.floor;
           const ceiling = TIERS[i + 1]?.floor;
           return (
-            <li
-              key={tier.name}
-              className={`rank-tier ${active ? 'is-current' : ''} ${earned ? 'is-earned' : ''}`}
-            >
-              <div className="rank-tier__top">
-                <span>
-                  {'0'}
-                  {tr(i + 1)}
-                </span>
-                <span>
-                  {tr(active ? 'YOUR RANK' : i === 7 ? 'THE SUMMIT' : earned ? 'REACHED' : 'AHEAD')}
-                </span>
-              </div>
-              <RankEmblem rating={tier.floor} size={116} />
-              <h2>{tr(tier.name)}</h2>
-              <p>{tr(tier.blurb)}</p>
-              <span className="rank-range">
-                {tr(tier.floor)}
-                {tr(ceiling ? `–${ceiling - 1}` : '+')}
-                {tr(' MMR')}
-              </span>
-              <div
-                className="division-marks"
-                aria-label={tr(i === 7 ? 'Apex tier' : 'Divisions three to one')}
+            <li key={tier.name}>
+              <button
+                className={`tier plate ${active ? 'is-current' : ''} ${earned ? 'is-earned' : ''}`}
+                onClick={() => setOpen(tier.name)}
               >
-                {i === 7 ? (
-                  <span>{tr('APEX')}</span>
-                ) : (
-                  <>
-                    <span>{tr('III')}</span>
-                    <ChevronRight size={12} />
-                    <span>{tr('II')}</span>
-                    <ChevronRight size={12} />
-                    <span>{tr('I')}</span>
-                  </>
-                )}
-              </div>
+                <span className="tier__state">
+                  {active ? (
+                    tr('You')
+                  ) : earned ? (
+                    <Check size={13} />
+                  ) : (
+                    <LockKeyhole size={11} />
+                  )}
+                </span>
+                <RankEmblem rating={tier.floor} size={92} />
+                <strong>{tr(tier.name)}</strong>
+                <span className="tier__range num">
+                  {tier.floor}
+                  {ceiling ? `–${ceiling - 1}` : '+'}
+                </span>
+              </button>
             </li>
           );
         })}
       </ol>
-      <section className="rank-rules">
-        <article>
-          <span>{'01'}</span>
-          <h3>{tr('Win your way up')}</h3>
-          <p>
-            {tr(
-              'Elo measures performance against your opponent. A win against a stronger rival earns more. Five placement matches unlock your leaderboard position.',
-            )}
-          </p>
-        </article>
-        <article>
-          <span>{'02'}</span>
-          <h3>{tr('Know the stakes')}</h3>
-          <p>
-            {tr(
-              'Cross a division boundary to move up or down. Your profile shows the drop line before you play. Earned achievements and XP never disappear.',
-            )}
-          </p>
-        </article>
-        <article>
-          <span>{'03'}</span>
-          <h3>{tr('Keep it fair')}</h3>
-          <p>
-            {tr(
-              'Only verified ranked matches count. Both players must participate. After three rewarded matches with the same rival in 24 hours, find a new opponent.',
-            )}
-          </p>
-        </article>
-      </section>
+
+      <Dialog
+        open={Boolean(selected)}
+        onClose={() => setOpen(null)}
+        title={selected ? tr(selected.name) : ''}
+      >
+        {selected && <TierDetail tier={selected} profile={profile} placed={placed} />}
+      </Dialog>
     </main>
+  );
+}
+
+function TierDetail({
+  tier,
+  profile,
+  placed,
+}: {
+  tier: Tier;
+  profile: PublicProfile;
+  placed: boolean;
+}) {
+  useUiPreferences();
+  const index = TIERS.indexOf(tier);
+  const ceiling = TIERS[index + 1]?.floor;
+  const apex = index === TIERS.length - 1;
+  const away = tier.floor - profile.rating;
+
+  return (
+    <div className="tier-detail">
+      <RankEmblem rating={tier.floor} size={120} />
+      <h2 className="display">{tr(tier.name)}</h2>
+      <p>{tr(tier.blurb)}</p>
+
+      <div className="award-detail__facts">
+        <div>
+          <span className="eyebrow">{tr('Rating')}</span>
+          <strong className="num">
+            {tier.floor}
+            {ceiling ? `–${ceiling - 1}` : '+'}
+          </strong>
+        </div>
+        <div>
+          <span className="eyebrow">{tr('Divisions')}</span>
+          <strong>{apex ? tr('Apex') : 'III · II · I'}</strong>
+        </div>
+      </div>
+
+      <p className="tier-detail__where">
+        {tr(
+          !placed
+            ? 'Finish placement to take your first rank.'
+            : away > 0
+              ? `${away} rating away.`
+              : profile.peakRating >= tier.floor
+                ? 'Reached.'
+                : 'Behind you.',
+        )}
+      </p>
+    </div>
   );
 }

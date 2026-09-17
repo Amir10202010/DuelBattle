@@ -1,0 +1,1098 @@
+/*
+ * DuelBattle — the design system.
+ *
+ * One product, two rooms. The page you arrive on is paper: bright, printed,
+ * the surface a poster is made of. The moment you sign in the lights go down
+ * and the room turns olive-dark, because from then on the brightest thing on
+ * screen has to be a camera feed with a person in it. The acid green runs
+ * through both halves and is the only colour that ever shouts.
+ *
+ * The dark is deliberately warm olive, not neutral grey. Grey is what an
+ * interface defaults to; a green-shifted near-black looks like somewhere, and
+ * this game is entirely about somewhere — the room you are sitting in.
+ *
+ * Surfaces are flat and corners are nearly square. Depth comes from contrast
+ * and spacing, never from blur. The one shape that carries the brand is the
+ * plate: a panel with its top-right corner cut away, echoing the hex rank
+ * emblem, so equipment reads as equipment.
+ *
+ * Everything below is a token or a primitive. Screens compose them; screens do
+ * not invent their own colours, radii or easings.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* -- Surfaces, darkest first. Olive-shifted, never neutral. ------------- */
+  --s-0: #13170e;
+  --s-1: #1b2015;
+  --s-2: #24291c;
+  --s-3: #2f3525;
+  --line: #343a28;
+  --line-strong: #4c5439;
+  /* For a control whose boundary is the only thing that says it is a control.
+     A text field carries no label inside it, and --line at 1.4:1 against the
+     surfaces either side is not a boundary anybody can see. */
+  --line-control: #6d7756;
+
+  /* -- Text, brightest first. Each clears AA on --s-1 through --s-3. ------ */
+  --text: #f2f3e8;
+  --text-dim: #a9b099;
+  --text-faint: #929a80;
+
+  /* -- The one loud colour. ---------------------------------------------- */
+  --acid: #d5f861;
+  --acid-hi: #e4ff8b;
+  --acid-ink: #1a2208;
+  --acid-soft: rgb(213 248 97 / 12%);
+  /* Acid as *text* needs a different value on paper, where the fill does not
+     have enough contrast to be read. Screens use this for links and icons. */
+  --acid-text: #d5f861;
+
+  /* -- Seats. Seat 0 is always acid, seat 1 always coral, never swapped, so
+        "the bright one is me" survives every screen in the game. ---------- */
+  --seat-a: #d5f861;
+  --seat-b: #ff9068;
+  --seat-a-soft: rgb(213 248 97 / 14%);
+  --seat-b-soft: rgb(255 144 104 / 14%);
+
+  /* -- Semantics. -------------------------------------------------------- */
+  --good: #a8e05f;
+  --bad: #ff6f5e;
+  --warn: #ffc861;
+  --info: #7fd1f5;
+
+  /* -- Rarity. One ramp, used by cosmetics and achievements alike. -------- */
+  --common: #9aa38a;
+  --uncommon: #6fd3a0;
+  --rare: #6cb8ff;
+  --epic: #c39bff;
+  --legendary: #ffc247;
+
+  /* -- Type. One face for both alphabets: the game ships in English and
+        Russian, and a display face that only covers Latin means every Russian
+        player reads a different product. ---------------------------------- */
+  --font-ui: 'Onest Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: var(--font-ui);
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --t-2xs: 10px;
+  --t-xs: 11px;
+  --t-sm: 12px;
+  --t-md: 13px;
+  --t-base: 15px;
+  --t-lg: 17px;
+  --t-xl: 21px;
+  --t-2xl: 26px;
+  --t-3xl: 33px;
+  --t-4xl: clamp(30px, 4.4vw, 46px);
+
+  /* -- Space. A four-based scale; nothing between the rungs. -------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --sp-7: 40px;
+  --sp-8: 56px;
+
+  /* -- Radius. Nearly square: this is equipment, not a greetings card. ---- */
+  --r-1: 4px;
+  --r-2: 8px;
+  --r-3: 14px;
+  --r-pill: 999px;
+  /* How much corner a plate loses. */
+  --notch: 16px;
+
+  /* -- Elevation. One lift, and a lit ring for the thing that is live. ---- */
+  --e-2: 0 10px 30px -8px rgb(0 0 0 / 55%);
+  --ring-acid: 0 0 0 1px rgb(213 248 97 / 55%);
+
+  /* -- Motion. Four durations, two curves, and that is the whole language.
+        Anything slower than --d-emph is a page that feels broken. --------- */
+  --d-tap: 90ms;
+  --d-ui: 160ms;
+  --d-enter: 240ms;
+  --d-emph: 420ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.25, 1);
+  --ease-pop: cubic-bezier(0.34, 1.45, 0.64, 1);
+
+  /* -- Layout. The content column, and the gutter either side of it. ------ */
+  --page-max: 1520px;
+  --gutter: 18px;
+  --rail-w: 0px;
+  --topbar-h: 56px;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+
+  --s-0: #f4f3ed;
+  --s-1: #ffffff;
+  --s-2: #eceade;
+  --s-3: #e1dfd0;
+  --line: #dcdccf;
+  --line-strong: #bbbca8;
+  --line-control: #7b8066;
+
+  --text: #20251c;
+  --text-dim: #565c4c;
+  --text-faint: #646a57;
+
+  --acid: #d5f861;
+  --acid-hi: #c9ee4f;
+  --acid-ink: #1b2109;
+  --acid-soft: rgb(160 200 40 / 16%);
+  --acid-text: #47600f;
+
+  --seat-a: #5b7a12;
+  --seat-b: #cf5535;
+  --seat-a-soft: rgb(91 122 18 / 12%);
+  --seat-b-soft: rgb(207 85 53 / 12%);
+
+  --good: #3b6918;
+  --bad: #b03024;
+  --warn: #85510c;
+  --info: #1d6d92;
+
+  --common: #6d7360;
+  --uncommon: #1f7550;
+  --rare: #2a5fa8;
+  --epic: #6e4b9c;
+  --legendary: #8a5b0c;
+
+  --e-2: 0 12px 30px -10px rgb(32 37 28 / 18%);
+  --ring-acid: 0 0 0 1px rgb(91 122 18 / 45%);
+}
+
+@media (min-width: 720px) {
+  :root {
+    --gutter: 28px;
+    --topbar-h: 64px;
+  }
+}
+
+@media (min-width: 1180px) {
+  :root {
+    --gutter: 40px;
+    --rail-w: 92px;
+  }
+}
+
+@media (min-width: 1560px) {
+  :root {
+    --rail-w: 216px;
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Reset                                                                     */
+/* ------------------------------------------------------------------------ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--s-0);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+}
+
+p {
+  margin: 0;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acid-text);
+  outline-offset: 2px;
+  border-radius: var(--r-1);
+}
+
+::selection {
+  background: var(--acid);
+  color: var(--acid-ink);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Type utilities                                                            */
+/* ------------------------------------------------------------------------ */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+/* The label above a title. Mono, because it is machine-side information:
+   which screen this is, which round, what the system is doing. */
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.mono,
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  z-index: 200;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-2);
+  background: var(--acid);
+  color: var(--acid-ink);
+  font-size: var(--t-md);
+  font-weight: 650;
+  transform: translateY(-200%);
+  transition: transform var(--d-ui) var(--ease);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Plate — the shape that carries the brand                                  */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A panel with its top-right corner cut off, and a hairline drawn along the
+ * cut so the shape reads as a cut rather than as a rendering mistake. Used for
+ * anything that is a piece of equipment: the hero card, a podium place, a
+ * cosmetic, a game mode. Plates carry no outer shadow, because a clip path
+ * cuts one off anyway — their depth comes from surface contrast.
+ */
+.plate {
+  position: relative;
+  border-radius: var(--r-3);
+  background: var(--s-1);
+  box-shadow: inset 0 0 0 1px var(--line);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--notch)) 0,
+    100% var(--notch),
+    100% 100%,
+    0 100%
+  );
+}
+
+.plate::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(100% - var(--notch));
+  width: calc(var(--notch) * 1.4143);
+  height: 2px;
+  background: var(--plate-cut, var(--line));
+  transform: rotate(45deg);
+  transform-origin: 0 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Surfaces                                                                  */
+/* ------------------------------------------------------------------------ */
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: var(--s-1);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: var(--s-1);
+  min-width: 0;
+}
+
+/* The header row inside a panel: a title, and at most one thing on the right. */
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 28px;
+}
+
+.panel__head h2,
+.panel__head h3 {
+  font-size: var(--t-lg);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Buttons                                                                   */
+/* ------------------------------------------------------------------------ */
+
+.btn {
+  --btn-bg: var(--s-2);
+  --btn-fg: var(--text);
+  --btn-line: var(--line-strong);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--btn-line);
+  border-radius: var(--r-2);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: var(--t-md);
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--d-ui) var(--ease),
+    border-color var(--d-ui) var(--ease),
+    color var(--d-ui) var(--ease),
+    transform var(--d-tap) var(--ease);
+}
+
+.btn > svg {
+  flex: 0 0 auto;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--s-3);
+  border-color: var(--text-faint);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.975);
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The one loud colour belongs to the one button that matters on a screen. */
+.btn--primary {
+  --btn-bg: var(--acid);
+  --btn-fg: var(--acid-ink);
+  --btn-line: var(--acid);
+  font-weight: 750;
+}
+
+.btn--primary:hover:not(:disabled) {
+  --btn-bg: var(--acid-hi);
+  --btn-line: var(--acid-hi);
+}
+
+.btn--ghost {
+  --btn-bg: transparent;
+  --btn-line: var(--line-strong);
+  --btn-fg: var(--text-dim);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  --btn-fg: var(--text);
+  background: var(--s-2);
+}
+
+.btn--danger:hover:not(:disabled) {
+  --btn-fg: var(--bad);
+  border-color: var(--bad);
+}
+
+.btn--sm {
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  font-size: var(--t-sm);
+}
+
+.btn--lg {
+  min-height: 52px;
+  padding: 0 var(--sp-6);
+  font-size: var(--t-base);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+/* A link that behaves like a button: the arrow leans forward on hover, which
+   is the whole animation budget for a secondary action. */
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acid-text);
+  font-size: var(--t-md);
+  font-weight: 650;
+  cursor: pointer;
+  transition: color var(--d-ui) var(--ease);
+}
+
+.text-link > svg {
+  flex: 0 0 auto;
+  transition: transform var(--d-ui) var(--ease);
+}
+
+.text-link:hover {
+  color: var(--text);
+}
+
+.text-link:hover > svg {
+  transform: translateX(3px);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--s-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background var(--d-ui) var(--ease),
+    color var(--d-ui) var(--ease),
+    border-color var(--d-ui) var(--ease);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--s-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Tabs and filters                                                          */
+/* ------------------------------------------------------------------------ */
+
+.tabs {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--s-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs > button,
+.tabs > a {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--t-sm);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--d-ui) var(--ease),
+    color var(--d-ui) var(--ease);
+}
+
+.tabs > button:hover,
+.tabs > a:hover {
+  color: var(--text);
+}
+
+.tabs > .is-active {
+  background: var(--acid);
+  color: var(--acid-ink);
+}
+
+.tabs--block {
+  width: 100%;
+}
+
+.tabs--block > button {
+  flex: 1 1 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Badges, chips, rarity                                                     */
+/* ------------------------------------------------------------------------ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--s-2);
+  color: var(--text-dim);
+  font-size: var(--t-xs);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.rarity {
+  color: var(--rarity, var(--common));
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.is-common {
+  --rarity: var(--common);
+}
+
+.is-uncommon {
+  --rarity: var(--uncommon);
+}
+
+.is-rare {
+  --rarity: var(--rare);
+}
+
+.is-epic {
+  --rarity: var(--epic);
+}
+
+.is-legendary {
+  --rarity: var(--legendary);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Progress                                                                  */
+/* ------------------------------------------------------------------------ */
+
+.bar {
+  position: relative;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--s-3);
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--bar-fill, var(--acid));
+  transition: width var(--d-emph) var(--ease);
+}
+
+/* Milestone bars carry a number beside them; game bars do not. */
+.bar--thin {
+  height: 5px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Stat tiles                                                                */
+/* ------------------------------------------------------------------------ */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: var(--sp-2);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--s-1);
+  min-width: 0;
+}
+
+.stat > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+  font-size: var(--t-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stat > span > svg {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+
+.stat > strong {
+  font-size: var(--t-xl);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.stat--hot > strong {
+  color: var(--acid-text);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Fields                                                                    */
+/* ------------------------------------------------------------------------ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.field > label,
+.field > span {
+  font-size: var(--t-sm);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.field small {
+  color: var(--text-dim);
+  font-size: var(--t-sm);
+  line-height: 1.55;
+}
+
+.input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-2);
+  background: var(--s-0);
+  color: var(--text);
+  font-size: 16px;
+  transition:
+    border-color var(--d-ui) var(--ease),
+    box-shadow var(--d-ui) var(--ease);
+}
+
+select.input {
+  cursor: pointer;
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--text-faint);
+}
+
+.input:focus {
+  border-color: var(--acid-text);
+  box-shadow: var(--ring-acid);
+  outline: none;
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input--code {
+  font-family: var(--font-mono);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: 0.38em;
+  text-align: center;
+  text-transform: uppercase;
+  padding-left: 0.38em;
+}
+
+.error-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--bad);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Loading, empty and error states                                           */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A skeleton says what is loading by being the shape of it. The sweep is one
+ * gradient moving across a whole group, so ten placeholders read as one object
+ * arriving rather than ten things pulsing out of step.
+ */
+.skel {
+  border-radius: var(--r-2);
+  background: linear-gradient(
+    100deg,
+    var(--s-1) 20%,
+    var(--s-3) 40%,
+    var(--s-1) 60%
+  );
+  background-size: 300% 100%;
+  animation: skel-sweep 1.4s linear infinite;
+}
+
+@keyframes skel-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+/* An empty screen is an invitation, so it gets a heading, a reason and an
+   action — never the words "no data". */
+.blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-5);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-3);
+  background: var(--s-1);
+  text-align: center;
+}
+
+.blank > svg {
+  color: var(--text-faint);
+}
+
+.blank h2,
+.blank h3 {
+  font-size: var(--t-xl);
+}
+
+.blank p {
+  max-width: 44ch;
+  color: var(--text-dim);
+  font-size: var(--t-md);
+  line-height: 1.6;
+}
+
+.blank > .btn,
+.blank > .text-link {
+  margin-top: var(--sp-1);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Toasts and overlays                                                       */
+/* ------------------------------------------------------------------------ */
+
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-5) + env(safe-area-inset-bottom));
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: calc(100vw - var(--sp-5) * 2);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--toast-accent, var(--acid));
+  border-radius: var(--r-2);
+  background: var(--s-2);
+  box-shadow: var(--e-2);
+  color: var(--text);
+  font-size: var(--t-md);
+  font-weight: 600;
+  animation: toast-in var(--d-enter) var(--ease-pop) both;
+}
+
+.toast--warn {
+  --toast-accent: var(--warn);
+}
+
+.toast--error {
+  --toast-accent: var(--bad);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 160;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5);
+  background: color-mix(in srgb, var(--s-0) 92%, transparent);
+  animation: fade-in var(--d-enter) var(--ease) both;
+}
+
+.overlay__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  width: min(100%, 460px);
+  padding: var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-3);
+  background: var(--s-1);
+  box-shadow: var(--e-2);
+  text-align: center;
+  animation: overlay-in var(--d-enter) var(--ease-pop) both;
+}
+
+.overlay__inner h2 {
+  font-size: var(--t-2xl);
+}
+
+.overlay__inner .btn {
+  margin-top: var(--sp-2);
+  min-width: 200px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Detail sheet                                                              */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A native dialog, so focus, Escape and the rest of the page being inert come
+ * free. On a phone it arrives from the bottom like a sheet, because that is
+ * where a thumb is; on a desktop it is a centred card.
+ */
+.sheet {
+  width: min(100% - var(--sp-5) * 2, 420px);
+  max-height: min(84dvh, 640px);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-3);
+  background: var(--s-1);
+  color: var(--text);
+  box-shadow: var(--e-2);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet::backdrop {
+  background: color-mix(in srgb, #000 62%, transparent);
+}
+
+.sheet[open] {
+  animation: sheet-in var(--d-enter) var(--ease-pop) both;
+}
+
+.sheet__inner {
+  position: relative;
+  padding: var(--sp-6) var(--sp-5) var(--sp-5);
+}
+
+.sheet__close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background var(--d-ui) var(--ease),
+    color var(--d-ui) var(--ease);
+}
+
+.sheet__close:hover {
+  background: var(--s-3);
+  color: var(--text);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+
+@media (max-width: 560px) {
+  .sheet {
+    width: 100%;
+    max-width: none;
+    margin: auto auto 0;
+    border-width: 1px 0 0;
+    border-radius: var(--r-3) var(--r-3) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Shared micro-animations                                                   */
+/* ------------------------------------------------------------------------ */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

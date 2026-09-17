@@ -150,8 +150,8 @@ export function App() {
   const gateName = {
     store: 'the store',
     dashboard: 'your game home',
-    leaderboard: 'the leaderboard',
-    profile: 'your player profile',
+    leaderboard: 'the ladder',
+    profile: 'your locker',
     ranks: 'the rank ladder',
     awards: 'your rewards',
     onboarding: 'your player',
@@ -188,7 +188,8 @@ export function App() {
         error={snapshot.boardError ?? null}
       />
     );
-  else if (page === 'profile') content = <Profile profile={profile} onNavigate={route.go} />;
+  else if (page === 'profile')
+    content = <Profile profile={profile} store={store} onNavigate={route.go} />;
   else if (page === 'ranks') content = <Ranks profile={profile} />;
   else if (page === 'awards') content = <Awards profile={profile} />;
   else if (page === 'store') content = <Store />;
@@ -207,7 +208,8 @@ export function App() {
       <Home
         profile={profile}
         board={snapshot.board}
-        now={store.serverNow()}
+        store={store}
+        offline={snapshot.status !== 'open'}
         onNavigate={route.go}
       />
     ) : (
@@ -267,11 +269,7 @@ export function App() {
             </div>
             {page !== 'home' && (
               <footer className="foot">
-                <span>
-                  {tr('DUELBATTLE ')}
-                  <i>{'·'}</i>
-                  {tr(' Your room is the game.')}
-                </span>
+                <span>{tr('Your room is the game.')}</span>
                 <span>{tr('Camera only. No microphone. Play fair.')}</span>
                 <a
                   href="/settings"

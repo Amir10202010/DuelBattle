@@ -47,12 +47,20 @@ export const RankEmblem = memo(function RankEmblem({
       aria-label={tr(placing ? 'Placement emblem' : `${rank.tier.name} emblem`)}
       style={{ '--emblem': tint } as React.CSSProperties}
     >
-      <path d="M50 5 88 23v44L50 103 12 67V23Z" fill="currentColor" opacity=".08" />
+      <path
+        d="M50 5 88 23v44L50 103 12 67V23Z"
+        fill="currentColor"
+        opacity=".16"
+        stroke="currentColor"
+        strokeOpacity=".9"
+        strokeWidth="2"
+      />
       <path
         d="M50 10 83 26v38L50 96 17 64V26Z"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
+        opacity=".55"
       />
       <path
         d="m8 43 9 7M92 43l-9 7M8 59l10 5M92 59l-10 5"
@@ -93,11 +101,8 @@ export function RewardArt({
   useUiPreferences();
   const Icon = ICONS[group];
   return (
-    <span
-      className={`reward-art reward-art--${rarity} ${locked ? 'is-locked' : ''}`}
-      aria-hidden="true"
-    >
-      <Icon size={32} strokeWidth={1.5} />
+    <span className={`reward-art is-${rarity} ${locked ? 'is-locked' : ''}`} aria-hidden="true">
+      <Icon size={30} strokeWidth={1.6} />
     </span>
   );
 }

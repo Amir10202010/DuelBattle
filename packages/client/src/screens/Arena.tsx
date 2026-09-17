@@ -128,6 +128,9 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
         </button>
       </div>
       <div className="arena__stages">
+        {/* The countdown belongs to the whole arena, not to one camera: both
+            players are waiting for the same number. */}
+        {match.phase === 'countdown' && <Countdown match={match} now={now} />}
         <StageFrame
           seat={yourSeat}
           player={you}
@@ -137,7 +140,6 @@ export function Arena({ store, match, youId, camera, evidence, now }: ArenaProps
               {showVision && tracking.enabled && <VisionOverlay scene={tracking.scenes.self} mirrored
                 region={detection.result?.region?.box} />}
               {camera.status !== 'ready' && <CameraTrouble camera={camera} />}
-              {match.phase === 'countdown' && <Countdown match={match} now={now} />}
               {match.phase === 'roundResult' && round && (
                 <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
               )}
@@ -468,7 +470,7 @@ function ActionRow({
       <div className="actions">
         <div className="actions__row">
           <button
-            className={`btn btn--lg lockin ${matched || !isAuto ? 'lockin--hot' : ''}`}
+            className={`lockin ${matched || !isAuto ? 'lockin--hot' : ''}`}
             onClick={onLockIn}
           >
             {matched ? (
@@ -476,7 +478,7 @@ function ActionRow({
             ) : (
               <Camera size={22} aria-hidden="true" />
             )}
-            {tr('Snap!')}
+            <span>{tr('Snap!')}</span>
           </button>
           <button
             className="btn actions__pass"
@@ -488,7 +490,7 @@ function ActionRow({
         </div>
         <p className="actions__note dim">
           {tr(matched ? 'The camera has it. Be quick.' : aimingHint(detector, round.judging))}
-          <span className="actions__key">{tr(' Space')}</span>
+          <kbd className="actions__key">{tr('Space')}</kbd>
         </p>
       </div>
     );

@@ -78,6 +78,11 @@ function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kin
   return { label: 'not detected', kind: 'missed' };
 }
 
+/**
+ * The end of a match, in the order it should land: what happened, what the
+ * score was, what it paid, and only then what to do next. A loss reads the
+ * same way as a win — the XP bar still moves, which is the point of having one.
+ */
 export function MatchOver({
   store,
   match,
@@ -93,37 +98,42 @@ export function MatchOver({
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
   const won = match.winnerId === youId;
+  const drawn = !match.winnerId;
   const headline =
     match.endReason === 'abandoned'
       ? 'Match ended'
-      : !match.winnerId
+      : drawn
         ? 'Draw'
         : won
           ? 'Victory!'
           : 'Good game';
+
   return (
-    <main className="over">
+    <main className={`over ${won ? 'over--win' : drawn ? 'over--draw' : 'over--loss'}`}>
       <div className="over__head">
         {won && <Celebration finale />}
-        <h1 className={`over__title display ${won ? 'over__title--win' : ''}`}>{tr(headline)}</h1>
+        <span className="eyebrow">{tr(match.ranked ? 'Ranked duel' : 'Friendly room')}</span>
+        <h1 className="over__title display">{tr(headline)}</h1>
         {match.endReason === 'forfeit' && (
           <p className="over__sub dim">{tr(won ? 'Your opponent left.' : 'You left the match.')}</p>
         )}
         <SeriesLine match={match} youId={youId} className="over__series" />
       </div>
+
       <div className="over__score">
         {match.seats.map((id, seat) => {
           const player = id ? (match.players[id] ?? null) : null;
+          const winner = Boolean(id && id === match.winnerId);
           return (
             <div
               key={seat}
-              className={`over__side over__side--seat${seat} ${id && id === match.winnerId ? 'is-winner' : ''}`}
+              className={`over__side over__side--seat${seat} ${winner ? 'is-winner' : ''}`}
             >
               <span className="over__name">
-                {id && id === match.winnerId && <Trophy size={15} aria-label={tr('Winner')} />}{' '}
+                {winner && <Trophy size={14} aria-label={tr('Winner')} />}
                 {player?.name ?? '—'}
               </span>
-              <span className="over__number display">{player?.score ?? 0}</span>
+              <span className="over__number display num">{player?.score ?? 0}</span>
               {id && match.ranked && (
                 <RatingLine profile={standings[id]} delta={lastRatings?.[id] ?? undefined} />
               )}
@@ -131,58 +141,63 @@ export function MatchOver({
           );
         })}
       </div>
+
+      <Payout rewards={rewards} profile={standings[youId]} />
+
+      {!rewards &&
+        (match.ranked ? (
+          <details className="over__unrated">
+            <summary>{tr('Rating and XP unchanged')}</summary>
+            <p>
+              {tr(
+                'This battle did not qualify for progression. Verification, participation and rematch limits protect both players.',
+              )}
+            </p>
+          </details>
+        ) : (
+          <p className="over__unrated">
+            {tr('Just for fun · no rating changes')}
+            {!standings[youId] && (
+              <a className="text-link" href="/register">
+                {tr('Unlock ranks and rewards')}
+                <ArrowRight size={14} />
+              </a>
+            )}
+          </p>
+        ))}
+
       <div className="over__actions">
         <button
           className="btn btn--primary btn--lg"
           onClick={opponent?.connected ? () => store.rematch() : onFindAnother}
           disabled={Boolean(opponent?.connected && you?.rematchVote)}
         >
-          <RotateCcw size={19} aria-hidden="true" />
+          <RotateCcw size={18} aria-hidden="true" />
           {tr(you?.rematchVote && opponent?.connected ? 'Waiting for them…' : 'Play again')}
         </button>
         {opponent?.connected && (
           <button className="btn btn--lg" onClick={onFindAnother}>
             {tr('New opponent')}
-            <ArrowRight size={17} aria-hidden="true" />
+            <ArrowRight size={16} aria-hidden="true" />
           </button>
         )}
         <button className="btn btn--ghost" onClick={onLeave}>
           {tr('Done for now')}
         </button>
       </div>
+
       {opponent?.rematchVote && !you?.rematchVote && (
         <p className="over__nudge" role="status">
           {tr(`${opponent.name} wants a rematch.`)}
         </p>
       )}
-      <Payout rewards={rewards} profile={standings[youId]} />
-      {!rewards && (
-        <div className="unrated-result">
-          {match.ranked ? (
-            <details>
-              <summary>{tr('Rating and XP unchanged')}</summary>
-              <p>
-                {tr(
-                  'This match did not qualify for progression. Verification, participation and rematch limits protect both players.',
-                )}
-              </p>
-            </details>
-          ) : (
-            <span>{tr('Just for fun · no rating changes')}</span>
-          )}
-          {!standings[youId] && (
-            <p>
-              <a className="text-link" href="/register">
-                {tr('Unlock ranks and rewards')} →
-              </a>
-            </p>
-          )}
-        </div>
-      )}
+
       {match.history.length > 0 && (
-        <details className="over-details">
+        <details className="over__recap">
           <summary>
-            {tr('Round recap')} · {match.history.length}
+            {tr('Round recap')}
+            <i>{'·'}</i>
+            {match.history.length}
           </summary>
           <Filmstrip match={match} youId={youId} evidence={evidence} />
           <ol className="recap" aria-label={tr('Round by round')}>
@@ -192,7 +207,7 @@ export function MatchOver({
               const why = yourOutcome(outcome, youId);
               return (
                 <li key={outcome.roundNumber} className="recap__row">
-                  <span className="recap__num mono">
+                  <span className="recap__num num">
                     {String(outcome.roundNumber).padStart(2, '0')}
                   </span>
                   <span className="recap__prompt">
@@ -259,29 +274,35 @@ function Payout({
 
   return (
     <section
-      className={`payout ${revealed ? 'is-revealed' : ''}`}
+      className={`payout plate ${revealed ? 'is-revealed' : ''}`}
       aria-label={tr('What this match was worth')}
     >
       {rewards.rankMove === 'promoted' && (
         <div className="promotion" role="status">
-          <RankEmblem rating={profile.rating} size={100} />
+          <RankEmblem rating={profile.rating} size={92} />
           <div>
             <span className="eyebrow">{tr('Rank up')}</span>
-            <h2>{tr(rankFor(profile.rating).label)}</h2>
+            <h2 className="display">{tr(rankFor(profile.rating).label)}</h2>
           </div>
         </div>
       )}
+
       <div className="payout__head">
-        {!!rewards.coins && <span className="coin-counter"><CoinIcon size={28}/><strong>+{rewards.coins}</strong></span>}
-        <span className="payout__xp display">
+        <span className="payout__xp display num">
           {'+'}
-          {tr(rewards.xp)}
+          {rewards.xp}
         </span>
         <span className="payout__label">{tr('XP')}</span>
+        {!!rewards.coins && (
+          <span className="payout__coins">
+            <CoinIcon size={24} />
+            <strong className="num">{`+${rewards.coins}`}</strong>
+          </span>
+        )}
         {levelled && (
           <span className="payout__level">
             {tr('Level ')}
-            {tr(rewards.levelAfter)}
+            {rewards.levelAfter}
           </span>
         )}
         {rewards.rankMove && (
@@ -293,10 +314,11 @@ function Payout({
       </div>
 
       <LevelBar xp={revealed ? profile.xp : Math.max(0, profile.xp - rewards.xp)} />
+
       {!!rewards.dailyBonus && (
-        <p className="daily-payout">
+        <p className="payout__daily">
           {tr('Daily challenge complete · +')}
-          {tr(rewards.dailyBonus)}
+          {rewards.dailyBonus}
           {tr(' XP included')}
         </p>
       )}
@@ -306,15 +328,14 @@ function Payout({
           {unlocked.map((award) => (
             <li
               key={award.id}
-              className={`payout__award payout__award--${award.rarity}`}
+              className={`payout__award is-${award.rarity}`}
               title={tr(award.description)}
             >
               <RewardArt group={award.group} rarity={award.rarity} />
               <span className="payout__awardname">{tr(award.name)}</span>
-
-              <span className="payout__awardxp mono">
+              <span className="payout__awardxp num">
                 {'+'}
-                {tr(award.xp)}
+                {award.xp}
               </span>
             </li>
           ))}

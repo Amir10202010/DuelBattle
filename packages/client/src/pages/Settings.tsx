@@ -7,19 +7,27 @@ import {
 import { tr, useUiPreferences } from '../i18n/index.js';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
-  AVATAR_COLORS,
-  AVATAR_SHAPES,
-  MAX_NAME_LENGTH,
-  normalizeAvatar,
-  type PublicProfile,
-} from '@battle/shared';
+  ArrowRight,
+  Camera,
+  Check,
+  LogOut,
+  Palette,
+  ShieldCheck,
+  Shirt,
+  UserRound,
+  Volume2,
+} from 'lucide-react';
+import { MAX_NAME_LENGTH, type PublicProfile } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { sound } from '../media/sound.js';
 import { MusicControl } from '../components/MusicControl.jsx';
-import { Avatar } from '../components/Identity.jsx';
 
-/** Account appearance, device preferences and optional game audio. */
+/**
+ * Settings, grouped the way a player thinks about them: who I am, how it
+ * looks, how it sounds, what it can see, and the account itself. Nothing here
+ * changes the game — anything that would belongs in the room, not in a menu.
+ */
 export function Settings({
   store,
   profile,
@@ -35,7 +43,7 @@ export function Settings({
 }) {
   useUiPreferences();
   const [name, setName] = useState(profile?.name ?? '');
-  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const muted = useSyncExternalStore(sound.subscribe, sound.getMuted);
   const playback = useSyncExternalStore(sound.subscribe, sound.getPlayback);
   const [error, setError] = useState('');
@@ -44,31 +52,100 @@ export function Settings({
     if (profile?.name) setName((current) => current || profile.name);
   }, [profile?.name]);
 
-  const avatar = normalizeAvatar(profile?.avatar);
+  const saved = Boolean(profile?.name && profile.name === name.trim());
+  // The save goes over the socket and is confirmed by the profile coming back.
+  // If it never does, the button has to stop saying "saving" and let them retry.
+  useEffect(() => {
+    if (saved) {
+      setSaving(false);
+      return;
+    }
+    if (!saving) return;
+    const timer = window.setTimeout(() => setSaving(false), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [saved, saving]);
 
   const saveName = () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || trimmed === profile?.name) return;
+    setSaving(true);
     store.saveProfile({ name: trimmed });
   };
-  useEffect(() => {
-    setSaved(Boolean(profile?.name && profile.name === name.trim()));
-  }, [profile?.name, name]);
 
   return (
-    <main className="page page--settings">
+    <main className="page page--narrow settings">
       <header className="page__head">
-        <p className="eyebrow">{tr('Settings')}</p>
+        <span className="eyebrow">{tr('Settings')}</span>
         <h1 className="page__title display">{tr('Make yourself at home.')}</h1>
         <p className="page__lede">
-          {tr('Your player identity, camera and sound. A few small choices for a better battle.')}
+          {tr('Your player, your camera and your sound. A few small choices for a better battle.')}
         </p>
       </header>
 
-      <section className="setting">
-        <h2>{tr('Appearance & language')}</h2>
-        <div className="preferences-grid">
-          <label className="preference-control">
+      {profile ? (
+        <section className="panel setting">
+          <div className="panel__head">
+            <h2>
+              <UserRound size={17} />
+              {tr('Your player')}
+            </h2>
+          </div>
+          <div className="field">
+            <label htmlFor="setting-name">{tr('Name')}</label>
+            <div className="setting__row">
+              <input
+                id="setting-name"
+                className="input"
+                value={name}
+                maxLength={MAX_NAME_LENGTH}
+                autoComplete="nickname"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveName()}
+              />
+              <button className="btn" onClick={saveName} disabled={!name.trim() || saved}>
+                {saved ? (
+                  <>
+                    <Check size={16} />
+                    {tr('Saved')}
+                  </>
+                ) : (
+                  tr(saving ? 'Saving…' : 'Save')
+                )}
+              </button>
+            </div>
+            <small>{tr('Shown to your opponent and on the ladder.')}</small>
+          </div>
+
+          <button className="btn btn--block" onClick={() => onNavigate('/profile')}>
+            <Shirt size={16} />
+            {tr('Change how you look')}
+            <ArrowRight size={15} />
+          </button>
+        </section>
+      ) : (
+        <section className="panel setting">
+          <div className="panel__head">
+            <h2>
+              <UserRound size={17} />
+              {tr('Save your player')}
+            </h2>
+          </div>
+          <p className="dim">{tr('Sign in to keep a name, a hero and a place on the ladder.')}</p>
+          <button className="btn btn--primary" onClick={() => onNavigate('/login')}>
+            {tr('Sign in')}
+          </button>
+        </section>
+      )}
+
+      <section className="panel setting">
+        <div className="panel__head">
+          <h2>
+            <Palette size={17} />
+            {tr('Appearance & language')}
+          </h2>
+        </div>
+        <div className="setting__grid">
+          <label className="field">
             <span>{tr('Theme')}</span>
             <select
               className="input"
@@ -76,12 +153,12 @@ export function Settings({
               onChange={(e) => setPreferences({ theme: e.target.value as ThemePreference })}
             >
               <option value="system">{tr('Follow device')}</option>
-              <option value="light">{tr('Light neon')}</option>
-              <option value="dark">{tr('Dark')}</option>
+              <option value="light">{tr('Daylight')}</option>
+              <option value="dark">{tr('Arena dark')}</option>
             </select>
-            <small>{tr('Automatic mode follows your device’s light or dark setting.')}</small>
+            <small>{tr('Automatic follows your device’s light or dark setting.')}</small>
           </label>
-          <label className="preference-control">
+          <label className="field">
             <span>{tr('Language')}</span>
             <select
               className="input"
@@ -89,134 +166,116 @@ export function Settings({
               onChange={(e) => setPreferences({ language: e.target.value as LocalePreference })}
             >
               <option value="system">{tr('Follow browser')}</option>
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
+              <option value="ru">{'Русский'}</option>
+              <option value="en">{'English'}</option>
             </select>
-            <small>{tr('Your choice is saved on this device.')}</small>
+            <small>{tr('Saved on this device.')}</small>
           </label>
         </div>
       </section>
 
-      {!profile && (
-        <section className="setting">
-          <h2>{tr('Save your player identity')}</h2>
-          <p className="setting__note dim">
-            {tr('Sign in to choose a permanent name and avatar.')}
-          </p>
-          <button className="btn btn--primary" onClick={() => onNavigate('/login')}>
-            {tr('Sign in')}
+      <section className="panel setting">
+        <div className="panel__head">
+          <h2>
+            <Volume2 size={17} />
+            {tr('Sound')}
+          </h2>
+        </div>
+        <p className="dim">{tr('Countdowns, locks and round results. No microphone, ever.')}</p>
+        <div className="setting__row setting__row--wrap">
+          <button
+            className={muted ? 'btn' : 'btn btn--primary'}
+            aria-pressed={!muted}
+            data-audio-action
+            onClick={() => {
+              sound.setMuted(!muted);
+              // Clicking is a gesture, which is the browser's price for audio.
+              if (muted) sound.play('roundWin');
+            }}
+          >
+            {tr(muted ? 'Turn sound on' : 'Sound is on')}
           </button>
-        </section>
-      )}
-      {profile && (
-        <>
-          <section className="setting">
-            <h2 className="setting__title">{tr('Name')}</h2>
-            <p className="setting__note dim">
-              {tr('Shown to your opponent and on the leaderboard.')}
-            </p>
-            <div className="setting__row">
-              <input
-                className="input"
-                value={name}
-                maxLength={MAX_NAME_LENGTH}
-                autoComplete="nickname"
-                aria-label={tr('Your name')}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && saveName()}
-              />
-              <button className="btn" onClick={saveName} disabled={!name.trim()}>
-                {tr(saved ? 'Saved' : 'Save')}
-              </button>
-            </div>
-          </section>
-
-          <section className="setting">
-            <h2 className="setting__title">{tr('Your mark')}</h2>
-            <p className="setting__note dim">
-              {tr('Pick a shape and a colour. Make your mark on the ladder.')}
-            </p>
-            <div className="marks">
-              <div className="marks__preview">
-                <Avatar avatar={avatar} size={72} name={name} />
-              </div>
-              <div className="marks__pickers">
-                <div className="marks__row" role="group" aria-label={tr('Shape')}>
-                  {AVATAR_SHAPES.map((_, shape) => (
-                    <button
-                      key={shape}
-                      type="button"
-                      className={`marks__option ${avatar.shape === shape ? 'is-active' : ''}`}
-                      aria-pressed={avatar.shape === shape}
-                      aria-label={tr(`Shape ${shape + 1}`)}
-                      onClick={() => store.saveProfile({ avatar: { ...avatar, shape } })}
-                    >
-                      <Avatar avatar={{ ...avatar, shape }} size={30} />
-                    </button>
-                  ))}
-                </div>
-                <div className="marks__row" role="group" aria-label={tr('Colour')}>
-                  {AVATAR_COLORS.map((hex, color) => (
-                    <button
-                      key={hex}
-                      type="button"
-                      className={`marks__swatch ${avatar.color === color ? 'is-active' : ''}`}
-                      style={{ background: hex }}
-                      aria-pressed={avatar.color === color}
-                      aria-label={tr(`Colour ${color + 1}`)}
-                      onClick={() => store.saveProfile({ avatar: { ...avatar, color } })}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-        </>
-      )}
-
-      <section className="setting">
-        <h2 className="setting__title">{tr('Camera')}</h2>
-        <p className="setting__note dim">
+          <button
+            className="btn btn--ghost"
+            data-audio-action
+            onClick={() => {
+              sound.setMuted(false);
+              sound.play('roundWin');
+            }}
+          >
+            {tr('Play a test sound')}
+          </button>
+        </div>
+        <p className="dim" role="status">
           {tr(
-            'Frames are shared with your opponent. AI rounds also send snapshots to the configured referee provider. The server keeps no photo archive. Your browser holds snapshots for the match recap until you leave.',
+            muted
+              ? 'Sound effects are off.'
+              : playback === 'running'
+                ? 'Audio is running. If it is quiet, check the tab and device volume.'
+                : playback === 'starting'
+                  ? 'Starting audio…'
+                  : 'Audio has not started. Tap the test sound to try again.',
           )}
         </p>
+        <div className="setting__divider" />
+        <MusicControl expanded />
+      </section>
+
+      <section className="panel setting">
+        <div className="panel__head">
+          <h2>
+            <Camera size={17} />
+            {tr('Camera')}
+          </h2>
+        </div>
         {camera.devices.length > 1 ? (
-          <select
-            className="input"
-            aria-label={tr('Camera')}
-            value={camera.deviceId ?? ''}
-            onChange={(e) => camera.selectDevice(e.target.value)}
-          >
-            {camera.devices.map((device) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label}
-              </option>
-            ))}
-          </select>
+          <label className="field">
+            <span>{tr('Which camera')}</span>
+            <select
+              className="input"
+              value={camera.deviceId ?? ''}
+              onChange={(e) => camera.selectDevice(e.target.value)}
+            >
+              {camera.devices.map((device) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : (
-          <p className="setting__note dim">
+          <p className="dim">
             {tr(
               camera.status === 'ready'
                 ? 'One camera, and it is working.'
-                : 'The camera is asked for when a match starts, not before.',
+                : 'The camera is asked for when a battle starts, not before.',
             )}
           </p>
         )}
+        <p className="setting__fine">
+          <ShieldCheck size={14} />
+          {tr(
+            'Frames go to your opponent. AI rounds also send snapshots to the configured referee. The server keeps no photo archive, and your browser holds the recap only until you leave.',
+          )}
+        </p>
       </section>
+
       {profile && (
-        <section className="setting">
-          <h2 className="setting__title">{tr('Your account')}</h2>
-          <p className="setting__note dim">
-            {tr(
-              'Use your player ID and password on another device. Keep your recovery key somewhere safe.',
-            )}
+        <section className="panel setting">
+          <div className="panel__head">
+            <h2>
+              <LogOut size={17} />
+              {tr('Account')}
+            </h2>
+          </div>
+          <p className="dim">
+            {tr('Use your player ID and password on another device. Keep your recovery key safe.')}
           </p>
           <button
-            className="btn"
+            className="btn btn--danger"
             onClick={() => {
               void onLogout().catch(() =>
-                setError('Could not sign out. Check your connection and retry.'),
+                setError('Could not sign out. Check your connection and try again.'),
               );
             }}
           >
@@ -229,40 +288,6 @@ export function Settings({
           )}
         </section>
       )}
-
-      <section className="setting">
-        <h2 className="setting__title">{tr('Sound effects')}</h2>
-        <p className="setting__note dim">
-          {tr('Countdowns, locks and round results. No microphone, ever.')}
-        </p>
-        <button
-          className="btn"
-          aria-pressed={!muted}
-          data-audio-action
-          onClick={() => {
-            sound.setMuted(!muted);
-
-            // Clicking is a gesture, which is the browser's price for any audio.
-            if (muted) sound.play('roundWin');
-          }}
-        >
-          {tr(muted ? 'Turn sound on' : 'Turn sound off')}
-        </button>
-        <button className="btn btn--ghost" data-audio-action onClick={() => {
-          sound.setMuted(false);
-          sound.play('roundWin');
-        }}>{tr('Test sound')}</button>
-        <p className="setting__note" role="status">{tr(
-          muted ? 'Sound effects are off.' : playback === 'running'
-            ? 'Audio started. If it’s quiet, check the tab and device volume.'
-            : playback === 'starting' ? 'Starting audio…'
-            : 'Audio hasn’t started. Tap Test sound to try again.',
-        )}</p>
-      </section>
-      <section className="setting">
-        <h2 className="setting__title">{tr('Music')}</h2>
-        <MusicControl expanded />
-      </section>
     </main>
   );
 }

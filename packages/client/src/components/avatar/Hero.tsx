@@ -22,7 +22,7 @@ export function Hero({
   return (
     <svg
       className={`hero-avatar hero-avatar--${pose}`}
-      style={{ '--hero-tint': tint, width: size } as CSSProperties}
+      style={{ '--hero-tint': tint, '--hero-size': `${size}px` } as CSSProperties}
       viewBox="0 0 260 300"
       role={label ? 'img' : undefined}
       aria-label={label}

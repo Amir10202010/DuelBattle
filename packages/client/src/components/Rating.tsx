@@ -1,12 +1,9 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
 import { memo } from 'react';
 import {
-  STARTING_RATING,
   isPlaced,
-  nextTier,
   ratingChange,
   tierFor,
-  type MatchRecord,
   type PublicProfile,
   type RatingDelta,
 } from '@battle/shared';
@@ -94,102 +91,3 @@ export const Stakes = memo(function Stakes({
     </p>
   );
 });
-
-function outcomeClass(record: MatchRecord): string {
-  return record.result === 'win' ? 'is-win' : record.result === 'loss' ? 'is-loss' : 'is-draw';
-}
-
-/**
- * Your card: where you are, what it took, and how far the next rung is.
- *
- * Only ever your own — the server sends nobody else's history, because ten of
- * somebody else's matches is a stalking tool rather than a scoreboard.
- */
-export function ProfileCard({ profile }: { profile: PublicProfile | undefined }) {
-  useUiPreferences();
-  if (!profile) return null;
-
-  const placed = isPlaced(profile.matchesPlayed);
-  const tier = tierFor(profile.rating);
-  const next = nextTier(profile.rating);
-  const history = profile.history ?? [];
-
-  return (
-    <section className="profile" aria-label={tr('Your record')}>
-      <div className="profile__head">
-        <div>
-          <p className="eyebrow">{tr(placed ? 'Your rank' : 'Placing you')}</p>
-          <h3 className="profile__tier display">{tr(placed ? tier.name : 'Unranked')}</h3>
-          <p className="profile__blurb dim">
-            {tr(
-              placed
-                ? tier.blurb
-                : `${profile.matchesPlayed} played. A few more and this number means something.`,
-            )}
-          </p>
-        </div>
-        <p className="profile__rating display">{tr(profile.rating)}</p>
-      </div>
-
-      {placed && next && (
-        <p className="profile__next dim">
-          {tr(next.pointsAway)}
-          {tr(' to ')}
-          {tr(next.tier.name)}
-          {'.'}
-        </p>
-      )}
-
-      <dl className="profile__stats">
-        <div>
-          <dt>{tr('Played')}</dt>
-          <dd className="mono">{tr(profile.matchesPlayed)}</dd>
-        </div>
-        <div>
-          <dt>{tr('Won')}</dt>
-          <dd className="mono">{tr(profile.wins)}</dd>
-        </div>
-        <div>
-          <dt>{tr('Lost')}</dt>
-          <dd className="mono">{tr(profile.losses)}</dd>
-        </div>
-        <div>
-          <dt>{tr('Streak')}</dt>
-          <dd className="mono">{tr(profile.streak > 0 ? `${profile.streak}W` : '—')}</dd>
-        </div>
-        <div>
-          <dt>{tr('Best')}</dt>
-          <dd className="mono">{tr(profile.bestStreak > 0 ? `${profile.bestStreak}W` : '—')}</dd>
-        </div>
-      </dl>
-
-      {history.length > 0 && (
-        <ol className="profile__history" aria-label={tr('Recent matches')}>
-          {history.map((record) => (
-            <li key={record.at} className={`profile__row ${outcomeClass(record)}`}>
-              <span className="profile__result">{tr(record.result)}</span>
-              <span className="profile__opponent">{tr(record.opponentName || 'Someone')}</span>
-              <span className="profile__score mono">
-                {tr(record.yourScore)}
-                {'–'}
-                {tr(record.theirScore)}
-              </span>
-              <span className="profile__move mono">
-                {tr(record.ratingAfter - record.ratingBefore > 0 ? '+' : '')}
-                {tr(record.ratingAfter - record.ratingBefore)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      {history.length === 0 && profile.matchesPlayed === 0 && (
-        <p className="profile__empty dim">
-          {tr('Everybody starts at')}
-          {tr(STARTING_RATING)}
-          {tr('. Win a match and it moves.')}
-        </p>
-      )}
-    </section>
-  );
-}
