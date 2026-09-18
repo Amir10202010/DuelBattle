@@ -601,7 +601,6 @@ export const ru: Record<string, string> = {
   'Joining…': 'Подключаемся…',
   'Who are you?': 'Как тебя зовут?',
   'Pick a name so your opponent knows who won.': 'Это имя увидит соперник.',
-  'Create a player to unlock ranked battles →': 'Создать аккаунт для рейтинговых матчей →',
   'This browser was in room': 'Последняя комната:',
   as: 'Имя:',
   'Take that seat back': 'Вернуться в матч',
