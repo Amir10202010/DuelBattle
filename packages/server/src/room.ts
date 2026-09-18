@@ -33,6 +33,7 @@ import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
 import { validateAssessments } from './ai/pipeline.js';
 import { publicView, type PlayerProfile, type ProfileStore } from './profiles.js';
 import { profileFor, recordMatch } from './standings.js';
+import type { SettledPlayer, SettlementListener } from './settlement.js';
 import { log } from './log.js';
 
 export type Send = (message: ServerMessage) => void;
@@ -43,6 +44,13 @@ export interface RoomOptions {
   judge?: AiJudge;
   /** Where ratings live. Shared across rooms; absent means nothing is kept. */
   profiles?: ProfileStore;
+  /**
+   * Told about every ranked match this room settles.
+   *
+   * The room's own job ends when the rating is written; quests, streaks,
+   * referrals and notifications all hang off this instead of reaching in.
+   */
+  onSettled?: SettlementListener;
   /**
    * Restricts the deck this room draws from. The engine has always supported
    * it; a room passes it through for a themed deck, or for a test that needs
@@ -161,6 +169,15 @@ export class Room {
   private readonly judge: AiJudge | undefined;
   private aiUnavailableUntil = 0;
   private readonly profiles: ProfileStore | undefined;
+  private readonly onSettled: SettlementListener | undefined;
+  /**
+   * Who is allowed in, when the room was opened for named people.
+   *
+   * Null for every ordinary room, which is what keeps a friend room joinable by
+   * whoever is handed the code. A challenge is different: the server opened the
+   * room on behalf of two accounts, so guessing the code must not be enough.
+   */
+  private invitees: ReadonlySet<string> | null = null;
   private readonly pool: readonly Challenge[] | undefined;
   /** Set when a match ends, cleared when the next one starts. */
   private lastRatings: Record<PlayerId, RatingDelta> | null = null;
@@ -173,7 +190,24 @@ export class Room {
     this.emptySince = now;
     this.judge = options.judge;
     this.profiles = options.profiles;
+    this.onSettled = options.onSettled;
     this.pool = options.pool;
+  }
+
+  /**
+   * Restricts this room to a named pair.
+   *
+   * Set once, by the server, at the moment the room is opened for a challenge.
+   * Nothing a client sends can reach it.
+   */
+  restrictTo(accountIds: readonly string[]): void {
+    this.invitees = new Set(accountIds);
+  }
+
+  /** Whether this identity may take a seat here. */
+  mayJoin(identity: string | null): boolean {
+    if (!this.invitees) return true;
+    return identity !== null && this.invitees.has(identity);
   }
 
   /**
@@ -314,6 +348,54 @@ export class Room {
       [a.playerId]: updates[a.seat.identity!]!.rewards,
       [b.playerId]: updates[b.seat.identity!]!.rewards,
     };
+
+    this.announceSettlement(
+      `${this.code}:${this.createdAt}:${this.state.round?.id}`,
+      [a, b].map(({ seat, playerId }) => {
+        const update = updates[seat.identity!]!;
+        return {
+          accountId: seat.identity!,
+          name: this.state.players[playerId]?.name ?? '',
+          score: this.state.players[playerId]?.score ?? 0,
+          result: update.result,
+          ratingBefore: update.before,
+          ratingAfter: update.after,
+          ratingChange: update.change,
+          streak: update.profile.streak,
+          rewards: update.rewards,
+        } satisfies SettledPlayer;
+      }) as [SettledPlayer, SettledPlayer],
+      now,
+    );
+  }
+
+  /**
+   * Tells whoever is listening that a ranked match finished.
+   *
+   * Wrapped, because everything downstream of a result — a quest, a message, a
+   * referral reward — is allowed to fail, and none of it may take the rating
+   * with it. The match is already committed by the time this runs.
+   */
+  private announceSettlement(
+    matchId: string,
+    players: [SettledPlayer, SettledPlayer],
+    now: number,
+  ): void {
+    if (!this.onSettled) return;
+    try {
+      this.onSettled({
+        matchId,
+        roomCode: this.code,
+        ranked: this.state.ranked ?? false,
+        at: now,
+        players,
+      });
+    } catch (error) {
+      log.error('settlement listener threw', {
+        room: this.code,
+        errorType: error instanceof Error ? error.name : 'unknown',
+      });
+    }
   }
 
   get createdAt(): number {

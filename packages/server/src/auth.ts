@@ -85,7 +85,26 @@ export class AuthService {
     return this.resolve(this.token(request));
   }
 
+  /**
+   * The session this request is carrying.
+   *
+   * Two ways in, one session table. A browser sends the HttpOnly cookie, which
+   * is the right answer for a first-party page. A Telegram Mini App cannot:
+   * on Telegram Desktop and Telegram Web it runs inside an iframe on somebody
+   * else's origin, where a `SameSite=Strict` cookie is simply not sent — and
+   * relaxing that to `None` only trades it for third-party cookie blocking.
+   * So the Mini App presents the same token as a bearer credential instead.
+   *
+   * The bearer header is read first: a request that went to the trouble of
+   * sending one means it, and a stale cookie in the same browser must not
+   * quietly win.
+   */
   token(request: IncomingMessage): string {
+    const header = request.headers.authorization;
+    if (typeof header === 'string' && header.length <= 128) {
+      const match = /^Bearer ([a-f0-9]{64})$/.exec(header.trim());
+      if (match) return match[1]!;
+    }
     return (
       request.headers.cookie
         ?.split(';')

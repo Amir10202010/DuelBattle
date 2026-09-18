@@ -66,9 +66,20 @@ import { createHttpServer } from './http.js';
 import { RoomManager } from './rooms.js';
 import type { LimiterOptions } from './limiter.js';
 import { log } from './log.js';
+import { telegramConfig } from './telegram/config.js';
+import { TelegramService } from './telegram/service.js';
+import { telegramHttp } from './telegram/http.js';
 
 const SWEEP_INTERVAL_MS = 30_000;
 const MATCHMAKE_INTERVAL_MS = 1_000;
+/**
+ * How often queued notifications go out.
+ *
+ * Slow on purpose. Nothing here is urgent — the messages that matter are the
+ * ones reaching somebody who has already closed the app — and a tighter loop
+ * would spend the whole day asking an empty table whether it has work.
+ */
+const TELEGRAM_TICK_MS = 5_000;
 
 export interface AppOptions {
   clientDir?: string;
@@ -89,6 +100,8 @@ export interface App {
   server: Server;
   rooms: RoomManager;
   gateway: Gateway;
+  /** Present only when this deployment has a bot token. */
+  telegram?: TelegramService;
   listen(port: number, host?: string): Promise<number>;
   close(): Promise<void>;
 }
@@ -105,18 +118,43 @@ export function createApp(options: AppOptions = {}): App {
   const auth =
     options.auth ??
     (profiles instanceof Database ? new AuthService(profiles, identities) : undefined);
+  /**
+   * The Telegram side is built last and switched on by nothing but a token.
+   *
+   * Constructed after the room manager because it opens rooms for friend
+   * challenges, and handed to the room manager as a listener in the same
+   * breath. A deployment with no `TELEGRAM_BOT_TOKEN` never builds any of it,
+   * never adds a route and never changes behaviour.
+   */
+  let telegram: TelegramService | undefined;
   const rooms = new RoomManager({
     maxRooms: config.maxRooms,
     emptyRoomTtlMs: config.emptyRoomTtlMs,
     maxRoomAgeMs: config.maxRoomAgeMs,
     ...(judge ? { judge } : {}),
     ...(profiles ? { profiles } : {}),
+    onSettled: (match) => telegram?.onSettled(match),
   });
+
+  if (telegramConfig.enabled && auth && profiles instanceof Database) {
+    telegram = new TelegramService({ db: profiles, auth, rooms });
+    log.info('telegram integration enabled', {
+      bot: telegramConfig.botUsername || 'unknown',
+      miniApp: Boolean(telegramConfig.miniAppUrl),
+      webhook: Boolean(telegramConfig.webhookSecret),
+      admins: telegramConfig.adminIds.size,
+    });
+  } else if (telegramConfig.botToken) {
+    log.warn('telegram integration disabled', {
+      reason: telegramConfig.enabled ? 'no database or auth service' : 'TELEGRAM_BOT_ENABLED=0',
+    });
+  }
 
   const server = createHttpServer({
     clientDir: options.clientDir ?? config.clientDir,
     rooms,
     ...(auth ? { auth } : {}),
+    ...(telegram && auth ? { telegram: telegramHttp(telegram, auth) } : {}),
   });
   const gateway = new Gateway(
     rooms,
@@ -148,16 +186,30 @@ export function createApp(options: AppOptions = {}): App {
   // ten times for every person who joins it.
   const matchmaker = setInterval(() => gateway.matchmake(Date.now()), MATCHMAKE_INTERVAL_MS);
   const sweeper = setInterval(() => rooms.sweep(Date.now()), SWEEP_INTERVAL_MS);
+  const telegramTicker = telegram
+    ? setInterval(() => void telegram!.tick(Date.now()), TELEGRAM_TICK_MS)
+    : null;
   ticker.unref?.();
   sweeper.unref?.();
   matchmaker.unref?.();
+  telegramTicker?.unref?.();
 
   return {
     server,
     rooms,
     gateway,
+    ...(telegram ? { telegram } : {}),
     listen(port, host = config.host) {
       gateway.start();
+      // Commands, descriptions, the menu button and the webhook are declarative
+      // and idempotent, so they are re-applied on every boot rather than being
+      // a checklist somebody has to remember after a deploy. Failing to reach
+      // Telegram must never stop the game from starting.
+      void telegram?.register().catch((error: unknown) => {
+        log.warn('telegram registration failed', {
+          errorType: error instanceof Error ? error.name : 'unknown',
+        });
+      });
       return new Promise((resolve, reject) => {
         server.once('error', reject);
         server.listen(port, host, () => {
@@ -172,6 +224,7 @@ export function createApp(options: AppOptions = {}): App {
       clearInterval(ticker);
       clearInterval(sweeper);
       clearInterval(matchmaker);
+      if (telegramTicker) clearInterval(telegramTicker);
       gateway.stop();
       return new Promise((resolve) =>
         server.close(() => {

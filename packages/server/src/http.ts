@@ -30,6 +30,13 @@ export interface HttpOptions {
   clientDir: string;
   rooms: RoomManager;
   auth?: AuthService;
+  /** Handles `/api/telegram/*`. Absent when this deployment has no bot. */
+  telegram?: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    path: string,
+    ip: string,
+  ) => Promise<boolean>;
 }
 
 /**
@@ -44,33 +51,63 @@ export interface HttpOptions {
 const LOOKUP_LIMIT: LimiterOptions = { burst: 20, refillPerSec: 0.5 };
 
 /**
+ * Where the Telegram Mini App lives.
+ *
+ * A prefix rather than an exact path, because the Mini App has its own routes
+ * under it and every one of them has to be reloadable inside Telegram.
+ */
+const TELEGRAM_PREFIX = '/tg';
+
+/**
+ * Origins Telegram serves its web clients from.
+ *
+ * On a phone a Mini App is a native WebView and none of this matters. On
+ * Telegram Desktop and Telegram Web it is an **iframe** hosted by one of these,
+ * so a blanket `frame-ancestors 'none'` — which is right for the rest of the
+ * app — turns the Mini App into a blank pane on every desktop client.
+ */
+const TELEGRAM_FRAME_ANCESTORS = 'https://web.telegram.org https://telegram.org https://*.telegram.org';
+
+/**
  * Sent with the app document.
  *
  * `connect-src 'self'` covers the WebSocket: under CSP3 a same-origin ws:// or
  * wss:// endpoint matches 'self', so the socket needs no wildcard. `img-src`
  * has to allow data: because every camera frame and every piece of evidence
  * arrives as a data URL.
+ *
+ * The Telegram variant differs in exactly three ways, and no more: it may be
+ * framed by Telegram, it may load Telegram's own Mini App SDK, and it may show
+ * a Telegram profile photograph. Everything else — including the ban on
+ * inline script and on any other origin — is unchanged, and the ordinary app
+ * keeps the original headers byte for byte.
  */
-const DOCUMENT_HEADERS: Record<string, string> = {
-  'content-security-policy': [
+function documentHeaders(pathname: string): Record<string, string> {
+  const telegram = pathname === TELEGRAM_PREFIX || pathname.startsWith(`${TELEGRAM_PREFIX}/`);
+  const csp = [
     "default-src 'self'",
-    "script-src 'self' 'wasm-unsafe-eval'",
+    telegram ? "script-src 'self' 'wasm-unsafe-eval' https://telegram.org" : "script-src 'self' 'wasm-unsafe-eval'",
     "worker-src 'self'",
     // React writes inline style attributes for the timer and detection bars.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    telegram ? "img-src 'self' data: blob: https://t.me" : "img-src 'self' data: blob:",
     "media-src 'self' blob:",
     "connect-src 'self'",
     "font-src 'self'",
     "base-uri 'self'",
     "form-action 'none'",
-    "frame-ancestors 'none'",
+    telegram ? `frame-ancestors ${TELEGRAM_FRAME_ANCESTORS}` : "frame-ancestors 'none'",
     "object-src 'none'",
-  ].join('; '),
-  'permissions-policy': 'camera=(self), microphone=(), geolocation=(), payment=()',
-  'referrer-policy': 'no-referrer',
-  'x-frame-options': 'DENY',
-};
+  ].join('; ');
+  return {
+    'content-security-policy': csp,
+    'permissions-policy': 'camera=(self), microphone=(), geolocation=(), payment=()',
+    'referrer-policy': 'no-referrer',
+    // X-Frame-Options has no allow-list, so a document Telegram must be able to
+    // frame cannot send one at all; `frame-ancestors` above is the control.
+    ...(telegram ? {} : { 'x-frame-options': 'DENY' }),
+  };
+}
 
 export function createHttpServer(options: HttpOptions): Server {
   const clientRoot = options.clientDir ? resolve(options.clientDir) : '';
@@ -96,7 +133,9 @@ export function createHttpServer(options: HttpOptions): Server {
         return;
       }
       void (async () => {
-        if (authentication && (await authentication(req, res, path, clientKey(req)))) return;
+        const ip = clientKey(req);
+        if (options.telegram && (await options.telegram(req, res, path, ip))) return;
+        if (authentication && (await authentication(req, res, path, ip))) return;
         await handle(req, res, options, clientRoot, lookupLimiter);
       })().catch(() => {
         log.error('request failed', {
@@ -206,6 +245,10 @@ async function serveStatic(
 
   const ext = extname(filePath).toLowerCase();
   const isEntry = filePath === join(root, 'index.html');
+  // Keyed off the requested path rather than the file: the SPA serves one
+  // document for every route, and it is the route that says whether Telegram
+  // is allowed to frame it.
+  const entryHeaders = isEntry ? documentHeaders(pathname) : {};
   res.writeHead(200, {
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'content-length': stat.size,
@@ -216,7 +259,7 @@ async function serveStatic(
         ? 'public, max-age=31536000, immutable'
         : 'public, max-age=3600',
     'x-content-type-options': 'nosniff',
-    ...(isEntry ? DOCUMENT_HEADERS : {}),
+    ...entryHeaders,
   });
   if (req.method === 'HEAD') {
     res.end();

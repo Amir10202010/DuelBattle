@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { hydrate, type PlayerProfile, type ProfileStore } from './profiles.js';
 import type { BoardKind } from './leaderboard.js';
 import { migrateEconomy, matchCoins } from './economy.js';
+import { migrateTelegram } from './telegram/schema.js';
 import { normalizeLoadout, type MatchRewards } from '@battle/shared';
 
 /** One authoritative store. All game writes commit before a result is announced. */
@@ -81,6 +82,7 @@ export class Database implements ProfileStore {
         INSERT OR IGNORE INTO migrations VALUES(4, unixepoch()*1000);
       `);
       migrateEconomy(this.sql);
+      migrateTelegram(this.sql);
     });
   }
 

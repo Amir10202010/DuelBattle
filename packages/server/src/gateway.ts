@@ -269,6 +269,16 @@ export class Gateway {
         }
         session.language = message.language ?? 'en';
         if (session.language === 'ru') session.room?.useRussianTopics();
+        // A client with no usable cookie presents its session here instead.
+        // Only before it is seated: adopting an account mid-match would hand
+        // somebody else's rating whatever the current room is about to settle.
+        if (message.auth && !session.room && this.auth) {
+          const account = this.auth.resolve(message.auth);
+          if (account) {
+            session.authToken = message.auth;
+            session.identity = account.id;
+          }
+        }
         if (session.room || this.queued.has(session.key)) return;
         if (!this.identities) return;
         // An unsigned or unrecognised token is not an error worth telling
@@ -362,6 +372,12 @@ export class Gateway {
     const room = this.rooms.get(normalizeRoomCode(code));
     if (!room) {
       this.fail(session, 'room-not-found', 'No room with that code. Check the letters?');
+      return;
+    }
+    // A room the server opened for two named accounts is not joinable by
+    // whoever guesses its code, however they came by it.
+    if (!room.mayJoin(session.identity)) {
+      this.fail(session, 'rejected', 'That duel was opened for two players. Ask for an invite.');
       return;
     }
     // Releasing the current seat first — even when it is in this same room —

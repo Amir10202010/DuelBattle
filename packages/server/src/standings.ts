@@ -22,6 +22,8 @@ export interface Contestant {
 
 export interface RatingUpdate {
   profile: PlayerProfile;
+  /** What this match was, from this player's side of it. */
+  result: MatchResult;
   before: number;
   after: number;
   /** Signed, and exactly what the player is shown. */
@@ -148,6 +150,7 @@ function advance(
 
   return {
     profile: updated,
+    result,
     before,
     after,
     change: after - before,

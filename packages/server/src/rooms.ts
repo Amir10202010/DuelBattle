@@ -3,6 +3,7 @@ import { generateRoomCode, isValidRoomCode } from '@battle/shared';
 import { Room } from './room.js';
 import type { AiJudge } from './ai/judge.js';
 import type { ProfileStore } from './profiles.js';
+import type { SettlementListener } from './settlement.js';
 import { log } from './log.js';
 
 /**
@@ -21,6 +22,8 @@ export interface RoomManagerOptions {
   judge?: AiJudge;
   /** Shared by every room: one set of ratings for the whole server. */
   profiles?: ProfileStore;
+  /** Told about every ranked match any room settles. */
+  onSettled?: SettlementListener;
 }
 
 export class RoomCapacityError extends Error {}
@@ -49,6 +52,7 @@ export class RoomManager {
         ranked,
         ...(this.options.judge ? { judge: this.options.judge } : {}),
         ...(this.options.profiles ? { profiles: this.options.profiles } : {}),
+        ...(this.options.onSettled ? { onSettled: this.options.onSettled } : {}),
       });
       this.rooms.set(code, room);
       log.info('room created', { room: code, total: this.rooms.size });

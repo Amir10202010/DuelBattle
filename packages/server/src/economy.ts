@@ -44,6 +44,27 @@ export function ensureWallet(sql: DatabaseSync, id: string, now: number) {
   credit(sql, id, 'welcome', 160, now);
 }
 
+/**
+ * Pays coins once, and only once, for a named reason.
+ *
+ * The ledger's primary key is (account, receipt), so a caller that hands over
+ * the same receipt twice — a retried webhook, a duplicated settlement, a
+ * referral reward evaluated on two paths — pays nothing the second time. That
+ * is the whole idempotency story for the economy, and every new grant in the
+ * product goes through it rather than touching `wallets` directly.
+ */
+export function grantCoins(
+  sql: DatabaseSync,
+  id: string,
+  receipt: string,
+  amount: number,
+  now: number,
+): number {
+  if (!sql.prepare('SELECT 1 FROM accounts WHERE id=?').get(id)) return 0;
+  ensureWallet(sql, id, now);
+  return credit(sql, id, receipt, amount, now);
+}
+
 function credit(
   sql: DatabaseSync,
   id: string,
