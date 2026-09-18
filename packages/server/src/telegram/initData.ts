@@ -177,8 +177,25 @@ export function validateTelegramInitData(
   const user = parseUser(params.get('user'));
   if (!user) return fail('malformed');
 
+  /*
+   * Every received field except `hash` itself.
+   *
+   * `signature` stays in. It is tempting to drop it — it is a signature, after
+   * all, and Telegram's *other* validation method does drop it — but the two
+   * methods are not symmetrical and getting this backwards is silent: the
+   * server says "we could not verify this session" for every launch from a
+   * current client, while any test that signs the string the same wrong way
+   * passes happily.
+   *
+   * The asymmetry makes sense from Telegram's side. It builds the payload,
+   * computes the Ed25519 `signature` over the fields excluding `hash` and
+   * `signature`, and only then computes this HMAC over everything except
+   * `hash` — by which point `signature` is just another received field.
+   * Third parties, who hold the public key but not the bot token, verify the
+   * Ed25519 one and therefore exclude both.
+   */
   const check = [...params.entries()]
-    .filter(([key]) => key !== 'hash' && key !== 'signature')
+    .filter(([key]) => key !== 'hash')
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');

@@ -101,9 +101,26 @@ describe('validateTelegramInitData', () => {
     expect(validateTelegramInitData(sign(fresh(now + 20_000)), TOKEN, now).ok).toBe(true);
   });
 
-  it('excludes the signature field from the check string', () => {
-    // Telegram signs everything but `hash` and `signature`; including the
-    // signature would reject every launch from a current client.
+  /*
+   * The `signature` field, which every current client sends.
+   *
+   * Telegram's two validation methods are not symmetrical, and the difference
+   * is the whole of this bug: the bot-token HMAC covers every field except
+   * `hash`, so `signature` is part of it, while the third-party Ed25519 check
+   * excludes both. Getting it backwards rejects every real launch while a test
+   * that signs the string the same wrong way still passes — which is exactly
+   * what happened, so both directions are asserted here.
+   */
+  it('accepts a launch whose hash covers the signature field', () => {
+    const signed = sign({
+      ...fresh(now),
+      signature: 'PfQ2kx_ed25519_signature_from_telegram',
+    });
+    expect(validateTelegramInitData(signed, TOKEN, now).ok).toBe(true);
+  });
+
+  it('rejects a launch whose hash left the signature out', () => {
+    // How Telegram would never build it, and how this code used to verify it.
     const fields: Record<string, string> = fresh(now);
     const check = Object.keys(fields)
       .sort()
@@ -111,12 +128,19 @@ describe('validateTelegramInitData', () => {
       .join('\n');
     const secret = createHmac('sha256', 'WebAppData').update(TOKEN).digest();
     const hash = createHmac('sha256', secret).update(check).digest('hex');
-    const withSignature = new URLSearchParams({
+    const wrong = new URLSearchParams({
       ...fields,
       signature: 'PfQ2kx_ed25519_signature_from_telegram',
       hash,
     }).toString();
-    expect(validateTelegramInitData(withSignature, TOKEN, now).ok).toBe(true);
+    expect(validateTelegramInitData(wrong, TOKEN, now)).toEqual({
+      ok: false,
+      reason: 'bad-hash',
+    });
+  });
+
+  it('still accepts a launch from a client old enough not to send one', () => {
+    expect(validateTelegramInitData(sign(fresh(now)), TOKEN, now).ok).toBe(true);
   });
 
   it('refuses everything when the deployment has no bot token', () => {
