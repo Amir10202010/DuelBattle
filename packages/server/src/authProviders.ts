@@ -45,15 +45,48 @@ export async function verifyGoogleIdentity(
   };
 }
 
+/**
+ * `MAIL_FROM` as a name and an address.
+ *
+ * It is written the way a mail header is — `DuelBattle <play@example.com>` —
+ * because that is what one service wants and what a person expects to type.
+ * The other wants the two halves separately, so they are split here rather than
+ * asking anybody to configure the same thing twice in two shapes.
+ */
+export function senderOf(from: string): { name: string; email: string } {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(from);
+  if (match) return { name: match[1] || 'DuelBattle', email: match[2]!.trim() };
+  return { name: 'DuelBattle', email: from.trim() };
+}
+
 export class AuthProviders {
   private hashing = 0;
   private readonly origin =
     process.env.APP_ORIGIN || (config.nodeEnv !== 'production' ? 'http://localhost:5173' : '');
   private readonly googleId = process.env.GOOGLE_CLIENT_ID || '';
   private readonly googleSecret = process.env.GOOGLE_CLIENT_SECRET || '';
-  private readonly mailKey = process.env.RESEND_API_KEY || '';
+  private readonly resendKey = process.env.RESEND_API_KEY || '';
+  private readonly brevoKey = process.env.BREVO_API_KEY || '';
   private readonly mailFrom = process.env.MAIL_FROM || '';
   constructor(private readonly auth: AuthService) {}
+
+  /**
+   * Which service carries the code, if any.
+   *
+   * Two, because the choice is not about features — it is about whether you own
+   * a domain. Resend will only send to strangers from a domain you have proved
+   * with DNS records, which is the right answer once there is a real address to
+   * send from and no answer at all while the game lives on somebody else's
+   * subdomain. Brevo verifies a single sender address instead, so a project
+   * with no domain can still put a code in somebody's inbox.
+   *
+   * Resend first when both are set: a configured domain is the stronger signal.
+   */
+  private get mailer(): 'resend' | 'brevo' | null {
+    if (!this.mailFrom) return null;
+    if (this.resendKey) return 'resend';
+    return this.brevoKey ? 'brevo' : null;
+  }
 
   options() {
     const validOrigin =
@@ -61,7 +94,7 @@ export class AuthProviders {
       (config.nodeEnv !== 'production' && /^http:\/\/localhost:\d+$/.test(this.origin));
     return {
       google: Boolean(this.googleId && this.googleSecret && validOrigin),
-      email: Boolean(this.mailKey && this.mailFrom) || config.nodeEnv !== 'production',
+      email: this.mailer !== null || config.nodeEnv !== 'production',
     };
   }
 
@@ -81,34 +114,67 @@ export class AuthProviders {
       .prepare('INSERT INTO email_challenges VALUES(?,?,?,?,0,?,?)')
       .run(digest(challenge), email, digest(`${challenge}:${code}`), purpose, now + 600000, now);
     try {
-      if (this.mailKey && this.mailFrom) {
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          signal: AbortSignal.timeout(8000),
-          headers: {
-            authorization: `Bearer ${this.mailKey}`,
-            'content-type': 'application/json',
-            'idempotency-key': challenge,
-          },
-          body: JSON.stringify({
-            from: this.mailFrom,
-            to: [email],
-            subject: 'DuelBattle — verification code',
-            text: `Your DuelBattle code: ${code}\nКод для DuelBattle: ${code}\n\nValid for 10 minutes. If you did not request this, ignore this email.`,
-          }),
-        });
-        if (!response.ok) throw new Error('Email delivery failed');
-      }
+      await this.deliver(email, code, challenge);
     } catch {
       sql.prepare('DELETE FROM email_challenges WHERE id=?').run(digest(challenge));
       throw new AuthError(503, 'We could not send the code. Try again shortly.');
     }
     return {
       challenge,
-      ...(!(this.mailKey && this.mailFrom) && config.nodeEnv !== 'production'
+      ...(this.mailer === null && config.nodeEnv !== 'production'
         ? { developmentCode: code }
         : {}),
     };
+  }
+
+  /**
+   * The one message this game ever sends.
+   *
+   * Plain text in both languages, because a six-digit code needs no layout and
+   * a plain-text message is the one thing no spam filter objects to. With no
+   * service configured this does nothing at all: in development the code comes
+   * back in the response and is shown in the form.
+   */
+  private async deliver(email: string, code: string, challenge: string): Promise<void> {
+    const subject = 'DuelBattle — verification code';
+    const text =
+      `Your DuelBattle code: ${code}\nКод для DuelBattle: ${code}\n\n` +
+      'Valid for 10 minutes. If you did not request this, ignore this email.';
+
+    const request: { url: string; headers: Record<string, string>; body: unknown } | null =
+      this.mailer === 'resend'
+        ? {
+            url: 'https://api.resend.com/emails',
+            headers: {
+              authorization: `Bearer ${this.resendKey}`,
+              'content-type': 'application/json',
+              // Resend de-duplicates on this, so a retried request cannot send
+              // the same code twice.
+              'idempotency-key': challenge,
+            },
+            body: { from: this.mailFrom, to: [email], subject, text },
+          }
+        : this.mailer === 'brevo'
+          ? {
+              url: 'https://api.brevo.com/v3/smtp/email',
+              headers: {
+                'api-key': this.brevoKey,
+                'content-type': 'application/json',
+                accept: 'application/json',
+              },
+              // Brevo wants the sender split apart rather than as one header line.
+              body: { sender: senderOf(this.mailFrom), to: [{ email }], subject, textContent: text },
+            }
+          : null;
+    if (!request) return;
+
+    const response = await fetch(request.url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(8000),
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+    });
+    if (!response.ok) throw new Error('Email delivery failed');
   }
 
   async verifyEmail(input: unknown) {
