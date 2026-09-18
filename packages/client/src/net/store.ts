@@ -235,6 +235,15 @@ const EMPTY: StoreSnapshot = {
  */
 export class MatchStore {
   private snapshot: StoreSnapshot = EMPTY;
+  /**
+   * The session token, for a client that cannot send the session cookie.
+   *
+   * A Telegram Mini App on desktop runs inside an iframe on Telegram's origin,
+   * where a SameSite=Strict cookie is not sent — including on the WebSocket
+   * upgrade. Holding the token here lets the handshake carry it instead. A
+   * browser leaves this null and keeps using the cookie.
+   */
+  private authToken: string | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly frameListeners = new Set<(image: string, playerId: string) => void>();
   private readonly connection: GameConnection;
@@ -262,7 +271,29 @@ export class MatchStore {
         protocol: PROTOCOL_VERSION,
         language,
         ...(storedIdentity() ? { identity: storedIdentity()! } : {}),
+        ...(this.authToken ? { auth: this.authToken } : {}),
       });
+  }
+
+  /**
+   * Hands the socket a session token to introduce itself with.
+   *
+   * Re-sends the handshake if the socket is already open, because the token
+   * usually arrives a moment after the connection does — the Mini App connects
+   * while it is still authenticating.
+   */
+  setAuthToken(token: string | null): void {
+    if (this.authToken === token) return;
+    this.authToken = token;
+    if (token && this.snapshot.status === 'open') {
+      this.connection.send({
+        t: 'hello',
+        protocol: PROTOCOL_VERSION,
+        ...(getPreferences().locale === 'ru' ? { language: 'ru' as const } : {}),
+        ...(storedIdentity() ? { identity: storedIdentity()! } : {}),
+        auth: token,
+      });
+    }
   }
 
   stop(): void {
@@ -443,6 +474,7 @@ export class MatchStore {
       protocol: PROTOCOL_VERSION,
       ...(getPreferences().locale === 'ru' ? { language: 'ru' as const } : {}),
       ...(identity ? { identity } : {}),
+      ...(this.authToken ? { auth: this.authToken } : {}),
     });
     const intent = this.intent;
     if (!intent) return;

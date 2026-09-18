@@ -1,0 +1,675 @@
+/*
+ * The Telegram Mini App.
+ *
+ * Not a second design system. Every colour, radius, easing and type size below
+ * comes from system.css, and the primitives the web app already has — plate,
+ * card, btn, stat, bar, badge, blank — are the ones used here. What this file
+ * adds is the part a phone inside another app actually needs: a fixed shell
+ * that survives Telegram's own chrome, safe-area padding, a bottom bar sized
+ * for thumbs, and rows that stay readable at 360px.
+ *
+ * The one visual liberty: the Mini App is always dark. The camera feed is the
+ * brightest thing on screen during a duel, the surrounding Telegram chrome is
+ * whatever the player chose, and a Mini App that flips between two palettes
+ * inside a chat that does not is more jarring than one that simply commits.
+ */
+
+.tg {
+  /* Set from JavaScript out of Telegram's reported insets; zero elsewhere. */
+  --tg-top: 0px;
+  --tg-bottom: 0px;
+  --tg-nav-h: 60px;
+
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background: var(--s-0);
+  color: var(--text);
+  overflow: hidden;
+  /* Telegram's own font stack would fight the game's; keep ours. */
+  font-family: var(--font-ui);
+}
+
+.tg__body {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(var(--tg-top) + var(--sp-4)) var(--sp-4)
+    calc(var(--sp-6) + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* A screen with its own fixed footer (the duel button) gets the room for it. */
+.tg__body--tall {
+  padding-bottom: calc(var(--sp-8) + var(--sp-6));
+}
+
+/* -- Bottom navigation ----------------------------------------------------- */
+
+.tg__nav {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: stretch;
+  border-top: 1px solid var(--line);
+  background: var(--s-1);
+  padding-bottom: max(var(--tg-bottom), env(safe-area-inset-bottom, 0px));
+}
+
+.tg__nav button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: var(--tg-nav-h);
+  padding: var(--sp-2) 2px;
+  font: inherit;
+  font-size: var(--t-2xs);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.tg__nav button > svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tg__nav button.is-active {
+  color: var(--acid);
+}
+
+/* The one place a count appears on the chrome: something is waiting for you. */
+.tg__nav .tg-dot {
+  position: absolute;
+  transform: translate(12px, -12px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--seat-b);
+}
+
+.tg__nav button > span {
+  position: relative;
+}
+
+/* -- Header ---------------------------------------------------------------- */
+
+.tg-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.tg-head__avatar {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: var(--r-2);
+  border: 1px solid var(--line-strong);
+  object-fit: cover;
+  background: var(--s-2);
+}
+
+.tg-head__who {
+  min-width: 0;
+  flex: 1;
+}
+
+.tg-head__who strong {
+  display: block;
+  font-size: var(--t-lg);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tg-head__who span {
+  display: block;
+  color: var(--text-dim);
+  font-size: var(--t-sm);
+}
+
+.tg-head__coins {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--s-2);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- Hero ------------------------------------------------------------------ */
+
+.tg-hero {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-4);
+}
+
+.tg-hero h1 {
+  margin: 0;
+  font-size: var(--t-2xl);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.tg-hero p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--t-md);
+}
+
+.tg-hero__rank {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--t-sm);
+  color: var(--text-dim);
+}
+
+.tg-hero__rank b {
+  color: var(--text);
+  font-size: var(--t-md);
+}
+
+/* -- Sections -------------------------------------------------------------- */
+
+.tg-section {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.tg-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.tg-section__head h2 {
+  margin: 0;
+  font-size: var(--t-md);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+/*
+ * The link beside a section heading.
+ *
+ * Padded rather than made bigger: the text stays a quiet 13px, but the box a
+ * thumb has to hit is 44px tall, which is the size a finger actually is. The
+ * negative margin keeps the heading row looking the same height it did.
+ */
+.tg-section__head button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--acid-text);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  margin: calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) 0;
+}
+
+/* -- Rows ------------------------------------------------------------------ */
+
+.tg-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--s-1);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.tg-row:disabled {
+  cursor: default;
+}
+
+/*
+ * Every control in the Mini App clears a thumb, whatever its text size.
+ *
+ * Including the shared primitives: a filter pill sized for a mouse is 34px
+ * tall, which is fine on the web app's own pages and not on a phone held in
+ * one hand.
+ */
+.tg .btn--sm,
+.tg .blank .btn,
+.tg .tabs > button,
+.tg .tabs > a {
+  min-height: 44px;
+}
+
+.tg-row:not(:disabled):active {
+  border-color: var(--line-strong);
+}
+
+.tg-row--flat {
+  cursor: default;
+}
+
+.tg-row__main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.tg-row__main strong {
+  font-size: var(--t-base);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tg-row__main span {
+  color: var(--text-dim);
+  font-size: var(--t-sm);
+}
+
+.tg-row__end {
+  flex: none;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  display: grid;
+  gap: 2px;
+}
+
+.tg-row__end b {
+  font-size: var(--t-base);
+}
+
+.tg-row__end span {
+  color: var(--text-dim);
+  font-size: var(--t-xs);
+}
+
+.tg-row__pos {
+  flex: none;
+  width: 30px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  font-size: var(--t-sm);
+}
+
+.tg-row.is-you {
+  border-color: var(--acid);
+  background: var(--acid-soft);
+}
+
+/* -- Result colours, shared by history and share cards --------------------- */
+
+.tg-win {
+  color: var(--good);
+}
+.tg-loss {
+  color: var(--bad);
+}
+.tg-draw {
+  color: var(--text-dim);
+}
+
+/* -- Quests ---------------------------------------------------------------- */
+
+.tg-quest {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--s-1);
+}
+
+.tg-quest__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.tg-quest__top strong {
+  font-size: var(--t-base);
+}
+
+.tg-quest__top span {
+  display: block;
+  color: var(--text-dim);
+  font-size: var(--t-sm);
+}
+
+.tg-quest__reward {
+  flex: none;
+  font-size: var(--t-sm);
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-quest.is-done {
+  border-color: var(--acid);
+}
+
+/* -- Duel screen ----------------------------------------------------------- */
+
+.tg-duel {
+  display: grid;
+  gap: var(--sp-4);
+  text-align: center;
+  padding: var(--sp-5) 0;
+}
+
+.tg-duel__state {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: center;
+}
+
+.tg-duel__state h2 {
+  margin: 0;
+  font-size: var(--t-xl);
+}
+
+.tg-duel__state p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--t-md);
+}
+
+.tg-duel__pulse {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 2px solid var(--acid);
+  display: grid;
+  place-items: center;
+  color: var(--acid);
+  animation: tg-pulse 1.6s var(--ease-out, ease-out) infinite;
+}
+
+@keyframes tg-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(213 248 97 / 28%);
+  }
+  70% {
+    box-shadow: 0 0 0 18px rgb(213 248 97 / 0%);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(213 248 97 / 0%);
+  }
+}
+
+.tg-countdown {
+  font-size: 72px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--acid);
+  font-variant-numeric: tabular-nums;
+  animation: tg-count 900ms ease-out;
+}
+
+@keyframes tg-count {
+  from {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.tg-versus {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.tg-versus__side {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.tg-versus__side strong {
+  font-size: var(--t-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.tg-versus__side span {
+  color: var(--text-dim);
+  font-size: var(--t-xs);
+}
+
+.tg-versus__vs {
+  color: var(--text-faint);
+  font-size: var(--t-sm);
+  letter-spacing: 0.1em;
+}
+
+/* -- Sticky primary action ------------------------------------------------- */
+
+.tg-sticky {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  background: linear-gradient(to top, var(--s-0) 60%, transparent);
+}
+
+/* -- Achievements ---------------------------------------------------------- */
+
+.tg-awards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--sp-2);
+}
+
+.tg-award {
+  display: grid;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--s-1);
+  text-align: center;
+  font-size: var(--t-2xs);
+}
+
+.tg-award strong {
+  font-size: var(--t-xs);
+  line-height: 1.2;
+}
+
+.tg-award.is-locked {
+  opacity: 0.55;
+}
+
+/* -- Settings -------------------------------------------------------------- */
+
+.tg-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--s-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tg-toggle__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tg-toggle__main span {
+  color: var(--text-dim);
+  font-size: var(--t-sm);
+}
+
+.tg-switch {
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  background: var(--s-3);
+  border: 1px solid var(--line-strong);
+  position: relative;
+  transition: background 140ms ease;
+}
+
+.tg-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.tg-switch.is-on {
+  background: var(--acid-soft);
+  border-color: var(--acid);
+}
+
+.tg-switch.is-on::after {
+  transform: translateX(18px);
+  background: var(--acid);
+}
+
+/* -- Loading and failure --------------------------------------------------- */
+
+.tg-boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-6);
+  background: var(--s-0);
+  color: var(--text);
+  text-align: center;
+}
+
+.tg-boot__inner {
+  display: grid;
+  gap: var(--sp-4);
+  justify-items: center;
+  max-width: 340px;
+}
+
+.tg-boot h1 {
+  margin: 0;
+  font-size: var(--t-xl);
+}
+
+.tg-boot p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--t-md);
+  line-height: 1.5;
+}
+
+.tg-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--acid);
+  animation: tg-spin 800ms linear infinite;
+}
+
+@keyframes tg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-spinner,
+  .tg-duel__pulse,
+  .tg-countdown {
+    animation: none;
+  }
+}
+
+/* -- Share card ------------------------------------------------------------ */
+
+.tg-share {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-4);
+  text-align: center;
+}
+
+.tg-share h2 {
+  margin: 0;
+  font-size: var(--t-xl);
+}
+
+.tg-share__lines {
+  display: grid;
+  gap: 2px;
+  color: var(--text-dim);
+  font-size: var(--t-md);
+}
+
+/* -- Narrow phones --------------------------------------------------------- */
+
+@media (max-width: 380px) {
+  .tg__body {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+
+  .tg__nav button {
+    font-size: 10px;
+  }
+
+  .tg-hero h1 {
+    font-size: var(--t-xl);
+  }
+}

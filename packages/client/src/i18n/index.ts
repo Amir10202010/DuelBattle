@@ -3,12 +3,13 @@ import { ru, en } from './messages.js';
 import { gameEn, gameRu } from './gameCopy.js';
 import { characterRu } from './characterCopy.js';
 import { landingRu } from './landingCopy.js';
+import { telegramRu } from './telegramCopy.js';
 import { RUSSIAN_PROMPTS } from '@battle/shared';
 export { useUiPreferences } from './preferences.js';
 
 const dictionaries = {
   en: { ...en, ...gameEn },
-  ru: { ...ru, ...RUSSIAN_PROMPTS, ...gameRu, ...characterRu, ...landingRu },
+  ru: { ...ru, ...RUSSIAN_PROMPTS, ...gameRu, ...characterRu, ...landingRu, ...telegramRu },
 };
 function patterns(dictionary: Record<string, string>) {
   return Object.entries(dictionary)

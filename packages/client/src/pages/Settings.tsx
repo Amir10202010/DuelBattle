@@ -22,6 +22,7 @@ import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { sound } from '../media/sound.js';
 import { MusicControl } from '../components/MusicControl.jsx';
+import { TelegramLink } from '../components/TelegramLink.jsx';
 
 /**
  * Settings, grouped the way a player thinks about them: who I am, how it
@@ -259,6 +260,8 @@ export function Settings({
           )}
         </p>
       </section>
+
+      {profile && <TelegramLink />}
 
       {profile && (
         <section className="panel setting">
