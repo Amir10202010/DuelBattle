@@ -9,6 +9,7 @@ export * from './achievements.js';
 export * from './profile.js';
 export * from './cosmetics.js';
 export * from './protocol.js';
+export * from './telegram.js';
 export * from './vision/frame.js';
 export * from './vision/color.js';
 export * from './vision/detect.js';

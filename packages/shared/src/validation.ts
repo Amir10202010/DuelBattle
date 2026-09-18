@@ -63,6 +63,9 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
     // Bounded before it is verified: an oversized token should be refused, not
     // hashed.
     identity: z.string().max(128).optional(),
+    // A session token, for a client with no usable cookie. Shaped exactly like
+    // one so anything else is rejected before it reaches the session table.
+    auth: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   }),
   z.object({ t: z.literal('createRoom'), name: nameSchema }),
   z.object({ t: z.literal('joinRoom'), code: roomCodeSchema, name: nameSchema }),

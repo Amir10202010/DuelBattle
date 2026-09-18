@@ -40,8 +40,16 @@ export interface LeaderboardEntry {
  * will never run.
  */
 export type ClientMessage =
-  /** `identity` is the signed token this browser was issued last time, if any. */
-  | { t: 'hello'; protocol: number; identity?: string; language?: 'en' | 'ru' }
+  /**
+   * `identity` is the signed token this browser was issued last time, if any.
+   *
+   * `auth` is the session token, for a client that cannot send the session
+   * cookie. A Telegram Mini App on desktop runs inside an iframe on somebody
+   * else's origin, where a SameSite=Strict cookie is simply not sent, so it
+   * presents the same token here instead. Optional, and ignored by anything
+   * that already arrived with a cookie.
+   */
+  | { t: 'hello'; protocol: number; identity?: string; auth?: string; language?: 'en' | 'ru' }
   | { t: 'createRoom'; name: string }
   | { t: 'joinRoom'; code: string; name: string }
   /** Join the queue for whoever turns up next. */
