@@ -59,12 +59,14 @@ describe('the playable collection', () => {
       expect(renderToStaticMarkup(<Hero loadout={{ body: 'pikachu' }} pose={pose} label="Pikachu" />)).toContain('aria-label="Pikachu"');
   });
   it('lights an upgraded form from its own palette, with nothing two actors could collide over', () => {
-    for (const id of ['goku-sunrise', 'pikachu-peach', 'spider-noir']) {
-      const skin = HERO_SKINS.find((candidate) => candidate.id === id)!;
+    for (const skin of HERO_SKINS) {
       const markup = renderToStaticMarkup(<Hero loadout={{ body: skin.heroId, skin: skin.id }} />);
       // The glow is the skin's own colour, so a restyled form never needs the art touched.
       expect(markup).toContain(`--form-glow:${skin.color}`);
       expect(markup).toContain(`--form-spark:${skin.secondary}`);
+      // Every form is lit by the colour its skin nominates, never by a primary
+      // that happens to be near-black: a bloom in Vader's would be a smudge.
+      expect(markup).toContain(`--form-lit:${skin.glow}`);
       // Light reads as a wide soft layer under a thin bright one.
       expect(markup).toContain('form-halo');
       expect(markup).toContain('form-core');

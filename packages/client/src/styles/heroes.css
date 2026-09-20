@@ -271,17 +271,15 @@ html[data-theme='light'] .hero-card.is-selected { box-shadow:0 0 0 2px var(--her
 .is-animated .form-clouds { animation:form-cloud 5s ease-in-out infinite alternate; }
 .is-animated .form-orbit { transform-origin:center; animation:form-orbit 14s linear infinite; }
 .is-animated .form-orb { animation:form-orb 4s ease-in-out infinite; }
-.is-animated .form-reactor,.is-animated .form-ground-ring { animation:form-current 4s ease-in-out infinite; }
+.is-animated .form-reactor { animation:form-current 4s ease-in-out infinite; }
 .is-animated .form-dark-wave { animation:form-flame 5s ease-in-out infinite alternate; }
-.is-animated .form-debris,.is-animated .form-embers { animation:form-drift 5s ease-in-out infinite; }
 .is-animated .form-thrusters { transform-origin:center top; animation:form-thrust 1.8s ease-in-out infinite alternate; }
-.is-animated .form-shadow-streak { animation:form-current 3s ease-in-out infinite; }
 
 /* Lit forms. Every colour comes from the skin, so no rule here names one. */
-.hero-form,.hero-form-front { --form-glow:#fff; --form-spark:#fff; --ease-whip:cubic-bezier(.62,-.45,.3,1.45); }
+.hero-form,.hero-form-front { --form-glow:#fff; --form-spark:#fff; --form-lit:#fff; --ease-whip:cubic-bezier(.62,-.45,.3,1.45); }
 /* Bloom only where one hero owns the screen. A duel animates two rigs beside a
    camera feed, and a per-frame filter is the first thing to cost frames there. */
-.hero-preview__stage .is-animated .hero-form,.hero-preview__stage .is-animated .hero-form-front { filter:drop-shadow(0 0 7px var(--form-glow)); }
+.hero-preview__stage .is-animated .hero-form,.hero-preview__stage .is-animated .hero-form-front { filter:drop-shadow(0 0 7px var(--form-lit)); }
 /* A layer carrying a transform attribute may animate opacity and nothing else:
    a CSS transform overrides the attribute and snaps the layer out of place. */
 .is-animated .form-flame.form-halo { animation:form-bloom 4.3s ease-in-out infinite alternate; }
@@ -315,6 +313,32 @@ html[data-theme='light'] .hero-card.is-selected { box-shadow:0 0 0 2px var(--her
 @keyframes form-ring { 0% { opacity:.3; transform:scale(.93); } 28% { opacity:.95; } 100% { opacity:0; transform:scale(1.07); } }
 @keyframes form-whip { from { transform:rotate(-6deg) skewX(-6deg); } to { transform:rotate(8deg) skewX(6deg); } }
 @keyframes form-rim { from { stroke-dashoffset:133; } to { stroke-dashoffset:-133; } }
+/* Kurama's four tails on four clocks: in unison they read as one stiff object. */
+.is-animated .form-tail { animation:form-sway 5.2s ease-in-out infinite alternate; }
+.is-animated .form-tail--b { animation-duration:4.1s; animation-delay:-1.4s; }
+.is-animated .form-tail--c { animation-duration:6s; animation-delay:-2.6s; }
+.is-animated .form-tail--d { animation-duration:4.7s; animation-delay:-.8s; }
+/* Motes rise and die out of step, so the field never pulses as one. */
+.is-animated .form-mote { animation:form-rise 4.6s ease-out infinite; }
+.is-animated .form-mote--b { animation-duration:5.4s; animation-delay:-2.1s; }
+.is-animated .form-mote--c { animation-duration:3.9s; animation-delay:-3.3s; }
+.is-animated .form-mote--d { animation-duration:5.9s; animation-delay:-1.2s; }
+.is-animated .form-ring--slow { animation:form-ring 4.4s ease-out infinite; }
+.is-animated .form-cloud-wisp { animation:form-cloud 6.4s ease-in-out infinite alternate; }
+.is-animated .form-wave-rim { animation:form-current 5.2s ease-in-out infinite; }
+/* A second ring turning the other way: one plane is a hoop, two are a field. */
+.is-animated .form-orbit--counter { animation:form-orbit-back 19s linear infinite; }
+.is-animated .form-thrusters .form-core { animation:form-flicker .9s ease-in-out infinite alternate; }
+.is-animated .form-orb .form-halo { animation:form-bloom 2.3s ease-in-out infinite alternate; }
+/* Steel catches a glint that slides down the edge rather than glowing. */
+.is-animated .form-glint { animation:form-rim 3.4s linear infinite; }
+.is-animated .form-blade--b .form-glint { animation-duration:2.7s; animation-delay:-1.3s; }
+/* Speed is the character: the lines rush past and are gone. */
+.is-animated .form-streak { animation:form-rush 1.9s ease-in infinite; }
+.is-animated .form-streak--b { animation-duration:1.5s; animation-delay:-.7s; }
+.is-animated .form-streak--c { animation-duration:2.3s; animation-delay:-1.2s; }
+@keyframes form-orbit-back { to { transform:rotate(-360deg); } }
+@keyframes form-rush { 0% { opacity:0; transform:translateX(18px); } 30% { opacity:1; } 100% { opacity:0; transform:translateX(-32px); } }
 @keyframes form-flame { from { transform:scale(.96,.95) skewX(-2deg); } to { transform:scale(1.035,1.025) skewX(2deg); } }
 @keyframes form-light { from { opacity:.28; } to { opacity:.56; } }
 @keyframes form-current { 0%,100% { opacity:.45; } 38% { opacity:.95; } 60% { opacity:.65; } 79% { opacity:.9; } }
@@ -323,7 +347,6 @@ html[data-theme='light'] .hero-card.is-selected { box-shadow:0 0 0 2px var(--her
 @keyframes form-cloud { to { transform:translateY(-6px) scaleX(1.035) rotate(2deg); } }
 @keyframes form-orbit { to { transform:rotate(360deg); } }
 @keyframes form-orb { 50% { transform:translateY(-5px) scale(1.04); } }
-@keyframes form-drift { 50% { transform:translateY(-12px) rotate(4deg); opacity:.8; } }
 @keyframes form-thrust { to { transform:scaleY(.7); opacity:.6; } }
 .collection-categories { margin-bottom:15px; }
 .collection-filters { overflow:auto; scrollbar-width:thin; }

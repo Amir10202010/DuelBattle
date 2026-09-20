@@ -55,22 +55,32 @@ export interface HeroSkin {
   name: string;
   color: string;
   secondary: string;
+  /**
+   * Which colour the form's signature effect is lit by.
+   *
+   * Stated rather than derived. Half the forms are built on a near-black
+   * primary where the accent has to carry the light, but no single measure
+   * picks correctly for all of them: relative luminance rates Vader's crimson
+   * below Batman's slate, and brightness rates Iron Man's brick above his arc
+   * reactor's cyan. It is an art decision, so the art says it.
+   */
+  glow: string;
   price: number;
   rarity: HeroRarity;
 }
 /** Forms change silhouette, face, costume and signature effects; IDs preserve existing ownership. */
 export const HERO_SKINS: readonly HeroSkin[] = [
-  { id: 'spider-noir', heroId: 'spider-man', name: 'Symbiote', color: '#262936', secondary: '#e8e4dc', price: 4200, rarity: 'legendary', form: 'symbiote' },
-  { id: 'goku-sunrise', heroId: 'goku', name: 'Super Saiyan', color: '#ed9540', secondary: '#f6d55b', price: 6500, rarity: 'legendary', form: 'super-saiyan' },
-  { id: 'naruto-sage', heroId: 'naruto', name: 'Yang KCM V2', color: '#ffe396', secondary: '#f7a333', price: 6200, rarity: 'legendary', form: 'kcm' },
-  { id: 'batman-arctic', heroId: 'batman', name: 'Armored Knight', color: '#657579', secondary: '#b8ede3', price: 4800, rarity: 'legendary', form: 'armored-knight' },
-  { id: 'deadpool-ink', heroId: 'deadpool', name: 'Weapon XI', color: '#d8b8a9', secondary: '#6e575e', price: 4200, rarity: 'legendary', form: 'weapon-xi' },
-  { id: 'pikachu-peach', heroId: 'pikachu', name: 'Thunderstorm', color: '#f3cf52', secondary: '#8ccfe9', price: 3600, rarity: 'legendary', form: 'overcharge' },
-  { id: 'luffy-ocean', heroId: 'luffy', name: 'Gear 5', color: '#f1eee2', secondary: '#c5b5dd', price: 7200, rarity: 'legendary', form: 'gear-five' },
-  { id: 'vader-moon', heroId: 'darth-vader', name: 'Crimson Eclipse', color: '#30303e', secondary: '#df596a', price: 6400, rarity: 'legendary', form: 'sith-lord' },
-  { id: 'iron-man-mark', heroId: 'iron-man', name: 'Nanotech Overdrive', color: '#a94d4f', secondary: '#8de3ed', price: 6800, rarity: 'legendary', form: 'nanotech' },
-  { id: 'sonic-mint', heroId: 'sonic', name: 'Shadow Rush', color: '#34333d', secondary: '#dd5865', price: 5400, rarity: 'legendary', form: 'shadow' },
-  { id: 'gojo-dusk', heroId: 'gojo', name: 'Hollow Purple', color: '#363248', secondary: '#b496f1', price: 7800, rarity: 'legendary', form: 'hollow-purple' },
+  { id: 'spider-noir', heroId: 'spider-man', name: 'Symbiote', color: '#262936', secondary: '#e8e4dc', glow: '#e8e4dc', price: 4200, rarity: 'legendary', form: 'symbiote' },
+  { id: 'goku-sunrise', heroId: 'goku', name: 'Super Saiyan', color: '#ed9540', secondary: '#f6d55b', glow: '#ed9540', price: 6500, rarity: 'legendary', form: 'super-saiyan' },
+  { id: 'naruto-sage', heroId: 'naruto', name: 'Yang KCM V2', color: '#ffe396', secondary: '#f7a333', glow: '#ffe396', price: 6200, rarity: 'legendary', form: 'kcm' },
+  { id: 'batman-arctic', heroId: 'batman', name: 'Armored Knight', color: '#657579', secondary: '#b8ede3', glow: '#b8ede3', price: 4800, rarity: 'legendary', form: 'armored-knight' },
+  { id: 'deadpool-ink', heroId: 'deadpool', name: 'Weapon XI', color: '#d8b8a9', secondary: '#6e575e', glow: '#d8b8a9', price: 4200, rarity: 'legendary', form: 'weapon-xi' },
+  { id: 'pikachu-peach', heroId: 'pikachu', name: 'Thunderstorm', color: '#f3cf52', secondary: '#8ccfe9', glow: '#f3cf52', price: 3600, rarity: 'legendary', form: 'overcharge' },
+  { id: 'luffy-ocean', heroId: 'luffy', name: 'Gear 5', color: '#f1eee2', secondary: '#c5b5dd', glow: '#f1eee2', price: 7200, rarity: 'legendary', form: 'gear-five' },
+  { id: 'vader-moon', heroId: 'darth-vader', name: 'Crimson Eclipse', color: '#30303e', secondary: '#df596a', glow: '#df596a', price: 6400, rarity: 'legendary', form: 'sith-lord' },
+  { id: 'iron-man-mark', heroId: 'iron-man', name: 'Nanotech Overdrive', color: '#a94d4f', secondary: '#8de3ed', glow: '#8de3ed', price: 6800, rarity: 'legendary', form: 'nanotech' },
+  { id: 'sonic-mint', heroId: 'sonic', name: 'Shadow Rush', color: '#34333d', secondary: '#dd5865', glow: '#dd5865', price: 5400, rarity: 'legendary', form: 'shadow' },
+  { id: 'gojo-dusk', heroId: 'gojo', name: 'Hollow Purple', color: '#363248', secondary: '#b496f1', glow: '#b496f1', price: 7800, rarity: 'legendary', form: 'hollow-purple' },
 ];
 const skins = new Map(HERO_SKINS.map((skin) => [skin.id, skin]));
 export const heroSkin = (id: string | undefined) => skins.get(id ?? '');
