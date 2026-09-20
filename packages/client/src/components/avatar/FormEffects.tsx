@@ -42,8 +42,8 @@ const TAILS = [
   { id: 'd', d: 'M180 206q37-5 64-39-10 69-70 75' },
 ];
 const BLADES = [
-  { id: 'a', body: 'M46 250l19-87', glint: 'M45 247l18-82' },
-  { id: 'b', body: 'M214 253l-21-89', glint: 'M215 249l-23-83' },
+  { id: 'a', body: 'M77 182l-28 84', glint: 'M75 188l-24 72' },
+  { id: 'b', body: 'M181 182l28 84', glint: 'M183 188l24 72' },
 ];
 const MOTES = ['M32 189l8-8 4 11-9 3Z', 'M215 122l8 4-3 9-8-2Z', 'M58 89l6-8 6 10-8 4Z'];
 
@@ -85,6 +85,18 @@ export function FormEffects({ kit, front = false }: { kit: Loadout; front?: bool
       <Bolt className="form-bolt form-bolt--a" d="M65 79l-10 20 7 11-13 19" halo="var(--form-spark)" width={2.2} />
       <Bolt className="form-bolt form-bolt--b" d="M191 56l14 28-7 12 12 31" halo="var(--form-spark)" width={2.2} />
     </g>}
+    {form === 'weapon-xi' && <g className="form-blades">
+      {/* In front of the rig, not behind it. Drawn behind, these pass under the
+          fists and read as two loose bars propped beside him; in front they
+          come out of his hands, which is the whole idea of the form.
+          The halo is dark on purpose — steel is read by its edge against a
+          shadow rather than by light of its own, and the bloom supplies the rest. */}
+      {BLADES.map(({ id, body, glint }) => <g key={id} className={`form-blade form-blade--${id}`}>
+        <path className="form-halo" d={body} stroke="#2b343c" strokeWidth="15" opacity=".5" />
+        <path d={body} stroke="#8195a0" strokeWidth="7" />
+        <path className="form-core form-glint" d={glint} stroke="#f4fcff" strokeWidth="2.6" strokeDasharray="24 94" />
+      </g>)}
+    </g>}
     {form === 'shadow' && <g className="form-streaks">
       {/* Speed is the whole character: the lines rush past rather than glimmer. */}
       <Bolt className="form-streak form-streak--a" d="M49 246h35" halo="var(--form-spark)" width={2.2} core="#ffe8ec" />
@@ -96,15 +108,32 @@ export function FormEffects({ kit, front = false }: { kit: Loadout; front?: bool
   const edge = 'M49 244q-13-30 7-69m16-57q-3-35 18-64m83-17q17 25 8 46m31 94q22 41 2 66';
   return <g className={`hero-form hero-form--${form}`} style={palette} fill="none" strokeLinecap="round" strokeLinejoin="round">
     {(form === 'super-saiyan' || form === 'kcm') && <>
-      {/* Four nested copies of one flame, each on its own period, so the loop
-          never lands on itself and the fire does not visibly repeat. */}
-      <path className="form-flame form-halo" d={flame} fill={form === 'kcm' ? 'var(--form-spark)' : 'var(--form-glow)'} opacity=".3" transform="translate(-13 -14) scale(1.1)" />
-      <path className="form-flame form-flame--outer" d={flame} fill={form === 'kcm' ? '#efa637' : '#f2ca43'} opacity=".5" />
-      <path className="form-flame form-flame--inner" d={flame} fill={form === 'kcm' ? 'var(--form-glow)' : 'var(--form-spark)'} opacity=".72" transform="translate(20 27) scale(.85)" />
-      <path className="form-flame form-core" d={flame} fill={form === 'kcm' ? '#fffdf0' : '#fffae6'} opacity=".6" transform="translate(38 44) scale(.7)" />
-      <g className="form-flame-edge">
-        <path className="form-halo" d={edge} stroke="var(--form-spark)" strokeWidth="9" opacity=".38" />
-        <path className="form-core" d={edge} stroke={form === 'kcm' ? '#fff7d8' : '#fffdf2'} strokeWidth="2.5" />
+      {/*
+        * Four nested copies of one flame, each on its own period, so the loop
+        * never lands on itself and the fire does not visibly repeat.
+        *
+        * No translate on any of them, deliberately. `.hero-form *` sets
+        * `transform-box:fill-box; transform-origin:center bottom`, and an SVG
+        * `transform` attribute is that same CSS property — so these already
+        * scale about the flame's own base and stay concentric for free. The
+        * nudges that used to sit here were eyeballed on top of that and were
+        * what pushed the aura off the figure.
+        *
+        * The group's shift is real, though: the flame is drawn centred on
+        * x=137.6 while the figure's axis is x=133, so the stack moves 4.6 left
+        * to stand on the character rather than beside him. It goes on the group
+        * because the outer copy's breathing is a CSS transform, and an
+        * attribute on that same path would lose to it.
+        */}
+      <g transform="translate(-4.6 0)">
+        <path className="form-flame form-halo" d={flame} fill={form === 'kcm' ? 'var(--form-spark)' : 'var(--form-glow)'} opacity=".3" transform="scale(1.06)" />
+        <path className="form-flame form-flame--outer" d={flame} fill={form === 'kcm' ? '#efa637' : '#f2ca43'} opacity=".5" />
+        <path className="form-flame form-flame--inner" d={flame} fill={form === 'kcm' ? 'var(--form-glow)' : 'var(--form-spark)'} opacity=".72" transform="scale(.85)" />
+        <path className="form-flame form-core" d={flame} fill={form === 'kcm' ? '#fffdf0' : '#fffae6'} opacity=".55" transform="scale(.68)" />
+        <g className="form-flame-edge">
+          <path className="form-halo" d={edge} stroke="var(--form-spark)" strokeWidth="9" opacity=".38" />
+          <path className="form-core" d={edge} stroke={form === 'kcm' ? '#fff7d8' : '#fffdf2'} strokeWidth="2.5" />
+        </g>
       </g>
       <g className="form-sparks" fill={form === 'kcm' ? '#fff3c4' : 'var(--form-spark)'} stroke="none">
         <circle className="form-spark form-spark--a" cx="58" cy="196" r="4" />
@@ -160,16 +189,6 @@ export function FormEffects({ kit, front = false }: { kit: Loadout; front?: bool
         {MOTES.map((d, index) => <path key={d} className={`form-mote form-mote--${'abc'[index]}`} d={d} />)}
       </g>
     </>}
-    {form === 'weapon-xi' && <g className="form-blades">
-      {/* Steel does not glow; it catches a glint that slides down the edge. */}
-      {BLADES.map(({ id, body, glint }) => <g key={id} className={`form-blade form-blade--${id}`}>
-        {/* The halo here is dark on purpose: steel is read by its edge against a
-            shadow, not by light of its own, and the bloom supplies the rest. */}
-        <path className="form-halo" d={body} stroke="#2b343c" strokeWidth="15" opacity=".5" />
-        <path d={body} stroke="#778c95" strokeWidth="6" />
-        <path className="form-core form-glint" d={glint} stroke="#f4fcff" strokeWidth="2.6" strokeDasharray="24 94" />
-      </g>)}
-    </g>}
     {form === 'nanotech' && <>
       <g className="form-orbit">
         <ellipse className="form-halo" cx="130" cy="150" rx="103" ry="70" stroke="var(--form-spark)" strokeWidth="7" opacity=".24" strokeDasharray="44 22 12 30" transform="rotate(-24 130 150)" />
