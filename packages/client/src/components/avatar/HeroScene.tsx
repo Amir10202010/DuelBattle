@@ -21,7 +21,6 @@ export function HeroMotif({ hero }: { hero: HeroDefinition }) {
     rings: <><circle cx="70" cy="86" r="38" /><circle cx="70" cy="86" r="27" /><circle cx="230" cy="215" r="34" /><circle cx="230" cy="215" r="24" /><path d="M5 180h68m-41 21h49M219 72h64m-42 22h53" /></>,
     infinity: <><ellipse cx="150" cy="144" rx="102" ry="49" transform="rotate(-35 150 144)" /><ellipse cx="150" cy="144" rx="102" ry="49" transform="rotate(35 150 144)" /><circle cx="66" cy="94" r="7" /><circle cx="235" cy="195" r="10" /><path d="M226 47v17m-8-8h16" /></>,
     cloud: <><path d="M18 132q-22-38 20-50 0-34 37-27 31-5 33 23 30 5 21 40H18ZM201 206q-21-33 12-40 2-28 31-24 27-1 28 28 32 18 2 36Z" /></>,
-    ember: <><path d="M151 41q-66 68-60 110-21-18-20-45-48 66-5 118 57 58 123 4 63-50 14-109-2 25-17 32-2-59-35-110Z" /></>,
   };
   return <svg className="hero-motif" viewBox="0 0 300 300" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">{motif[hero.visual.theme]}</svg>;
 }

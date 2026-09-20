@@ -48,7 +48,6 @@ export const characterRu: Record<string, string> = {
   rare: 'Редкий',
   epic: 'Эпический',
   'Cloud kid': 'Облачко',
-  'Little ember': 'Уголёк',
   'Flight jacket': 'Куртка пилота',
   'Midnight coat': 'Ночной плащ',
   'Varsity jacket': 'Бомбер',

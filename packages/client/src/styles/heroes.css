@@ -19,7 +19,6 @@
 .hero-avatar--hover { --idle-motion:figure-hover; --select-motion:figure-boost; }
 .hero-avatar--speed { --idle-motion:figure-speed; --select-motion:figure-dash; }
 .hero-avatar--float { --idle-motion:figure-float; --select-motion:figure-rise; }
-.hero-avatar--warm { --idle-motion:figure-rock; --select-motion:figure-wiggle; }
 .hero-avatar--select.is-animated .hero-avatar__rig { animation:var(--select-motion) .85s var(--ease-pop) both; }
 .hero-avatar--attack.is-animated .hero-avatar__rig { animation:figure-strike .8s var(--ease) both; }
 .hero-avatar--attack.is-animated .hero-avatar__weapon,.hero-avatar--attack.is-animated .hero-avatar__hand { animation:figure-swing-in .75s var(--ease) both; }

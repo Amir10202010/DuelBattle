@@ -1,7 +1,7 @@
 /** A hero is content; ownership and equipment always come from the server wallet. */
 export type HeroRarity = 'common' | 'rare' | 'epic' | 'legendary';
-export type HeroMotion = 'swing' | 'power' | 'ninja' | 'cape' | 'mischief' | 'bounce' | 'captain' | 'force' | 'hover' | 'speed' | 'float' | 'breathe' | 'warm';
-export type HeroTheme = 'web' | 'ki' | 'leaf' | 'gotham' | 'comic' | 'electric' | 'sea' | 'galaxy' | 'tech' | 'rings' | 'infinity' | 'cloud' | 'ember';
+export type HeroMotion = 'swing' | 'power' | 'ninja' | 'cape' | 'mischief' | 'bounce' | 'captain' | 'force' | 'hover' | 'speed' | 'float' | 'breathe';
+export type HeroTheme = 'web' | 'ki' | 'leaf' | 'gotham' | 'comic' | 'electric' | 'sea' | 'galaxy' | 'tech' | 'rings' | 'infinity' | 'cloud';
 export interface HeroDefinition {
   id: string;
   name: string;
@@ -41,7 +41,6 @@ export const HEROES: readonly HeroDefinition[] = [
   define({ id: 'sonic', name: 'Sonic', title: 'Catch me if you can', description: 'Fast feet, a fearless grin. Turns every new round into a running start.', rarity: 'rare', price: 2200, category: 'legends', tags: ['Speedy', 'Bold'], visual: { rig: 'sonic', accent: '#629ed5', backdrop: '#bbd8e8', ink: '#2c5073', theme: 'rings', motion: 'speed', tempo: 3.2 }, shop: { number: '10' } }),
   define({ id: 'gojo', name: 'Satoru Gojo', title: 'Limitless, naturally', description: 'Effortless style. A knowing smile. Makes the impossible look like a warm-up.', rarity: 'legendary', price: 6800, category: 'anime', tags: ['Cool', 'Limitless'], visual: { rig: 'gojo', accent: '#a5a0e2', backdrop: '#d8d0ef', ink: '#51496e', theme: 'infinity', motion: 'float', tempo: 5.8 }, shop: { featured: true, isNew: true, number: '11' } }),
   define({ id: 'cloud', name: 'Cloud kid', title: 'Your first adventure', description: 'Soft as a cloud, brave at heart. Your original partner, ready for a fresh start.', rarity: 'common', price: 0, category: 'originals', tags: ['Cozy', 'Curious'], visual: { rig: 'cloud', accent: '#89bbc2', backdrop: '#c8e3df', ink: '#385959', theme: 'cloud', motion: 'breathe', tempo: 5.4 }, shop: { number: '12' } }),
-  define({ id: 'ember', name: 'Little ember', title: 'A warm little wildcard', description: 'A spark of courage in a flight jacket. Small steps, surprisingly big victories.', rarity: 'rare', price: 1800, category: 'originals', tags: ['Warm', 'Brave'], visual: { rig: 'ember', accent: '#eaa080', backdrop: '#edd2bd', ink: '#674939', theme: 'ember', motion: 'warm', tempo: 4.6 }, shop: { number: '13' } }),
 ];
 
 const registry = new Map(HEROES.map((hero) => [hero.id, hero]));

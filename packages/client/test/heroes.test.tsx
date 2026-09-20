@@ -142,7 +142,7 @@ describe('the playable collection', () => {
     act(() => button(filters, 'Owned').click());
     expect(view.querySelector('.collection-empty')?.textContent).toContain('No heroes here yet');
     act(() => button(view, 'Explore all heroes').click());
-    expect(view.querySelectorAll('.collection-grid .hero-card')).toHaveLength(13);
+    expect(view.querySelectorAll('.collection-grid .hero-card')).toHaveLength(12);
   });
   it('shows loading and recoverable failure without a fake wallet', () => {
     missing = true; loading = true;

@@ -167,7 +167,7 @@ function Gojo({ kit }: ArtProps) {
 }
 
 function Original({ kit }: ArtProps) {
-  const body = kit.body === 'ember' ? '#edb296' : '#b9ded9';
+  const body = '#b9ded9';
   const coat = cosmetic(kit.outfit)?.color ?? '#7484b1';
   const hair = cosmetic(kit.hair)?.color ?? '#495064';
   return <>
@@ -181,7 +181,7 @@ function Original({ kit }: ArtProps) {
 export const CHARACTER_ART: Record<string, (props: ArtProps) => ReactNode> = {
   'spider-man': Spider, goku: Goku, naruto: Naruto, batman: Batman, deadpool: Deadpool,
   pikachu: Pikachu, luffy: Luffy, 'darth-vader': Vader, 'iron-man': IronMan, sonic: Sonic,
-  gojo: Gojo, cloud: Original, ember: Original,
+  gojo: Gojo, cloud: Original,
 };
 
 function IntenseEyes({ color = '#72bbbc' }: { color?: string }) {

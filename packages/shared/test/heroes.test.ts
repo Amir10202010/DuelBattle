@@ -4,7 +4,7 @@ import { COSMETICS, DEFAULT_LOADOUT, HEROES, HERO_SKINS, cosmetic, cosmeticState
 describe('hero content and loadout compatibility', () => {
   it('keeps stable, unique purchasable IDs and a rig for every hero', () => {
     expect(new Set(COSMETICS.map((item) => item.id)).size).toBe(COSMETICS.length);
-    expect(HEROES).toHaveLength(13);
+    expect(HEROES).toHaveLength(12);
     for (const hero of HEROES) {
       expect(hero.visual.rig).toBeTruthy();
       expect(cosmetic(hero.id)).toMatchObject({ slot: 'body', price: hero.price, rarity: hero.rarity });
@@ -17,7 +17,10 @@ describe('hero content and loadout compatibility', () => {
   });
   it('preserves old inventory IDs and normalizes legacy or corrupt saves', () => {
     expect(normalizeLoadout()).toEqual(DEFAULT_LOADOUT);
-    expect(normalizeLoadout({ body: 'ember', outfit: 'varsity', aura: 'orbit' })).toMatchObject({ body: 'ember', outfit: 'varsity', aura: 'orbit' });
+    expect(normalizeLoadout({ body: 'cloud', outfit: 'varsity', aura: 'orbit' })).toMatchObject({ body: 'cloud', outfit: 'varsity', aura: 'orbit' });
+    // A save naming a retired hero keeps everything else it was wearing and
+    // falls back to the starter body rather than to an empty locker.
+    expect(normalizeLoadout({ body: 'ember', outfit: 'varsity', aura: 'orbit' })).toMatchObject({ body: DEFAULT_LOADOUT.body, outfit: 'varsity', aura: 'orbit' });
     expect(normalizeLoadout({ body: 'no-such-hero', skin: 'spider-noir', weapon: 'pikachu' })).toEqual(DEFAULT_LOADOUT);
     expect(heroById('missing').id).toBe('cloud');
   });
