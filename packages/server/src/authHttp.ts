@@ -11,11 +11,17 @@ import { config } from './config.js';
 import { AuthProviders } from './authProviders.js';
 import { dailyCoins, economyView, ensureWallet, equip, purchase, unequip } from './economy.js';
 import { COSMETIC_SLOTS } from '@battle/shared';
+import { log } from './log.js';
 
 const recoverySchema = credentialsSchema.extend({ code: z.string().regex(/^[a-f0-9]{48}$/) });
 
 export function authHttp(auth: AuthService) {
   const providers = new AuthProviders(auth);
+  // Said once, at boot, for the same reason the Telegram integration says it:
+  // a provider that is quietly off looks identical to one that is broken.
+  const gap = providers.googleGap();
+  if (gap) log.warn('google sign-in disabled', { reason: gap });
+  else log.info('google sign-in enabled');
   const mutationBudget = new TokenBuckets({ burst: 8, refillPerSec: 0.05 });
   const economyBudget = new TokenBuckets({ burst: 30, refillPerSec: 1 });
   return async (

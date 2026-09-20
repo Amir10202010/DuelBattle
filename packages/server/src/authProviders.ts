@@ -6,6 +6,7 @@ import { nameSchema } from '@battle/shared/validation';
 import { AuthError, hashPassword, sessionCookie, type AuthService } from './auth.js';
 import { blankProfile } from './profiles.js';
 import { config } from './config.js';
+import { log } from './log.js';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
@@ -88,12 +89,29 @@ export class AuthProviders {
     return this.brevoKey ? 'brevo' : null;
   }
 
+  /**
+   * Why Google sign-in is off, or `null` when it is on.
+   *
+   * The same answer the button and the callback both read, phrased as the
+   * thing an operator has to go and fix. Silence here is what this cost us
+   * once already: a server holding none of these values serves a dead button
+   * and bounces every callback back to the login page, which from the outside
+   * looks exactly like a sign-in that quietly refuses to work.
+   */
+  googleGap(): string | null {
+    if (!this.googleId || !this.googleSecret)
+      return 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not both set';
+    if (
+      !/^https:\/\/[^/]+$/.test(this.origin) &&
+      !(config.nodeEnv !== 'production' && /^http:\/\/localhost:\d+$/.test(this.origin))
+    )
+      return `APP_ORIGIN is ${this.origin ? `'${this.origin}'` : 'unset'}, which is not a usable origin`;
+    return null;
+  }
+
   options() {
-    const validOrigin =
-      /^https:\/\/[^/]+$/.test(this.origin) ||
-      (config.nodeEnv !== 'production' && /^http:\/\/localhost:\d+$/.test(this.origin));
     return {
-      google: Boolean(this.googleId && this.googleSecret && validOrigin),
+      google: this.googleGap() === null,
       email: this.mailer !== null || config.nodeEnv !== 'production',
     };
   }
@@ -344,7 +362,14 @@ export class AuthProviders {
         this.googleCookie(''),
       ]);
       res.writeHead(303, { location: '/home', 'cache-control': 'no-store' });
-    } catch {
+    } catch (error) {
+      // The player only ever gets the login page back, because nothing here
+      // is their doing and the detail is no help to them. The operator gets
+      // the reason, which is the difference between a five-minute fix and a
+      // bug report that says only 'Google does not work'.
+      log.warn('google sign-in failed', {
+        reason: this.googleGap() ?? (error instanceof Error ? error.message : 'unknown'),
+      });
       res.setHeader('set-cookie', this.googleCookie(''));
       res.writeHead(303, { location: '/login?auth_error=google', 'cache-control': 'no-store' });
     }
