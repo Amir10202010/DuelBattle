@@ -91,7 +91,7 @@ export class AuthService {
    * Two ways in, one session table. A browser sends the HttpOnly cookie, which
    * is the right answer for a first-party page. A Telegram Mini App cannot:
    * on Telegram Desktop and Telegram Web it runs inside an iframe on somebody
-   * else's origin, where a `SameSite=Strict` cookie is simply not sent — and
+   * else's origin, where neither a `Strict` nor a `Lax` cookie is sent — and
    * relaxing that to `None` only trades it for third-party cookie blocking.
    * So the Mini App presents the same token as a bearer credential instead.
    *
@@ -205,6 +205,22 @@ export class AuthService {
   }
 }
 
+/**
+ * The browser's half of a session.
+ *
+ * `Lax` rather than `Strict`, because of how signing in with Google ends: it is
+ * Google that navigates the browser to our callback, and the callback sets this
+ * cookie and redirects on to `/home`. A browser withholds a `Strict` cookie for
+ * the whole of a navigation chain a third party began, so that final hop would
+ * arrive with no session and drop the player on a logged-out page seconds after
+ * they signed in. `Lax` rides a top-level GET navigation, which is precisely
+ * what that hop is.
+ *
+ * Nothing is given up by the change. Mutations are POST-only and additionally
+ * require the `x-battle-request` header and an `Origin` this server recognises,
+ * so cross-site forgery is held off by those and never by SameSite, and no GET
+ * route changes state.
+ */
 export function sessionCookie(token: string, secure: boolean): string {
-  return `battle_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? SESSION_AGE / 1000 : 0}${secure ? '; Secure' : ''}`;
+  return `battle_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${token ? SESSION_AGE / 1000 : 0}${secure ? '; Secure' : ''}`;
 }

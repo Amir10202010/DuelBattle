@@ -90,6 +90,23 @@ describe('real authentication HTTP and socket boundaries', () => {
     const registered = await verifiedRegistration(request);
     expect(registered.status).toBe(201);
     const cookie = registered.headers.get('set-cookie')!.split(';')[0]!;
+    /*
+     * Lax, not Strict.
+     *
+     * Signing in with Google ends with Google navigating the browser to our
+     * callback, which sets this cookie and redirects on to `/home`. A browser
+     * withholds a `Strict` cookie for the whole of a navigation chain a third
+     * party started, so that last hop would arrive with no session and the
+     * player would land on a logged-out page seconds after signing in. `Lax`
+     * rides a top-level GET navigation, which is exactly that hop.
+     *
+     * Nothing is traded away: mutations are POST-only and additionally demand
+     * the `x-battle-request` header and a matching `Origin`, so CSRF is held
+     * off by those rather than by SameSite, and no GET route changes state.
+     */
+    const attributes = registered.headers.get('set-cookie')!;
+    expect(attributes).toMatch(/SameSite=Lax/i);
+    expect(attributes).toMatch(/HttpOnly/i);
     const created = await registered.json();
     expect(created.account.onboarded).toBe(false);
     expect(created.profile.rating).toBe(1000);

@@ -125,7 +125,9 @@ describe('accounts and sessions', () => {
     expect(db.sql.prepare('SELECT count(*) n FROM accounts').get()!.n).toBe(1);
     expect(registrationSchema.safeParse({ ...input, rating: 9999 }).success).toBe(false);
     expect(registrationSchema.safeParse({ ...input, password: 'short' }).success).toBe(false);
-    expect(sessionCookie('test', true)).toContain('HttpOnly; SameSite=Strict');
+    // Lax, because Google's redirect into our callback is a cross-site
+    // navigation and a Strict cookie would sit out the hop to `/home`.
+    expect(sessionCookie('test', true)).toContain('HttpOnly; SameSite=Lax');
     expect(sessionCookie('test', true)).toContain('; Secure');
     expect(sessionCookie('', true)).toContain('Max-Age=0');
   }, 10000);
