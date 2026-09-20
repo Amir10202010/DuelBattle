@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { heroById, type HeroDefinition, type Loadout } from '@battle/shared';
+import { heroById, heroSkin, type HeroDefinition, type Loadout } from '@battle/shared';
 import { Hero, type HeroPose } from './Hero.js';
 
 export function heroStyle(hero: HeroDefinition): CSSProperties {
@@ -30,7 +30,10 @@ export function HeroScene({ loadout, pose = 'idle', animated = false, size = 260
   loadout: Loadout; pose?: HeroPose; animated?: boolean; size?: number; className?: string; children?: ReactNode;
 }) {
   const hero = heroById(loadout.body);
-  return <div className={`hero-scene hero-scene--${hero.visual.theme} ${className}`} style={heroStyle(hero)}>
+  // A form lights itself, and light needs something to be light against: the
+  // pastel stage that flatters a classic hero washes a glow out entirely.
+  const lit = Boolean(heroSkin(loadout.skin));
+  return <div className={`hero-scene hero-scene--${hero.visual.theme} ${lit ? 'hero-scene--lit' : ''} ${className}`} style={heroStyle(hero)}>
     <HeroMotif hero={hero} />
     <span className="hero-scene__disc" aria-hidden="true" />
     <Hero loadout={loadout} pose={pose} animated={animated} size={size} />

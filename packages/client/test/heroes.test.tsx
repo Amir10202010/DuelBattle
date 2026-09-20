@@ -7,6 +7,7 @@ import { DEFAULT_LOADOUT, HEROES, HERO_SKINS, cosmetic, type EconomyView } from 
 import { Customization } from '../src/components/avatar/Customization.js';
 import { HeroPreview } from '../src/components/avatar/HeroPreview.js';
 import { Hero } from '../src/components/avatar/Hero.js';
+import { HeroScene } from '../src/components/avatar/HeroScene.js';
 import { CHARACTER_ART } from '../src/components/avatar/CharacterArt.js';
 import { setPreferences } from '../src/i18n/preferences.js';
 
@@ -56,6 +57,26 @@ describe('the playable collection', () => {
     }
     for (const pose of ['idle', 'select', 'unlock', 'victory', 'hit', 'attack', 'defeated', 'celebrate'] as const)
       expect(renderToStaticMarkup(<Hero loadout={{ body: 'pikachu' }} pose={pose} label="Pikachu" />)).toContain('aria-label="Pikachu"');
+  });
+  it('lights an upgraded form from its own palette, with nothing two actors could collide over', () => {
+    for (const id of ['goku-sunrise', 'pikachu-peach', 'spider-noir']) {
+      const skin = HERO_SKINS.find((candidate) => candidate.id === id)!;
+      const markup = renderToStaticMarkup(<Hero loadout={{ body: skin.heroId, skin: skin.id }} />);
+      // The glow is the skin's own colour, so a restyled form never needs the art touched.
+      expect(markup).toContain(`--form-glow:${skin.color}`);
+      expect(markup).toContain(`--form-spark:${skin.secondary}`);
+      // Light reads as a wide soft layer under a thin bright one.
+      expect(markup).toContain('form-halo');
+      expect(markup).toContain('form-core');
+    }
+    // A glow on the pastel stage that flatters a classic hero washes out, so a
+    // form darkens its own scene and a classic one never does.
+    expect(renderToStaticMarkup(<HeroScene loadout={{ body: 'goku', skin: 'goku-sunrise' }} />)).toContain('hero-scene--lit');
+    expect(renderToStaticMarkup(<HeroScene loadout={{ body: 'goku' }} />)).not.toContain('hero-scene--lit');
+    // A duel puts two of these in one document, so an SVG filter or gradient id
+    // would be defined twice and the second actor would inherit the first's.
+    const duel = HERO_SKINS.map((skin) => renderToStaticMarkup(<Hero loadout={{ body: skin.heroId, skin: skin.id }} />)).join('');
+    expect(duel).not.toMatch(/id="|url\(#/);
   });
   it('selects a hero for preview without charging or equipping it', () => {
     data.coins = 2000;

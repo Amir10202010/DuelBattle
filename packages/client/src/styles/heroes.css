@@ -74,6 +74,11 @@
 .hero-scene--rings .hero-scene__disc { background:transparent; border:16px solid rgb(255 255 255 / 24%); width:63%; }
 .hero-scene--web .hero-motif { transform:rotate(-7deg) scale(1.15); }
 .hero-scene--infinity .hero-motif { opacity:.25; }
+/* A lit stage. The backdrop keeps the hero's hue but drops to a depth a glow can
+   read against, and the motif and disc come back up to meet it. */
+.hero-scene--lit { background:color-mix(in oklab, var(--hero-backdrop) 30%, #151922); color:color-mix(in oklab, var(--hero-ink) 35%, #fff); }
+.hero-scene--lit .hero-motif { opacity:.22; }
+.hero-scene--lit .hero-scene__disc { background:rgb(255 255 255 / 7%); }
 
 .page--store { --page-max:1280px; padding-top:34px; gap:28px; }
 .hero-shop-heading { display:flex; justify-content:space-between; align-items:center; gap:24px; }
@@ -260,10 +265,8 @@ html[data-theme='light'] .hero-card.is-selected { box-shadow:0 0 0 2px var(--her
 .hero-form *,.hero-form-front *,.form-tongue { transform-box:fill-box; transform-origin:center bottom; }
 .is-animated .form-flame--outer { animation:form-flame 3.6s ease-in-out infinite alternate; }
 .is-animated .form-flame--inner { animation:form-light 2.8s ease-in-out infinite alternate; }
-.is-animated .form-flame-edge,.is-animated .form-electric { animation:form-current 2.9s ease-in-out infinite; }
+.is-animated .form-flame-edge { animation:form-current 2.9s ease-in-out infinite; }
 .is-animated .form-tails { animation:form-sway 4s ease-in-out infinite alternate; }
-.is-animated .form-tendril--a,.is-animated .form-tendril--d { animation:form-tendril 4.2s ease-in-out infinite alternate; }
-.is-animated .form-tendril--b,.is-animated .form-tendril--c { animation:form-tendril 3.7s -.7s ease-in-out infinite alternate-reverse; }
 .is-animated .form-tongue { transform-origin:left top; animation:form-tongue 3.4s ease-in-out infinite; }
 .is-animated .form-clouds { animation:form-cloud 5s ease-in-out infinite alternate; }
 .is-animated .form-orbit { transform-origin:center; animation:form-orbit 14s linear infinite; }
@@ -273,11 +276,49 @@ html[data-theme='light'] .hero-card.is-selected { box-shadow:0 0 0 2px var(--her
 .is-animated .form-debris,.is-animated .form-embers { animation:form-drift 5s ease-in-out infinite; }
 .is-animated .form-thrusters { transform-origin:center top; animation:form-thrust 1.8s ease-in-out infinite alternate; }
 .is-animated .form-shadow-streak { animation:form-current 3s ease-in-out infinite; }
+
+/* Lit forms. Every colour comes from the skin, so no rule here names one. */
+.hero-form,.hero-form-front { --form-glow:#fff; --form-spark:#fff; --ease-whip:cubic-bezier(.62,-.45,.3,1.45); }
+/* Bloom only where one hero owns the screen. A duel animates two rigs beside a
+   camera feed, and a per-frame filter is the first thing to cost frames there. */
+.hero-preview__stage .is-animated .hero-form,.hero-preview__stage .is-animated .hero-form-front { filter:drop-shadow(0 0 7px var(--form-glow)); }
+/* A layer carrying a transform attribute may animate opacity and nothing else:
+   a CSS transform overrides the attribute and snaps the layer out of place. */
+.is-animated .form-flame.form-halo { animation:form-bloom 4.3s ease-in-out infinite alternate; }
+.is-animated .form-flame.form-core { animation:form-flicker 1.3s ease-in-out infinite alternate; }
+.is-animated .hero-form--super-saiyan .form-flame--inner { animation:form-flicker 1.9s -.5s ease-in-out infinite alternate; }
+.is-animated .form-spark { animation:form-rise 2.9s ease-out infinite; }
+.is-animated .form-spark--b { animation-duration:3.4s; animation-delay:-1.1s; }
+.is-animated .form-spark--c { animation-duration:2.4s; animation-delay:-1.8s; }
+.is-animated .form-spark--d { animation-duration:3.1s; animation-delay:-.6s; }
+/* A bolt is dark for most of its cycle and then strikes twice, so it lands as an
+   event rather than a pulse. Stepped, because lightning does not fade in. */
+.is-animated .form-bolt { animation:form-strike 2.6s steps(1,end) infinite; }
+.is-animated .form-bolt--b { animation-delay:-1.9s; }
+.is-animated .form-bolt--c { animation-duration:3.3s; animation-delay:-.8s; }
+.is-animated .form-bolt--d { animation-duration:2.1s; animation-delay:-1.4s; }
+.form-ring { transform-origin:center; }
+.is-animated .form-ring { animation:form-ring 2.6s ease-out infinite; }
+/* The tendril overshoots and settles, and its rim light runs along the length. */
+.is-animated .form-tendril--a { animation:form-whip 3.8s var(--ease-whip) infinite alternate; }
+.is-animated .form-tendril--b { animation:form-whip 4.6s -1.2s var(--ease-whip) infinite alternate-reverse; }
+.is-animated .form-tendril--c { animation:form-whip 4.2s -.6s var(--ease-whip) infinite alternate-reverse; }
+.is-animated .form-tendril--d { animation:form-whip 3.4s -1.7s var(--ease-whip) infinite alternate; }
+.is-animated .form-tendril .form-core { animation:form-rim 3.2s linear infinite; }
+.is-animated .form-tendril--b .form-core { animation-duration:2.6s; animation-delay:-1s; }
+.is-animated .form-tendril--c .form-core { animation-duration:3.8s; animation-delay:-2.2s; }
+.is-animated .form-tendril--d .form-core { animation-duration:2.2s; animation-delay:-.7s; }
+@keyframes form-bloom { from { opacity:.2; } to { opacity:.46; } }
+@keyframes form-flicker { from { opacity:.42; } to { opacity:.9; } }
+@keyframes form-rise { 0% { opacity:0; transform:translateY(10px) scale(.5); } 22% { opacity:1; } 100% { opacity:0; transform:translateY(-62px) scale(.3); } }
+@keyframes form-strike { 0%,64% { opacity:0; } 66% { opacity:1; } 71% { opacity:.18; } 75% { opacity:1; } 83% { opacity:.5; } 90%,100% { opacity:0; } }
+@keyframes form-ring { 0% { opacity:.3; transform:scale(.93); } 28% { opacity:.95; } 100% { opacity:0; transform:scale(1.07); } }
+@keyframes form-whip { from { transform:rotate(-6deg) skewX(-6deg); } to { transform:rotate(8deg) skewX(6deg); } }
+@keyframes form-rim { from { stroke-dashoffset:133; } to { stroke-dashoffset:-133; } }
 @keyframes form-flame { from { transform:scale(.96,.95) skewX(-2deg); } to { transform:scale(1.035,1.025) skewX(2deg); } }
 @keyframes form-light { from { opacity:.28; } to { opacity:.56; } }
 @keyframes form-current { 0%,100% { opacity:.45; } 38% { opacity:.95; } 60% { opacity:.65; } 79% { opacity:.9; } }
 @keyframes form-sway { from { transform:skewX(-3deg) scaleX(.97); } to { transform:skewX(3deg) scaleX(1.04); } }
-@keyframes form-tendril { from { transform:rotate(-3deg) skewX(-3deg); } to { transform:rotate(4deg) skewX(3deg); } }
 @keyframes form-tongue { 50% { transform:rotate(7deg) scaleX(1.06); } }
 @keyframes form-cloud { to { transform:translateY(-6px) scaleX(1.035) rotate(2deg); } }
 @keyframes form-orbit { to { transform:rotate(360deg); } }
@@ -342,4 +383,4 @@ html[data-theme='light'] .hero-card.is-selected { box-shadow:0 0 0 2px var(--her
 @media(max-width:680px) { .duel-actors--round .hero-avatar { width:88px; } .duel-actors--round .duel-actors__figure { height:99px; } .duel-actors--match .hero-avatar { width:145px; } .duel-actors--match .duel-actors__figure { height:170px; } .duel-strike { width:50px; } }
 @media(prefers-reduced-motion:reduce) { .duel-strike,.duel-contact,.point-pop { display:none; } .hero-avatar--defeated .hero-avatar__rig { animation:none!important; } }
 @media(max-width:680px) { .collection-refine { gap:9px; } .collection-refine select { font-size:11px; } .collection-refine > span { font-size:10px; } .gear-display { height:170px; } .gear-art { height:148px; } }
-@media(prefers-reduced-motion:reduce) { .hero-avatar *, .gear-art *, .cosmetic-tile:hover .gear-core, .cosmetic-tile:hover .gear-sparks { animation:none!important; } .gear-art { transition:none; } }
+@media(prefers-reduced-motion:reduce) { .hero-avatar *, .gear-art *, .cosmetic-tile:hover .gear-core, .cosmetic-tile:hover .gear-sparks { animation:none!important; } .gear-art { transition:none; }  .hero-form,.hero-form-front { filter:none; } }
