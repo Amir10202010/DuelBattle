@@ -236,7 +236,7 @@ export function PremiumScreen({ onRefresh }: { onRefresh: () => void }) {
  * screen. Quiet hours below them, because "not at 3am" is the setting people
  * actually want and a per-message toggle is not.
  */
-export function SettingsScreen({ me, onSaved }: { me: TelegramMe; onSaved: () => void }) {
+export function SettingsScreen({ me, onSaved, platformOnly = false }: { me: TelegramMe; onSaved: () => void; platformOnly?: boolean }) {
   const preferences = useUiPreferences();
   const [prefs, setPrefs] = useState<TelegramNotificationPrefs>(me.notifications);
   const [error, setError] = useState<string | null>(null);
@@ -334,7 +334,7 @@ export function SettingsScreen({ me, onSaved }: { me: TelegramMe; onSaved: () =>
         )}
       </Section>
 
-      <Section title="Language">
+      {!platformOnly && <Section title="Language">
         <div className="tabs tabs--block">
           {(['system', 'en', 'ru'] as const).map((option) => (
             <button
@@ -350,7 +350,7 @@ export function SettingsScreen({ me, onSaved }: { me: TelegramMe; onSaved: () =>
             </button>
           ))}
         </div>
-      </Section>
+      </Section>}
 
       <Section title="Account">
         <div className="tg-row tg-row--flat">

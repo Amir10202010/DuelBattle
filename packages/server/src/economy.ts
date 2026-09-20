@@ -104,6 +104,9 @@ export function economyView(sql: DatabaseSync, id: string, xp: number, now: numb
 export function purchase(sql: DatabaseSync, id: string, itemId: string, xp: number, now: number) {
   const item = cosmetic(itemId);
   if (!item) throw new AuthError(404, 'Item not found.');
+  if (item.availability === 'coming-soon') throw new AuthError(409, 'This hero is coming soon.');
+  if (item.heroId && !sql.prepare('SELECT 1 FROM inventory WHERE account_id=? AND item_id=?').get(id, item.heroId))
+    throw new AuthError(409, 'Unlock the hero before this style.');
   if (sql.prepare('SELECT 1 FROM inventory WHERE account_id=? AND item_id=?').get(id, item.id))
     return;
   if (levelFor(xp).level < (item.level ?? 1))
@@ -129,8 +132,14 @@ export function equip(sql: DatabaseSync, id: string, itemId: string) {
     throw new AuthError(403, 'Unlock this item first.');
   const row = sql.prepare('SELECT loadout FROM wallets WHERE account_id=?').get(id)!;
   const loadout = normalizeLoadout(JSON.parse(String(row.loadout)));
+  if (item.heroId) {
+    if (!sql.prepare('SELECT 1 FROM inventory WHERE account_id=? AND item_id=?').get(id, item.heroId))
+      throw new AuthError(403, 'Unlock the hero before this style.');
+    // A saved look equips its owner atomically, so the preview is exactly the result.
+    loadout.body = item.heroId;
+  }
   loadout[item.slot] = item.id;
-  sql.prepare('UPDATE wallets SET loadout=? WHERE account_id=?').run(JSON.stringify(loadout), id);
+  sql.prepare('UPDATE wallets SET loadout=? WHERE account_id=?').run(JSON.stringify(normalizeLoadout(loadout)), id);
 }
 
 export function dailyCoins(sql: DatabaseSync, id: string, now: number) {

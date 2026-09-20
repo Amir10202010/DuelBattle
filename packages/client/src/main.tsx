@@ -7,22 +7,11 @@ import './styles/shell.css';
 import './styles/screens.css';
 import './styles/arena.css';
 import './styles/characters.css';
+import './styles/heroes.css';
 import { App } from './App.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
-/**
- * Two front doors, one build.
- *
- * `/tg` is the Telegram Mini App: its own root, its own shell, its own
- * navigation, because a Mini App has no address bar, no landing page and no
- * room for a footer. Everything below it — the socket, the store, the design
- * tokens, and the arena a duel is actually played in — is the same code the
- * web app runs.
- *
- * Loaded lazily so a browser visiting the ordinary game never downloads the
- * Mini App — its stylesheet travels inside the same chunk — and the Mini App
- * never downloads the landing page.
- */
+/** A shared game UI, with Telegram authentication and navigation loaded on demand. */
 const TelegramApp = lazy(() =>
   import('./telegram/TelegramApp.jsx').then((m) => ({ default: m.TelegramApp })),
 );

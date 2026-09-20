@@ -8,6 +8,8 @@ export * from './progression.js';
 export * from './achievements.js';
 export * from './profile.js';
 export * from './cosmetics.js';
+export * from './heroes.js';
+export * from './gear.js';
 export * from './protocol.js';
 export * from './telegram.js';
 export * from './vision/frame.js';

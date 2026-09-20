@@ -32,6 +32,7 @@ export function SocialScreen({
 }) {
   const [data, setData] = useState<TelegramSocialView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = () => {
     setError(null);
@@ -68,6 +69,16 @@ export function SocialScreen({
           <Gift size={16} aria-hidden />
           {tr('Share your invite')}
         </button>
+        <button className="btn btn--block" disabled={creating} onClick={async () => {
+          setCreating(true);
+          try {
+            const challenge = await api.createChallenge();
+            haptics.result('success');
+            onGo({ k: 'challenge', code: challenge.code });
+          } catch (failure) {
+            setError(failure instanceof ApiError ? failure.message : tr('Could not create that duel.'));
+          } finally { setCreating(false); }
+        }}><Link2 size={16} />{tr(creating ? 'Creating…' : 'Challenge a friend')}</button>
         <div className="tg-hero__rank">
           <span>{tr('Invited')}</span>
           <b>

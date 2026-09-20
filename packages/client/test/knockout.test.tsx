@@ -52,7 +52,7 @@ describe('the knockout', () => {
     view.unmount();
   });
 
-  it('plays the finisher full screen, and says who went down', () => {
+  it('keeps the finale inside the results screen and says who went down', () => {
     const view = render({ match: matchWon, youId: 'p1', standings, placement: 'match' });
     const scene = view.container.querySelector('.duel-actors');
     expect(scene?.className).toContain('duel-actors--match');
@@ -83,18 +83,25 @@ describe('the knockout', () => {
       standings,
       placement: 'match',
     });
-    expect(drawn.container.querySelector('.duel-actors')).toBeNull();
+    expect(drawn.container.querySelectorAll('.hero-avatar--idle')).toHaveLength(2);
     drawn.unmount();
   });
 
-  it('clears itself once the hit has landed', () => {
+  it('keeps the defeated hero after the hit, and keeps celebrating after the match', () => {
     vi.useFakeTimers();
     try {
       const view = render({ match: roundWon, youId: 'p1', standings, placement: 'round' });
       expect(view.container.querySelector('.duel-actors')).not.toBeNull();
       act(() => vi.advanceTimersByTime(2_500));
-      expect(view.container.querySelector('.duel-actors')).toBeNull();
+      expect(view.container.querySelectorAll('.hero-avatar')).toHaveLength(2);
+      expect(view.container.querySelector('.hero-avatar--defeated')).not.toBeNull();
+      expect(view.container.querySelector('.duel-strike')).toBeNull();
       view.unmount();
+      const end = render({ match: matchWon, youId: 'p1', standings, placement: 'match' });
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(end.container.querySelector('.hero-avatar--celebrate')).not.toBeNull();
+      expect(end.container.querySelector('.hero-avatar--defeated')).not.toBeNull();
+      end.unmount();
     } finally {
       vi.useRealTimers();
     }

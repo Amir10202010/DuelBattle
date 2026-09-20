@@ -7,7 +7,6 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { Home, Swords, Trophy, User, Users } from 'lucide-react';
 import type { TelegramHome } from '@battle/shared';
 import '../styles/telegram.css';
 import { tr, useUiPreferences } from '../i18n/index.js';
@@ -15,7 +14,7 @@ import { setPreferences } from '../i18n/preferences.js';
 import { MatchStore } from '../net/store.js';
 import { useCamera } from '../media/useCamera.js';
 import { Toasts } from '../components/Hud.jsx';
-import { api, ApiError, setSessionToken } from './api.js';
+import { api, ApiError, setSessionToken, sessionToken } from './api.js';
 import {
   announceReady,
   closeApp,
@@ -26,28 +25,27 @@ import {
   onTelegramEvent,
   type LaunchContext,
 } from './sdk.js';
-import { isTab, pathOf, tabFor, TABS, viewFrom, type Tab, type View } from './router.js';
+import { isTab, pathOf, viewFrom, type Tab, type View } from './router.js';
 import { Loading } from './ui.jsx';
-import { HomeScreen } from './screens/Home.jsx';
-import { ChallengeScreen, DuelScreen } from './screens/Duel.jsx';
-import { RankScreen } from './screens/Rank.jsx';
+import { ChallengeScreen } from './screens/Duel.jsx';
 import { PlayerScreen, SocialScreen } from './screens/Social.jsx';
-import { AwardsScreen, MatchesScreen, MatchScreen, ProfileScreen } from './screens/Profile.jsx';
+import { MatchesScreen, MatchScreen } from './screens/Profile.jsx';
 import { PremiumScreen, QuestsScreen, SettingsScreen } from './screens/More.jsx';
+import { EconomyProvider } from '../hooks/useEconomy.jsx';
+import { EconomyFeedback } from '../components/currency/Coins.jsx';
+import { Nav } from '../components/Nav.jsx';
+import { BrandMark } from '../components/BrandMark.jsx';
+import { Home } from '../pages/Home.jsx';
+import { Play } from '../pages/Play.jsx';
+import { Profile } from '../pages/Profile.jsx';
+import { Store } from '../pages/Store.jsx';
+import { Leaderboard } from '../pages/Leaderboard.jsx';
+import { Ranks } from '../pages/Ranks.jsx';
+import { Awards } from '../pages/Awards.jsx';
+import { Settings } from '../pages/Settings.jsx';
+import type { Page } from '../hooks/useRoute.js';
 
-/**
- * Duel Battle inside Telegram.
- *
- * Its own React root, deliberately. The web app's shell is a landing page, a
- * nav bar, a footer and a router built for an address bar, none of which belong
- * in a Mini App — and forcing one component to be both would make every change
- * to either a risk to the other.
- *
- * What it does **not** duplicate is the game. When a duel starts this renders
- * the same `Room` the web app renders, driven by the same `MatchStore` over the
- * same socket. The arena, the prompts, the camera, the knockout: one
- * implementation, two ways in.
- */
+/** Telegram supplies authentication, safe areas and deep links. Game screens are shared. */
 const Room = lazy(() => import('../screens/Room.jsx').then((m) => ({ default: m.Room })));
 
 /** How long the "opponent found" card holds before the arena takes over. */
@@ -286,6 +284,10 @@ export function TelegramApp() {
     Date.now() - foundAt < FOUND_MS &&
     nowTick >= 0;
 
+  useEffect(() => {
+    if (boot.phase === 'ready' && snapshot.status === 'open' && view.k === 'home') store.requestBoard('rating');
+  }, [boot.phase, snapshot.status, view.k, store]);
+
   // -- Render --------------------------------------------------------------
 
   if (boot.phase === 'loading') {
@@ -304,7 +306,7 @@ export function TelegramApp() {
       <div className="tg-boot">
         <div className="tg-boot__inner">
           <h1>
-            <Swords size={22} aria-hidden /> {tr('Duel Battle')}
+            <BrandMark size={34} /> {tr('Duel Battle')}
           </h1>
           <p>
             {tr(
@@ -350,6 +352,13 @@ export function TelegramApp() {
   }
 
   const { home } = boot;
+  const profile = snapshot.profile ?? home.me;
+  const wrap = (children: React.ReactNode) => <EconomyProvider
+    accountKey={home.me.referralCode}
+    authToken={sessionToken()}
+    revision={`${profile.xp}:${view.k}:${snapshot.match?.phase}`}>
+      <EconomyFeedback />{children}
+    </EconomyProvider>;
 
   if (snapshot.screen === 'room' && snapshot.match && snapshot.you) {
     if (showingFound) {
@@ -376,7 +385,7 @@ export function TelegramApp() {
         </div>
       );
     }
-    return (
+    return wrap(
       <Suspense fallback={<Loading label="Entering the arena…" />}>
         <Room
           store={store}
@@ -402,75 +411,59 @@ export function TelegramApp() {
     );
   }
 
-  const tab = tabFor(view);
 
-  return (
-    <div className="tg">
-      <div
-        className={`tg__body ${view.k === 'duel' ? 'tg__body--tall' : ''}`}
-        style={{
-          '--tg-top': `${launch?.safeArea.top ?? 0}px`,
-          '--tg-bottom': `${launch?.safeArea.bottom ?? 0}px`,
-        } as React.CSSProperties}
-        key={`${view.k}-${'index' in view ? view.index : 'ref' in view ? view.ref : 'code' in view ? view.code : ''}`}
-      >
-        {view.k === 'home' && <HomeScreen home={home} onGo={go} onPlay={find} />}
-        {view.k === 'duel' && (
-          <DuelScreen
-            home={home}
-            queue={snapshot.queue}
-            offline={snapshot.status !== 'open'}
-            onFind={find}
-            onCancel={() => store.cancelFind()}
-            onGo={go}
-            onRefresh={refresh}
-          />
-        )}
-        {view.k === 'rank' && <RankScreen onGo={go} />}
-        {view.k === 'social' && <SocialScreen me={home.me} onGo={go} />}
-        {view.k === 'profile' && (
-          <ProfileScreen me={home.me} matches={home.recentMatches} onGo={go} />
-        )}
-        {view.k === 'quests' && <QuestsScreen onClaimed={refresh} />}
-        {view.k === 'awards' && <AwardsScreen />}
-        {view.k === 'matches' && <MatchesScreen onGo={go} />}
-        {view.k === 'match' && <MatchScreen index={view.index} />}
-        {view.k === 'player' && <PlayerScreen playerRef={view.ref} onBack={back} />}
-        {view.k === 'challenge' && (
-          <ChallengeScreen code={view.code} onEnterRoom={enterRoom} onBack={back} />
-        )}
-        {view.k === 'premium' && <PremiumScreen onRefresh={refresh} />}
-        {view.k === 'settings' && <SettingsScreen me={home.me} onSaved={refresh} />}
+  const destinations: Record<string, View> = {
+    '/': { k: 'home' }, '/home': { k: 'home' }, '/play': { k: 'duel' },
+    '/leaderboard': { k: 'rank' }, '/ranks': { k: 'ranks' }, '/awards': { k: 'awards' },
+    '/profile': { k: 'profile' }, '/store': { k: 'store' }, '/settings': { k: 'settings' },
+  };
+  const navigate = (path: string) => { const next = destinations[path]; if (next) go(next); };
+  const page: Page = ({ home: 'dashboard', duel: 'play', rank: 'leaderboard', social: 'profile',
+    store: 'store', ranks: 'ranks', awards: 'awards', settings: 'settings' } as Partial<Record<View['k'], Page>>)[view.k] ?? 'profile';
+  const platformScreen = ['social', 'quests', 'matches', 'match', 'player', 'challenge', 'premium'].includes(view.k);
+  return wrap(
+    <div className="shell shell--game telegram-game" style={{
+      '--tg-top': `${launch?.safeArea.top ?? 0}px`,
+      '--tg-bottom': `${launch?.safeArea.bottom ?? 0}px`,
+    } as React.CSSProperties} onClick={(event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element).closest('a');
+      if (!anchor || anchor.target || anchor.hasAttribute('download')) return;
+      const url = new URL(anchor.href);
+      if (url.origin === location.origin && destinations[url.pathname]) {
+        event.preventDefault(); navigate(url.pathname);
+      }
+    }}>
+      <Nav page={page} profile={profile} onNavigate={navigate} mapPath={(path) => destinations[path] ? pathOf(destinations[path]!) : path} />
+      <div id="main-content" className="screen-content" key={view.k}>
+        {view.k === 'home' && <>
+          <Home profile={profile} board={snapshot.board} store={store} offline={snapshot.status !== 'open'} onNavigate={navigate} />
+          <div className="telegram-extras">
+            <button onClick={() => go({ k: 'social' })}>{tr('Friends')}{home.incoming.length > 0 && <b>{home.incoming.length}</b>}</button>
+            <button onClick={() => go({ k: 'quests' })}>{tr('Daily quests')}{home.quests.quests.some((quest) => quest.done && !quest.claimed) && <b>!</b>}</button>
+            <button onClick={() => go({ k: 'premium' })}>{tr('Premium')}</button>
+          </div>
+        </>}
+        {view.k === 'duel' && <Play store={store} profile={profile} invitedCode={null} joining={snapshot.joining} error={snapshot.joinError} offline={snapshot.status !== 'open'} queue={snapshot.queue} />}
+        {view.k === 'store' && <Store />}
+        {view.k === 'profile' && <Profile profile={profile} store={store} onNavigate={navigate} />}
+        {view.k === 'rank' && <Leaderboard store={store} board={snapshot.board} loading={snapshot.boardLoading} profile={profile} error={snapshot.boardError ?? null} />}
+        {view.k === 'ranks' && <Ranks profile={profile} />}
+        {view.k === 'awards' && <Awards profile={profile} />}
+        {view.k === 'settings' && <>
+          <Settings store={store} profile={profile} camera={camera} onLogout={async () => closeApp()} onNavigate={navigate} telegram />
+          <div className="page telegram-platform"><SettingsScreen me={home.me} onSaved={refresh} platformOnly /></div>
+        </>}
+        {platformScreen && <div className="page telegram-platform">
+          {view.k === 'social' && <SocialScreen me={home.me} onGo={go} />}
+          {view.k === 'quests' && <QuestsScreen onClaimed={refresh} />}
+          {view.k === 'matches' && <MatchesScreen onGo={go} />}
+          {view.k === 'match' && <MatchScreen index={view.index} />}
+          {view.k === 'player' && <PlayerScreen playerRef={view.ref} onBack={back} />}
+          {view.k === 'challenge' && <ChallengeScreen code={view.code} onEnterRoom={enterRoom} onBack={back} />}
+          {view.k === 'premium' && <PremiumScreen onRefresh={refresh} />}
+        </div>}
       </div>
-
-      <nav className="tg__nav" aria-label={tr('Sections')}>
-        {TABS.map((id) => {
-          const Icon = { home: Home, duel: Swords, rank: Trophy, social: Users, profile: User }[id];
-          const label = { home: 'Home', duel: 'Duel', rank: 'Rank', social: 'Friends', profile: 'You' }[
-            id
-          ];
-          const badge =
-            (id === 'social' && home.incoming.length > 0) ||
-            (id === 'duel' &&
-              home.quests.quests.some((quest) => quest.done && !quest.claimed));
-          return (
-            <button
-              key={id}
-              type="button"
-              className={tab === id ? 'is-active' : ''}
-              aria-current={tab === id ? 'page' : undefined}
-              onClick={() => openTab(id)}
-            >
-              <span>
-                <Icon size={20} aria-hidden />
-                {badge && <span className="tg-dot" aria-hidden />}
-              </span>
-              {tr(label)}
-            </button>
-          );
-        })}
-      </nav>
-
       <Toasts toasts={snapshot.toasts} />
     </div>
   );

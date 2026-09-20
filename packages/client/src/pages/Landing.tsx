@@ -1,3 +1,4 @@
+import { BrandMark } from '../components/BrandMark.js';
 import {
   ArrowDown,
   ArrowRight,
@@ -248,7 +249,7 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
       <footer className="lp-footer lp-wrap">
         <a className="lp-brand" href="#landing-title" aria-label={tr('DuelBattle home')}>
           <span className="lp-brand__mark">
-            <Zap size={20} fill="currentColor" />
+            <BrandMark />
           </span>
           <span>
             DUEL<span className="lp-brand__half">BATTLE</span>
@@ -268,3 +269,4 @@ export function Landing({ onNavigate }: { onNavigate: (path: string) => void }) 
     </main>
   );
 }
+

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { ArrowRight, Menu, X, Zap } from 'lucide-react';
+import { ArrowRight, Menu, X } from 'lucide-react';
+import { BrandMark } from '../BrandMark.js';
 import { tr, useUiPreferences } from '../../i18n/index.js';
 import { LandingLink } from './LandingLink.js';
 export function LandingNav({
@@ -30,7 +31,7 @@ export function LandingNav({
           aria-label={tr('DuelBattle home')}
         >
           <span className="lp-brand__mark">
-            <Zap size={21} fill="currentColor" />
+            <BrandMark />
           </span>
           <span>
             DUEL<span className="lp-brand__half">BATTLE</span>

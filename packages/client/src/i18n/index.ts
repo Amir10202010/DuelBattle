@@ -2,6 +2,7 @@ import { getPreferences } from './preferences.js';
 import { ru, en } from './messages.js';
 import { gameEn, gameRu } from './gameCopy.js';
 import { characterRu } from './characterCopy.js';
+import { collectionRu } from './collectionCopy.js';
 import { landingRu } from './landingCopy.js';
 import { telegramRu } from './telegramCopy.js';
 import { RUSSIAN_PROMPTS } from '@battle/shared';
@@ -9,7 +10,7 @@ export { useUiPreferences } from './preferences.js';
 
 const dictionaries = {
   en: { ...en, ...gameEn },
-  ru: { ...ru, ...RUSSIAN_PROMPTS, ...gameRu, ...characterRu, ...landingRu, ...telegramRu },
+  ru: { ...ru, ...RUSSIAN_PROMPTS, ...gameRu, ...characterRu, ...landingRu, ...telegramRu, ...collectionRu },
 };
 function patterns(dictionary: Record<string, string>) {
   return Object.entries(dictionary)

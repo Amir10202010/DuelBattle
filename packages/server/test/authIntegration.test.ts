@@ -185,6 +185,13 @@ describe('real authentication HTTP and socket boundaries', () => {
     });
     const initial = await fetch(`${url}/api/economy`, { headers: { cookie } });
     expect(await initial.json()).toMatchObject({ coins: 160, loadout: { weapon: 'mitten' } });
+    // The embedded Telegram client uses the same wallet with no browser cookie.
+    const authorization = `Bearer ${cookie.slice('battle_session='.length)}`;
+    expect(await (await fetch(`${url}/api/economy`, { headers: { authorization } })).json()).toMatchObject({ coins: 160 });
+    expect((await fetch(`${url}/api/economy/equip`, {
+      method: 'POST', headers: { authorization, origin: url, 'x-battle-request': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ itemId: 'cloud' }),
+    })).status).toBe(200);
     expect((await post('buy', { itemId: 'visor', price: 0, accountId: 'someone-else' })).status).toBe(400);
     expect((await post('equip', { itemId: 'comet' })).status).toBe(403);
     const purchases = await Promise.all([post('buy', { itemId: 'visor' }), post('buy', { itemId: 'visor' })]);

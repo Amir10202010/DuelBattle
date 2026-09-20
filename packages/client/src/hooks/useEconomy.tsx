@@ -25,10 +25,13 @@ const Context = createContext<EconomyState | null>(null);
 export function EconomyProvider({
   accountKey,
   revision,
+  authToken,
   children,
 }: {
   accountKey: string | null;
   revision: string;
+  /** Telegram's embedded browser authenticates with a bearer session. */
+  authToken?: string | null;
   children: ReactNode;
 }) {
   const [data, setData] = useState<EconomyView | null>(null);
@@ -55,10 +58,10 @@ export function EconomyProvider({
         const response = await fetch(`/api/economy${action ? `/${action}` : ''}`, {
           credentials: 'same-origin',
           signal: AbortSignal.timeout(12000),
+          headers: { ...(authToken ? { authorization: `Bearer ${authToken}` } : {}), ...(action ? { 'content-type': 'application/json', 'x-battle-request': '1' } : {}) },
           ...(action
             ? {
                 method: 'POST',
-                headers: { 'content-type': 'application/json', 'x-battle-request': '1' },
                 body: JSON.stringify(
                   itemId ? (action === 'unequip' ? { slot: itemId } : { itemId }) : {},
                 ),
@@ -100,7 +103,7 @@ export function EconomyProvider({
         if (sequence === generation.current) setLoading(false);
       }
     },
-    [accountKey],
+    [accountKey, authToken],
   );
   const refresh = useCallback(() => {
     if (!pending.current) void request();

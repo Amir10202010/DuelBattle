@@ -20,6 +20,7 @@ import { SeriesLine } from '../components/Series.jsx';
 import { LevelBar } from '../components/Identity.jsx';
 import { RankEmblem, RewardArt } from '../components/GameArt.jsx';
 import { sound } from '../media/sound.js';
+import { DuelActors } from '../components/battle/DuelActors.jsx';
 
 interface MatchOverProps {
   store: MatchStore;
@@ -120,8 +121,9 @@ export function MatchOver({
         <SeriesLine match={match} youId={youId} className="over__series" />
       </div>
 
+      <DuelActors match={match} youId={youId} standings={standings} placement="match" />
       <div className="over__score">
-        {match.seats.map((id, seat) => {
+        {[youId, ...match.seats.filter((id) => id && id !== youId)].slice(0, 2).map((id, seat) => {
           const player = id ? (match.players[id] ?? null) : null;
           const winner = Boolean(id && id === match.winnerId);
           return (

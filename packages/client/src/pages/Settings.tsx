@@ -35,12 +35,14 @@ export function Settings({
   camera,
   onLogout,
   onNavigate,
+  telegram = false,
 }: {
   store: MatchStore;
   profile: PublicProfile | null;
   camera: CameraState;
   onLogout: () => Promise<void>;
   onNavigate: (path: string) => void;
+  telegram?: boolean;
 }) {
   useUiPreferences();
   const [name, setName] = useState(profile?.name ?? '');
@@ -261,9 +263,9 @@ export function Settings({
         </p>
       </section>
 
-      {profile && <TelegramLink />}
+      {profile && !telegram && <TelegramLink />}
 
-      {profile && (
+      {profile && !telegram && (
         <section className="panel setting">
           <div className="panel__head">
             <h2>

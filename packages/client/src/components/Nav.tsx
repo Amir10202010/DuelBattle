@@ -10,7 +10,6 @@ import {
   Swords,
   Trophy,
   UserRound,
-  Zap,
 } from 'lucide-react';
 import { levelFor, rankFor, isPlaced, type PublicProfile } from '@battle/shared';
 import { pagePath, type Page } from '../hooks/useRoute.js';
@@ -19,6 +18,7 @@ import { useEconomy } from '../hooks/useEconomy.js';
 import { CoinCounter } from './currency/Coins.jsx';
 import { Hero } from './avatar/Hero.jsx';
 import { LandingNav } from './landing/LandingNav.js';
+import { BrandMark } from './BrandMark.js';
 
 /**
  * Where a player can go, in the order they care about it.
@@ -56,11 +56,13 @@ export function Nav({
   profile,
   onNavigate,
   publicOnly = false,
+  mapPath = (path: string) => path,
 }: {
   page: Page;
   profile: PublicProfile | null;
   onNavigate: (path: string) => void;
   publicOnly?: boolean;
+  mapPath?: (path: string) => string;
 }) {
   useUiPreferences();
   const { data: economy } = useEconomy();
@@ -75,12 +77,12 @@ export function Nav({
   const brand = (
     <a
       className="wordmark"
-      href={profile ? '/home' : '/'}
+      href={mapPath(profile ? '/home' : '/')}
       onClick={go(profile ? '/home' : '/')}
       aria-label={tr('DuelBattle home')}
     >
       <span className="wordmark__mark">
-        <Zap size={19} fill="currentColor" strokeWidth={0} />
+        <BrandMark />
       </span>
       <span className="wordmark__text">
         {'DUEL'}
@@ -95,16 +97,16 @@ export function Nav({
         {brand}
         <div>
           {profile ? (
-            <a className="btn btn--primary" href="/home" onClick={go('/home')}>
+            <a className="btn btn--primary" href={mapPath("/home")} onClick={go('/home')}>
               {tr('Enter home')}
               <ArrowRight size={16} />
             </a>
           ) : (
             <>
-              <a className="text-link" href="/login" onClick={go('/login')}>
+              <a className="text-link" href={mapPath("/login")} onClick={go('/login')}>
                 {tr('Sign in')}
               </a>
-              <a className="btn btn--primary" href="/register" onClick={go('/register')}>
+              <a className="btn btn--primary" href={mapPath("/register")} onClick={go('/register')}>
                 {tr('Create player')}
                 <ArrowRight size={16} />
               </a>
@@ -122,7 +124,7 @@ export function Nav({
         <div className="rail__brand">{brand}</div>
         <a
           className={`rail__play ${page === 'play' ? 'is-current' : ''}`}
-          href="/play"
+          href={mapPath("/play")}
           onClick={go('/play')}
         >
           <Swords size={21} strokeWidth={2.2} />
@@ -133,7 +135,7 @@ export function Nav({
             <a
               key={to}
               className={`rail__link ${page === to ? 'is-current' : ''}`}
-              href={pagePath(to)}
+              href={mapPath(pagePath(to))}
               onClick={go(pagePath(to))}
               aria-current={page === to ? 'page' : undefined}
             >
@@ -145,7 +147,7 @@ export function Nav({
         <div className="rail__foot">
           <a
             className={`rail__link ${page === 'settings' ? 'is-current' : ''}`}
-            href="/settings"
+            href={mapPath("/settings")}
             onClick={go('/settings')}
             aria-current={page === 'settings' ? 'page' : undefined}
           >
@@ -163,7 +165,7 @@ export function Nav({
         <div className="topbar__right">
           {profile &&
             (economy ? (
-              <a className="topbar__coins" href="/store" onClick={go('/store')}>
+              <a className="topbar__coins" href={mapPath("/store")} onClick={go('/store')}>
                 <CoinCounter value={economy.coins} />
               </a>
             ) : (
@@ -173,7 +175,7 @@ export function Nav({
           {profile ? (
             <a
               className={`topbar__player ${page === 'profile' ? 'is-current' : ''}`}
-              href="/profile"
+              href={mapPath("/profile")}
               onClick={go('/profile')}
             >
               <span className="topbar__player-text">
@@ -188,13 +190,13 @@ export function Nav({
               </span>
               <span className="topbar__portrait">
                 <span className="topbar__portrait-crop">
-                  <Hero loadout={profile.loadout} size={60} />
+                  <Hero loadout={economy?.loadout ?? profile.loadout} size={38} animated={false} portrait />
                 </span>
                 <b className="num">{level}</b>
               </span>
             </a>
           ) : (
-            <a className="btn btn--primary btn--sm" href="/login" onClick={go('/login')}>
+            <a className="btn btn--primary btn--sm" href={mapPath("/login")} onClick={go('/login')}>
               {tr('Sign in')}
             </a>
           )}
@@ -207,7 +209,7 @@ export function Nav({
             {index === BAR_SPLIT && (
               <a
                 className={`tabbar__play ${page === 'play' ? 'is-current' : ''}`}
-                href="/play"
+                href={mapPath("/play")}
                 onClick={go('/play')}
                 aria-current={page === 'play' ? 'page' : undefined}
                 aria-label={tr('Battle')}
@@ -216,7 +218,7 @@ export function Nav({
               </a>
             )}
             <a
-              href={pagePath(to)}
+              href={mapPath(pagePath(to))}
               onClick={go(pagePath(to))}
               className={`tabbar__link ${page === to ? 'is-current' : ''}`}
               aria-current={page === to ? 'page' : undefined}

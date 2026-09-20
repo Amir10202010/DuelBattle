@@ -188,8 +188,8 @@ export function Profile({
       >
         {tab === 'loadout' && (
           <>
-            <MarkPicker avatar={profile.avatar} store={store} />
             <Customization />
+            <details className="collection-mark"><summary>{tr('Your ladder mark')}</summary><MarkPicker avatar={profile.avatar} store={store} /></details>
           </>
         )}
 

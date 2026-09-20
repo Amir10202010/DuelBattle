@@ -1,5 +1,9 @@
+import { HEROES, HERO_SKINS, heroSkin, type HeroRarity } from './heroes.js';
+import { GEAR } from './gear.js';
+
 export const COSMETIC_SLOTS = [
   'body',
+  'skin',
   'outfit',
   'hair',
   'accessory',
@@ -14,13 +18,16 @@ export interface CosmeticItem {
   name: string;
   slot: CosmeticSlot;
   price: number;
-  rarity: 'common' | 'rare' | 'epic';
+  rarity: HeroRarity;
   color: string;
   level?: number;
+  heroId?: string;
+  availability?: 'available' | 'coming-soon';
 }
 export const COSMETICS: readonly CosmeticItem[] = [
-  { id: 'cloud', name: 'Cloud kid', slot: 'body', price: 0, rarity: 'common', color: '#c7e7f0' },
-  { id: 'ember', name: 'Little ember', slot: 'body', price: 180, rarity: 'rare', color: '#ffac79' },
+  ...HEROES.map((hero): CosmeticItem => ({ id: hero.id, name: hero.name, slot: 'body', price: hero.price, rarity: hero.rarity, color: hero.visual.accent, availability: hero.availability })),
+  ...HERO_SKINS.map((skin): CosmeticItem => ({ id: skin.id, name: skin.name, slot: 'skin', price: skin.price, rarity: skin.rarity, color: skin.color, heroId: skin.heroId })),
+  ...GEAR.map((gear): CosmeticItem => ({ ...gear, slot: 'weapon' })),
   {
     id: 'pilot',
     name: 'Flight jacket',
@@ -55,16 +62,6 @@ export const COSMETICS: readonly CosmeticItem[] = [
     rarity: 'rare',
     color: '#535885',
   },
-  {
-    id: 'mitten',
-    name: 'Big mitten',
-    slot: 'weapon',
-    price: 0,
-    rarity: 'common',
-    color: '#ffbd65',
-  },
-  { id: 'comet', name: 'Comet bat', slot: 'weapon', price: 250, rarity: 'epic', color: '#8aa6ff' },
-  { id: 'wand', name: 'Cloud wand', slot: 'weapon', price: 180, rarity: 'rare', color: '#a7e7d8' },
   { id: 'orbit', name: 'Mini orbit', slot: 'aura', price: 200, rarity: 'epic', color: '#baa4ff' },
   {
     id: 'stardust',
@@ -91,9 +88,8 @@ export const DEFAULT_LOADOUT: Loadout = {
   weapon: 'mitten',
 };
 export const STARTER_ITEMS = Object.values(DEFAULT_LOADOUT);
-export function cosmetic(id: string | undefined) {
-  return COSMETICS.find((item) => item.id === id);
-}
+const items = new Map(COSMETICS.map((item) => [item.id, item]));
+export const cosmetic = (id: string | undefined) => items.get(id ?? '');
 export function normalizeLoadout(value: unknown = {}): Loadout {
   const result = { ...DEFAULT_LOADOUT };
   if (!value || typeof value !== 'object') return result;
@@ -102,7 +98,29 @@ export function normalizeLoadout(value: unknown = {}): Loadout {
     const id = candidate[slot];
     if (typeof id === 'string' && cosmetic(id)?.slot === slot) result[slot] = id;
   }
+  if (result.skin && heroSkin(result.skin)?.heroId !== result.body) delete result.skin;
   return result;
+}
+
+/** Pure preview: never writes to the wallet or implies ownership. */
+export function previewItem(loadout: Loadout, item: CosmeticItem): Loadout {
+  const body = item.slot === 'body' ? item.id : item.heroId ?? loadout.body;
+  // A different character starts from their own signature look, never another
+  // hero's unsaved skin, hair, face accessory or weapon.
+  const base = body === loadout.body ? loadout : { ...DEFAULT_LOADOUT, body };
+  return normalizeLoadout({ ...base, ...(item.slot === 'body' ? { skin: undefined } : {}), [item.slot]: item.id });
+}
+
+export function cosmeticState(item: CosmeticItem, economy: EconomyView) {
+  const owned = economy.owned.includes(item.id);
+  return {
+    owned,
+    equipped: economy.loadout[item.slot] === item.id,
+    locked: economy.level < (item.level ?? 1),
+    affordable: economy.coins >= item.price,
+    requiresHero: Boolean(item.heroId && !economy.owned.includes(item.heroId)),
+    comingSoon: item.availability === 'coming-soon',
+  };
 }
 export interface EconomyView {
   coins: number;

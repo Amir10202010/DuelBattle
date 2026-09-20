@@ -17,6 +17,8 @@ export type Tab = (typeof TABS)[number];
 export type View =
   | { k: Tab }
   | { k: 'quests' }
+  | { k: 'store' }
+  | { k: 'ranks' }
   | { k: 'awards' }
   | { k: 'matches' }
   | { k: 'match'; index: number }
@@ -67,6 +69,8 @@ export function viewFrom(pathname: string): View {
   const known: View['k'][] = [
     ...TABS,
     'quests',
+    'store',
+    'ranks',
     'awards',
     'matches',
     'premium',
@@ -78,6 +82,10 @@ export function viewFrom(pathname: string): View {
 /** Which tab a pushed view belongs under, so the bar keeps its place. */
 export function tabFor(view: View): Tab {
   switch (view.k) {
+    case 'ranks':
+      return 'rank';
+    case 'store':
+      return 'profile';
     case 'quests':
     case 'challenge':
       return 'duel';

@@ -19,7 +19,6 @@ import { CameraGate } from './CameraGate.jsx';
 import { Lobby } from './Lobby.jsx';
 import { Arena } from './Arena.jsx';
 import { MatchOver } from './MatchOver.jsx';
-import { DuelActors } from '../components/battle/DuelActors.jsx';
 
 /**
  * How often the camera goes out to the opponent, and when it holds back.
@@ -92,7 +91,6 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
       <Announcer match={match} youId={youId} />
       {/* The finisher only. A scored point plays inside the arena, under the
           cameras, where it belongs to the round rather than to the window. */}
-      <DuelActors match={match} youId={youId} standings={snapshot.standings} placement="match" />
       <header className="room__bar">
         <span className="room__code mono" title={tr('Room code')}>
           {match.roomCode}

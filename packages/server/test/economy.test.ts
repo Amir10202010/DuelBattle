@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '../src/database.js';
 import { blankProfile } from '../src/profiles.js';
-import { ensureWallet, economyView, purchase, equip, dailyCoins } from '../src/economy.js';
+import { ensureWallet, economyView, purchase, equip, dailyCoins, grantCoins, unequip } from '../src/economy.js';
 import { plainSummary, recordMatch } from '../src/standings.js';
 let db: Database;
 const now = Date.UTC(2026, 8, 15);
@@ -20,6 +20,34 @@ beforeEach(() => {
 });
 afterEach(() => db.close());
 describe('server-owned cosmetics economy', () => {
+  it('purchases heroes once and rejects skin purchases before owning their hero', () => {
+    expect(() => db.transaction(() => purchase(db.sql, 'a', 'pikachu-peach', 0, now))).toThrow('hero');
+    expect(view().coins).toBe(160);
+    db.transaction(() => grantCoins(db.sql, 'a', 'test-hero', 1800, now));
+    db.transaction(() => purchase(db.sql, 'a', 'pikachu', 0, now));
+    db.transaction(() => purchase(db.sql, 'a', 'pikachu', 0, now));
+    expect(view().coins).toBe(160);
+    expect(view().owned.filter((id) => id === 'pikachu')).toHaveLength(1);
+    expect(() => equip(db.sql, 'a', 'pikachu-peach')).toThrow('Unlock');
+    expect(view().loadout.body).toBe('cloud');
+  });
+  it('equips a complete skin atomically and clears it when changing heroes', () => {
+    db.transaction(() => {
+      grantCoins(db.sql, 'a', 'test-skins', 6000, now);
+      purchase(db.sql, 'a', 'pikachu', 0, now);
+      purchase(db.sql, 'a', 'pikachu-peach', 0, now);
+      equip(db.sql, 'a', 'pikachu-peach');
+    });
+    expect(view().loadout).toMatchObject({ body: 'pikachu', skin: 'pikachu-peach' });
+    expect(view('b').loadout.body).toBe('cloud');
+    db.transaction(() => equip(db.sql, 'a', 'cloud'));
+    expect(view().loadout.skin).toBeUndefined();
+    expect(view().owned).toContain('pikachu-peach');
+    db.transaction(() => equip(db.sql, 'a', 'pikachu-peach'));
+    db.transaction(() => unequip(db.sql, 'a', 'skin'));
+    expect(view().loadout).toMatchObject({ body: 'pikachu' });
+    expect(view().loadout.skin).toBeUndefined();
+  });
   it('grants the starter wallet once, including after a reload', () => {
     db.transaction(() => ensureWallet(db.sql, 'a', now));
     expect(view().coins).toBe(160);

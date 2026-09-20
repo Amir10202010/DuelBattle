@@ -18,12 +18,14 @@ export function Dialog({
   onClose,
   title,
   children,
+  className = '',
 }: {
   open: boolean;
   onClose: () => void;
   /** Read out when the dialog opens. */
   title: string;
   children: ReactNode;
+  className?: string;
 }) {
   useUiPreferences();
   const ref = useRef<HTMLDialogElement | null>(null);
@@ -35,10 +37,17 @@ export function Dialog({
     if (!open && element.open) element.close();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [open]);
+
   return (
     <dialog
       ref={ref}
-      className="sheet"
+      className={`sheet ${className}`}
       aria-label={title}
       onClose={onClose}
       onCancel={onClose}

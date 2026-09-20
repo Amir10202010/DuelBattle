@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">DuelBattle avatar</title>
+  <desc id="desc">Two angular lightning shapes form a compact DB versus emblem.</desc>
+  <rect width="1024" height="1024" rx="144" fill="#101710"/>
+  <g stroke="#101710" stroke-width="14" stroke-linejoin="round">
+    <path fill="#C9FF4A" d="M176 180 500 390 404 498 518 498 306 844 350 588 210 684 226 366 360 438Z"/>
+    <path fill="#F4F1E7" d="M848 180 524 390 620 498 506 498 718 844 674 588 814 684 798 366 664 438Z"/>
+  </g>
+  <path fill="#C9FF4A" d="m428 527 116-76-34 76h86L480 613l34-86Z"/>
+</svg>

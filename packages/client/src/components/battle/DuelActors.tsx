@@ -1,127 +1,66 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import type { PublicMatchState, PublicProfile } from '@battle/shared';
+import { gearById, type PublicMatchState, type PublicProfile } from '@battle/shared';
 import { Hero } from '../avatar/Hero.jsx';
 import { sound } from '../../media/sound.js';
 import { tr, useUiPreferences } from '../../i18n/index.js';
 
-/**
- * The hit.
- *
- * Two placements, because two moments deserve different volume. A point is a
- * jab: it plays in a band along the bottom of the camera area, where you can
- * see it without losing sight of the round. Winning the match is the finisher:
- * it takes the whole screen, holds long enough to be watched, and names who
- * just lost. Same rig, same timings scaled up — so the small one teaches you to
- * read the big one.
- *
- * It is decoration over an outcome the server already decided. Nothing here
- * changes a score, and both players see the same blow land the same way.
- */
-export function DuelActors({
-  match,
-  youId,
-  standings,
-  placement,
-}: {
-  match: PublicMatchState;
-  youId: string;
-  standings: Record<string, PublicProfile>;
-  /** 'round' rides under the cameras; 'match' takes the screen. */
+/** The server decides the score. This persistent stage only performs it. */
+export function DuelActors({ match, youId, standings, placement }: {
+  match: PublicMatchState; youId: string; standings: Record<string, PublicProfile>;
   placement: 'round' | 'match';
 }) {
   useUiPreferences();
   const finisher = placement === 'match';
-  const winner = finisher
-    ? match.phase === 'matchResult'
-      ? match.winnerId
-      : null
-    : match.phase === 'roundResult'
-      ? (match.round?.outcome?.winnerId ?? null)
-      : null;
-  const event = winner ? `${match.round?.id ?? 'end'}:${match.phase}` : '';
+  const winner = finisher ? match.phase === 'matchResult' ? match.winnerId : null
+    : match.phase === 'roundResult' ? match.round?.outcome?.winnerId ?? null : null;
+  const event = winner ? `${match.round?.id ?? 'end'}:${match.phase}:${winner}` : '';
   const [active, setActive] = useState(false);
-
   useEffect(() => {
-    if (!event) {
-      setActive(false);
-      return;
-    }
-    setActive(true);
-    const impact = setTimeout(() => sound.play(finisher ? 'finisher' : 'hit'), finisher ? 620 : 430);
-    const end = setTimeout(() => setActive(false), finisher ? 3_000 : 1_900);
-    return () => {
-      clearTimeout(impact);
-      clearTimeout(end);
-    };
+    setActive(Boolean(event));
+    if (!event) return;
+    const impact = setTimeout(() => sound.play(finisher ? 'finisher' : 'hit'), 430);
+    const end = setTimeout(() => setActive(false), 1250);
+    return () => { clearTimeout(impact); clearTimeout(end); };
   }, [event, finisher]);
-
-  if (!active || !winner) return null;
-
-  const ids = [youId, ...match.seats.filter((id): id is string => Boolean(id && id !== youId))]
-    .slice(0, 2);
-  const winningLeft = winner === youId;
-  const kit = standings[winner]?.loadout;
+  if (finisher && match.phase !== 'matchResult') return null;
+  const ids = [youId, ...match.seats.filter((id): id is string => Boolean(id && id !== youId))].slice(0, 2);
+  if (ids.length < 2) return null;
+  const gear = gearById(winner ? standings[winner]?.loadout?.weapon : undefined);
   const loser = ids.find((id) => id !== winner);
-  const youWon = winner === youId;
-
-  return (
-    <div
-      key={event}
-      className={[
-        'duel-actors',
-        `duel-actors--${placement}`,
-        winningLeft ? 'duel-actors--left' : 'duel-actors--right',
-        finisher ? 'duel-actors--finish' : '',
-        `duel-actors--${kit?.weapon ?? 'mitten'}`,
-        kit?.finisher === 'supernova' && finisher ? 'duel-actors--nova' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      role={finisher ? 'status' : undefined}
-      aria-hidden={finisher ? undefined : true}
-    >
-      <div className="duel-actors__stage">
-        {ids.map((id) => (
-          <div key={id} className={`duel-actors__hero ${id === winner ? 'is-attacker' : 'is-hit'}`}>
-            <Hero
-              loadout={standings[id]?.loadout}
-              pose={id === winner ? 'attack' : 'hit'}
-              size={finisher ? 250 : 132}
-            />
-            {id === winner && (
-              <b className="point-pop">{finisher ? tr('K.O.') : '+1'}</b>
-            )}
+  const winningLeft = winner === youId;
+  return <section
+    className={`duel-actors duel-actors--${placement} duel-actors--${winningLeft ? 'left' : 'right'} ${active ? 'is-striking' : ''} ${finisher && winner ? 'duel-actors--finish' : ''} strike--${gear.strike}`}
+    style={{ '--strike-color': gear.color } as CSSProperties}
+    aria-label={tr('Hero arena')}>
+    <div className="duel-actors__stage">
+      {ids.map((id) => {
+        const wins = id === winner;
+        const loses = Boolean(winner && !wins);
+        return <div key={id} className={`duel-actors__hero ${wins ? 'is-attacker' : loses ? 'is-hit' : ''}`}>
+          <div className="duel-actors__figure">
+            <Hero key={`${event}:${id}:${active}`} loadout={standings[id]?.loadout}
+              pose={active ? wins ? 'attack' : loses ? 'hit' : 'idle' : loses ? 'defeated' : wins && finisher ? 'celebrate' : 'idle'}
+              size={finisher ? 185 : 118} />
           </div>
-        ))}
-        <div className="duel-projectile" aria-hidden="true">
-          <svg viewBox="0 0 120 50">
-            <path d="M4 38Q65 34 112 5L91 35 106 37Q45 51 4 38Z" fill="currentColor" />
-            <path d="M24 38 97 18" stroke="white" strokeWidth="4" />
-          </svg>
-        </div>
-        <div className="duel-impact" aria-hidden="true">
-          <i />
-          {Array.from({ length: 10 }, (_, i) => (
-            <span key={i} style={{ '--i': i } as CSSProperties} />
-          ))}
-        </div>
-        <div className="duel-speedlines" aria-hidden="true">
-          {Array.from({ length: 7 }, (_, i) => (
-            <i key={i} style={{ '--i': i } as CSSProperties} />
-          ))}
-        </div>
-      </div>
-
-      {finisher && (
-        <p className="duel-actors__caption">
-          <strong>{tr(youWon ? 'You win the duel' : 'Duel lost')}</strong>
-          <span>
-            {youWon
-              ? `${match.players[loser ?? '']?.name ?? tr('Your opponent')} ${tr('is down')}`
-              : `${match.players[winner]?.name ?? tr('Your opponent')} ${tr('takes it')}`}
-          </span>
-        </p>
-      )}
+          {wins && active && <b className="point-pop">{finisher ? tr('K.O.') : '+1'}</b>}
+          <span className="duel-actors__name">{match.players[id]?.name ?? tr('Player')}{finisher && wins && <b>{tr('Winner')}</b>}</span>
+        </div>;
+      })}
+      <span className="duel-actors__vs" aria-hidden="true">VS</span>
+      {active && <div className="duel-strike" key={event} aria-hidden="true">
+        <svg viewBox="0 0 120 60">
+          {gear.strike === 'orbit' ? <><circle cx="67" cy="30" r="20" fill="currentColor" /><ellipse cx="67" cy="30" rx="43" ry="12" transform="rotate(-25 67 30)" fill="none" stroke="#f4e5ff" strokeWidth="4" /></>
+          : gear.strike === 'lightning' ? <path d="m4 40 37-22 5 13 43-27-12 23 40-5-44 33 8-22-40 17-4-11Z" fill="currentColor" />
+          : gear.strike === 'crescent' ? <path d="M29 4c69 9 72 44 0 52 29-19 30-35 0-52Z" fill="currentColor" />
+          : gear.strike === 'pulse' ? <><circle cx="68" cy="30" r="24" fill="none" stroke="currentColor" strokeWidth="8" /><circle cx="68" cy="30" r="13" fill="#fff1cd" /></>
+          : <><path d="M4 48Q63 31 113 6L89 37 109 39Q48 60 4 48Z" fill="currentColor" /><path d="m36 41 60-20" stroke="#fff6df" strokeWidth="3" /></>}
+        </svg>
+      </div>}
+      {active && <span className="duel-contact" aria-hidden="true" key={`impact:${event}`} />}
     </div>
-  );
+    {finisher && winner && <p className="duel-actors__caption" role="status">
+      {winner === youId ? `${match.players[loser ?? '']?.name ?? tr('Your opponent')} ${tr('is down')}` : `${match.players[winner]?.name ?? tr('Your opponent')} ${tr('takes it')}`}
+    </p>}
+  </section>;
 }
+

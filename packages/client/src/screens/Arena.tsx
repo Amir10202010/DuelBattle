@@ -191,10 +191,8 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
           <PeerVideo store={store} playerId={opponentId} />
         </StageFrame>
 
-        {/* Under the cameras, over the bottom of them: a point is part of the
-            round, so it plays where the round is. */}
-        <DuelActors match={match} youId={youId} standings={standings} placement="round" />
       </div>
+      <DuelActors match={match} youId={youId} standings={standings} placement="round" />
 
       <ActionRow
         store={store}
