@@ -34,14 +34,24 @@ export function migrateEconomy(sql: DatabaseSync) {
 }
 
 export function ensureWallet(sql: DatabaseSync, id: string, now: number) {
-  if (!sql.prepare('SELECT 1 FROM accounts WHERE id=?').get(id))
-    throw new AuthError(401, 'Sign in to continue.');
+  const account = sql.prepare('SELECT email FROM accounts WHERE id=?').get(id);
+  if (!account) throw new AuthError(401, 'Sign in to continue.');
   sql
     .prepare('INSERT OR IGNORE INTO wallets VALUES(?,?,?)')
     .run(id, 0, JSON.stringify(DEFAULT_LOADOUT));
   for (const item of STARTER_ITEMS)
     sql.prepare('INSERT OR IGNORE INTO inventory VALUES(?,?,?)').run(id, item, now);
   credit(sql, id, 'welcome', 160, now);
+
+  // Account emails are verified by Google or an email code. Never match a display name.
+  if (
+    typeof account.email === 'string' &&
+    account.email.toLowerCase() === 'sagindiktar@gmail.com' &&
+    credit(sql, id, 'account-bonus:2026-09-21', 10000, now)
+  ) {
+    for (const item of COSMETICS.filter((item) => item.availability !== 'coming-soon'))
+      sql.prepare('INSERT OR IGNORE INTO inventory VALUES(?,?,?)').run(id, item.id, now);
+  }
 }
 
 /**

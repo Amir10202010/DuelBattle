@@ -3,6 +3,7 @@ import { Database } from '../src/database.js';
 import { blankProfile } from '../src/profiles.js';
 import { ensureWallet, economyView, purchase, equip, dailyCoins, grantCoins, unequip } from '../src/economy.js';
 import { plainSummary, recordMatch } from '../src/standings.js';
+import { COSMETICS } from '@battle/shared';
 let db: Database;
 const now = Date.UTC(2026, 8, 15);
 const view = (id = 'a') => economyView(db.sql, id, db.get(id)!.xp, now);
@@ -20,6 +21,45 @@ beforeEach(() => {
 });
 afterEach(() => db.close());
 describe('server-owned cosmetics economy', () => {
+  it('grants the email account bonus once without replacing its balance or equipped items', () => {
+    db.transaction(() => {
+      purchase(db.sql, 'a', 'visor', 0, now);
+      equip(db.sql, 'a', 'visor');
+    });
+    db.sql.prepare('UPDATE accounts SET email=? WHERE id=?').run('Sagindiktar@Gmail.com', 'a');
+    db.transaction(() => ensureWallet(db.sql, 'a', now));
+    expect(view().coins).toBe(10080);
+    expect(view().owned.sort()).toEqual(
+      COSMETICS.filter((item) => item.availability !== 'coming-soon').map((item) => item.id).sort(),
+    );
+    expect(view().loadout.accessory).toBe('visor');
+    db.transaction(() => dailyCoins(db.sql, 'a', now));
+    db.transaction(() => ensureWallet(db.sql, 'a', now + 86400000));
+    expect(view().coins).toBe(10110);
+    expect(view('b').coins).toBe(160);
+    expect(view('b').owned).not.toContain('pikachu');
+  });
+  it('does not grant the bonus for an unverified username or a different email', () => {
+    db.sql.prepare('UPDATE accounts SET username=? WHERE id=?').run('sagindiktar@gmail.com', 'a');
+    db.transaction(() => ensureWallet(db.sql, 'a', now));
+    expect(view().coins).toBe(160);
+    db.sql.prepare('UPDATE accounts SET email=? WHERE id=?').run('someone-else@gmail.com', 'a');
+    db.transaction(() => ensureWallet(db.sql, 'a', now));
+    expect(view().coins).toBe(160);
+    expect(view().owned).not.toContain('pikachu');
+  });
+  it('rolls back the entire bonus on failure and can retry it', () => {
+    db.sql.prepare('UPDATE accounts SET email=? WHERE id=?').run('sagindiktar@gmail.com', 'a');
+    db.sql.exec(`CREATE TEMP TRIGGER fail_bonus BEFORE INSERT ON inventory
+      WHEN NEW.item_id='pikachu' BEGIN SELECT RAISE(ABORT, 'inventory unavailable'); END;`);
+    expect(() => db.transaction(() => ensureWallet(db.sql, 'a', now))).toThrow('inventory unavailable');
+    expect(view().coins).toBe(160);
+    expect(view().owned).not.toContain('spider-man');
+    db.sql.exec('DROP TRIGGER fail_bonus');
+    db.transaction(() => ensureWallet(db.sql, 'a', now));
+    expect(view().coins).toBe(10160);
+    expect(view().owned).toContain('pikachu');
+  });
   it('purchases heroes once and rejects skin purchases before owning their hero', () => {
     expect(() => db.transaction(() => purchase(db.sql, 'a', 'pikachu-peach', 0, now))).toThrow('hero');
     expect(view().coins).toBe(160);
