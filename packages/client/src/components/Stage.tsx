@@ -69,8 +69,8 @@ export const SelfVideo = memo(function SelfVideo({ videoRef, children }: SelfVid
     const parent = windowRef.current?.parentElement;
     if (!parent) return;
     const resize = () => {
-      const width = Math.max(parent.clientWidth, parent.clientHeight * 4 / 3);
-      setSize({ width, height: width * 3 / 4 });
+      const width = Math.min(parent.clientWidth, parent.clientHeight * 4 / 3);
+      setSize((previous) => previous.width === width ? previous : { width, height: width * 3 / 4 });
     };
     const observer = new ResizeObserver(resize);
     observer.observe(parent); resize();

@@ -186,13 +186,40 @@ export class AuthProviders {
           : null;
     if (!request) return;
 
-    const response = await fetch(request.url, {
-      method: 'POST',
-      signal: AbortSignal.timeout(8000),
-      headers: request.headers,
-      body: JSON.stringify(request.body),
-    });
-    if (!response.ok) throw new Error('Email delivery failed');
+    let response: Response;
+    try {
+      response = await fetch(request.url, {
+        method: 'POST',
+        signal: AbortSignal.timeout(8000),
+        headers: request.headers,
+        body: JSON.stringify(request.body),
+      });
+    } catch (error) {
+      // The provider could not be reached at all: DNS, TLS, or the timeout.
+      log.warn('verification email failed', {
+        provider: this.mailer,
+        errorType: error instanceof Error ? error.name : 'unknown',
+      });
+      throw new Error('Email delivery failed');
+    }
+    if (!response.ok) {
+      /*
+       * Said out loud, because nobody else will say it.
+       *
+       * A key that was rotated, a sender address that was never verified, a
+       * monthly quota reached — each of these refuses every registration on the
+       * server at once, and all the player is told is "try again shortly",
+       * which is the same thing they would be told by a passing network blip.
+       * Without this line the first anybody hears of an outage is a support
+       * message. The status is the whole diagnosis; the key and the player's
+       * address are not, and stay out of the log.
+       */
+      log.warn('verification email failed', {
+        provider: this.mailer,
+        status: response.status,
+      });
+      throw new Error('Email delivery failed');
+    }
   }
 
   async verifyEmail(input: unknown) {
@@ -346,6 +373,11 @@ export class AuthProviders {
             .prepare('SELECT id FROM accounts WHERE email=? COLLATE NOCASE')
             .get(email)
         )
+          // Reachable, and the one failure here that is about the player
+          // rather than the infrastructure: they registered this address with
+          // a password. Told to "try again" they would retry forever, so this
+          // reason is carried out to the login page instead of being flattened
+          // into the generic one below.
           throw new AuthError(409, 'Use email sign-in for this account.');
         const id = existing
           ? String(existing.id)
@@ -371,7 +403,11 @@ export class AuthProviders {
         reason: this.googleGap() ?? (error instanceof Error ? error.message : 'unknown'),
       });
       res.setHeader('set-cookie', this.googleCookie(''));
-      res.writeHead(303, { location: '/login?auth_error=google', 'cache-control': 'no-store' });
+      const reason = error instanceof AuthError && error.status === 409 ? 'use_email' : 'google';
+      res.writeHead(303, {
+        location: `/login?auth_error=${reason}`,
+        'cache-control': 'no-store',
+      });
     }
     res.end();
   }

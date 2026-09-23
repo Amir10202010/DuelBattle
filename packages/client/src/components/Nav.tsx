@@ -56,12 +56,21 @@ export function Nav({
   profile,
   onNavigate,
   publicOnly = false,
+  pinned = false,
   mapPath = (path: string) => path,
 }: {
   page: Page;
   profile: PublicProfile | null;
   onNavigate: (path: string) => void;
   publicOnly?: boolean;
+  /**
+   * This screen has to be finished before any other one will stay open.
+   *
+   * Onboarding is the only one: the app sends a player who has not completed
+   * it straight back, so a header link is a button that visibly does nothing.
+   * The brand stays, as a mark rather than a link.
+   */
+  pinned?: boolean;
   mapPath?: (path: string) => string;
 }) {
   useUiPreferences();
@@ -74,13 +83,8 @@ export function Nav({
     e.preventDefault();
     onNavigate(path);
   };
-  const brand = (
-    <a
-      className="wordmark"
-      href={mapPath(profile ? '/home' : '/')}
-      onClick={go(profile ? '/home' : '/')}
-      aria-label={tr('DuelBattle home')}
-    >
+  const wordmark = (
+    <>
       <span className="wordmark__mark">
         <BrandMark />
       </span>
@@ -88,6 +92,18 @@ export function Nav({
         {'DUEL'}
         <span>{'BATTLE'}</span>
       </span>
+    </>
+  );
+  const brand = pinned ? (
+    <span className="wordmark">{wordmark}</span>
+  ) : (
+    <a
+      className="wordmark"
+      href={mapPath(profile ? '/home' : '/')}
+      onClick={go(profile ? '/home' : '/')}
+      aria-label={tr('DuelBattle home')}
+    >
+      {wordmark}
     </a>
   );
 
@@ -96,7 +112,7 @@ export function Nav({
       <header className="public-nav">
         {brand}
         <div>
-          {profile ? (
+          {pinned ? null : profile ? (
             <a className="btn btn--primary" href={mapPath("/home")} onClick={go('/home')}>
               {tr('Enter home')}
               <ArrowRight size={16} />

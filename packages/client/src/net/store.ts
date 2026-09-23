@@ -38,6 +38,8 @@ export interface BoardState {
 export interface StoreSnapshot {
   boardError?: string | null;
   status: ConnectionStatus;
+  /** Transport reopened, but the current room has not yet been synchronized. */
+  synchronizing?: boolean;
   screen: Screen;
   /** True between asking to join and being seated. */
   joining: boolean;
@@ -254,9 +256,24 @@ export class MatchStore {
   constructor(connection: GameConnection = new Connection()) {
     this.connection = connection;
     connection.on('status', (status) => {
-      this.patch({ status, latencyMs: connection.latencyMs });
+      this.patch({
+        status,
+        synchronizing: Boolean(this.snapshot.you && this.snapshot.screen === 'room'),
+        latencyMs: connection.latencyMs,
+        /*
+         * A search does not survive the socket that asked for it.
+         *
+         * The server drops the queue entry the instant the connection closes,
+         * and `findMatch` is deliberately not replayed on reconnect, so a
+         * spinner left running here is advertising a search nobody is doing —
+         * the player waits for an opponent who was never being looked for.
+         * Clearing it puts the button back, which is one click and the truth.
+         */
+        ...(status === 'open' ? {} : { queue: null }),
+      });
     });
     connection.on('ready', () => this.onReady());
+    connection.on('latency', (latencyMs) => this.patch({ latencyMs }));
     connection.on('message', (message) => this.onMessage(message));
   }
 
@@ -544,13 +561,17 @@ export class MatchStore {
           fatalError: null,
           // Being seated is how a search ends well.
           queue: null,
+          synchronizing: true,
         });
         return;
       }
       case 'state':
         if (!this.snapshot.you) return;
+        if (message.state.roomCode !== this.snapshot.roomCode) return;
+        if (this.snapshot.match?.roomCode === message.state.roomCode && message.state.version < this.snapshot.match.version) return;
         this.patch({
           match: message.state,
+          synchronizing: false,
           latencyMs: this.connection.latencyMs,
           // A match state always implies we are seated.
           screen: 'room',

@@ -31,6 +31,7 @@ export interface ConnectionEvents {
   status(status: ConnectionStatus): void;
   /** Fired after every successful handshake, including reconnects. */
   ready(): void;
+  latency(latencyMs: number): void;
 }
 
 /**
@@ -54,7 +55,9 @@ const NEVER_QUEUED: ReadonlySet<ClientMessage['t']> = new Set([
 
 const BACKOFF_MIN_MS = 400;
 const BACKOFF_MAX_MS = 8_000;
-const PING_INTERVAL_MS = 12_000;
+const PING_INTERVAL_MS = 4_000;
+const SILENCE_TIMEOUT_MS = 12_000;
+const CONNECT_TIMEOUT_MS = 8_000;
 /** Early pings converge the clock estimate before the first round starts. */
 const PING_WARMUP_DELAYS_MS = [0, 600, 1_800];
 
@@ -78,6 +81,10 @@ export class Connection implements GameConnection {
   private queue: ClientMessage[] = [];
   private reconnectTimer: number | null = null;
   private pingTimer: number | null = null;
+  private connectTimer: number | null = null;
+  private lastReceivedAt = 0;
+  private lastRtt: number | null = null;
+  private sampledAt = 0;
   private warmupTimers: number[] = [];
   private readonly pending = new Map<number, number>();
   private nextPingId = 1;
@@ -100,9 +107,9 @@ export class Connection implements GameConnection {
     return this.socket?.readyState === WebSocket.OPEN ? this.socket.bufferedAmount : 0;
   }
 
-  /** Round-trip time of the best sample so far, in milliseconds. */
+  /** Current latency, not the fastest ping from an earlier network. */
   get latencyMs(): number | null {
-    return Number.isFinite(this.bestRtt) ? Math.round(this.bestRtt) : null;
+    return this.lastRtt;
   }
 
   /** The server's clock, as best we can estimate it. */
@@ -117,10 +124,17 @@ export class Connection implements GameConnection {
 
     const socket = new WebSocket(this.url);
     this.socket = socket;
+    this.connectTimer = window.setTimeout(() => this.recover(socket), CONNECT_TIMEOUT_MS);
 
     socket.onopen = () => {
       if (this.socket !== socket) return;
+      if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
+      this.connectTimer = null;
       this.attempts = 0;
+      this.lastReceivedAt = Date.now();
+      this.bestRtt = Number.POSITIVE_INFINITY;
+      this.lastRtt = null;
+      this.sampledAt = Date.now();
       this.setStatus('open');
       // The handshake goes first. Everything in the queue needs a session to
       // land in, and a reconnected socket does not have one until the store
@@ -141,6 +155,8 @@ export class Connection implements GameConnection {
       } catch {
         return;
       }
+      if (!message || typeof message !== 'object' || typeof message.t !== 'string') return;
+      this.lastReceivedAt = Date.now();
       if (message.t === 'pong') {
         this.onPong(message.id, message.serverTime);
         return;
@@ -150,6 +166,8 @@ export class Connection implements GameConnection {
 
     socket.onclose = () => {
       if (this.socket !== socket) return;
+      if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
+      this.connectTimer = null;
       this.stopPings();
       this.socket = null;
       if (this.closedByUs) {
@@ -192,6 +210,15 @@ export class Connection implements GameConnection {
     for (const message of queued) this.send(message);
   }
 
+  /** Wi-Fi can vanish without a close event. Retire that socket before retrying. */
+  private recover(socket: WebSocket): void {
+    if (this.socket !== socket || this.closedByUs) return;
+    this.clearTimers();
+    this.socket = null;
+    socket.close();
+    this.scheduleReconnect();
+  }
+
   private setStatus(status: ConnectionStatus): void {
     if (this.status === status) return;
     this.status = status;
@@ -229,12 +256,18 @@ export class Connection implements GameConnection {
 
   private clearTimers(): void {
     this.stopPings();
+    if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
+    this.connectTimer = null;
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
   }
 
   private ping(): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
+    if (Date.now() - this.lastReceivedAt >= SILENCE_TIMEOUT_MS) {
+      this.recover(this.socket);
+      return;
+    }
     const id = this.nextPingId++;
     this.pending.set(id, Date.now());
     // Bound the map in case a server stops answering.
@@ -246,12 +279,21 @@ export class Connection implements GameConnection {
   }
 
   private onPong(id: number, serverTime: number): void {
+    if (!Number.isFinite(serverTime)) return;
     const sentAt = this.pending.get(id);
     if (sentAt === undefined) return;
     this.pending.delete(id);
 
     const now = Date.now();
     const rtt = now - sentAt;
+    if (rtt < 0) return;
+    this.lastRtt = Math.round(rtt);
+    this.handlers.latency?.(this.lastRtt);
+    // Re-sample periodically; an old minimum cannot correct later clock drift.
+    if (now - this.sampledAt > 30_000) {
+      this.bestRtt = Number.POSITIVE_INFINITY;
+      this.sampledAt = now;
+    }
     // Keep the offset from the fastest round trip seen: the shortest sample is
     // the least distorted by queueing in either direction.
     if (rtt > this.bestRtt) return;

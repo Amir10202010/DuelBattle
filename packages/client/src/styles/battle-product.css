@@ -1,0 +1,260 @@
+/* The arena has a fixed hierarchy: score, objective, camera field, control deck.
+   These layouts supersede the earlier page-shaped arena across all breakpoints. */
+.room--battle { min-height: 100dvh; }
+.room--battle .room__bar { min-height: 48px; flex: 0 0 48px; }
+.room__phase { display: flex; align-items: center; gap: 8px; }
+.room .arena {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: 'scores scores' 'prompt prompt' 'stages stages' 'actors actions';
+  grid-template-rows: auto auto minmax(230px, 1fr) auto;
+  width: min(calc(100% - 48px), 1440px);
+  height: calc(100dvh - 48px);
+  min-height: 640px;
+  padding-block: 12px 16px;
+  gap: 12px 20px;
+}
+.room .arena > .scorestrip { grid-area: scores; width: 100%; min-height: 62px; }
+.room .arena > .prompt {
+  grid-area: prompt; display: grid; grid-template-columns: 1fr minmax(180px, 30%); align-items: center; text-align: left;
+  padding: 6px 0; border: 0; background: none; gap: 7px;
+}
+.room .arena .prompt__meta { justify-content: flex-start; }
+.room .arena .prompt__meta, .room .arena .prompt__text, .room .arena .meter, .room .arena .prompt-help, .room .arena .party-instruction { grid-column: 1; }
+.room .arena .prompt > .timer { grid-column: 2; grid-row: 1 / span 3; }
+.room .arena .prompt__text { font-size: clamp(24px, 2.4vw, 36px); line-height: 1.13; max-width: 32ch; }
+.room .arena .prompt-help, .room .arena .party-instruction { text-align: left; }
+.room .arena__stages > .vision-controls { position: absolute; z-index: 5; left: 12px; top: 10px; max-width: 60%; }
+.room .arena__stages > .vision-controls button { color: #e8ebdd; background: #171d16dc; border: 1px solid #7b876c; font-size: 11px; }
+.room .arena > .arena__stages { grid-area: stages; min-height: 0; max-height: none; grid-template-columns: 1fr 1fr; gap: 20px; }
+.room .arena .stage { border-radius: 10px; }
+.room .arena .stage__bar { min-height: 36px; }
+.room .arena .stage__video, .room .arena .evidence { object-fit: contain; }
+.room .arena > .actions {
+  grid-area: actions; position: static; min-height: 104px; padding: 12px;
+  border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: none;
+  align-self: stretch; justify-content: center;
+}
+.room .arena .actions__row { width: 100%; }
+.room .arena .lockin { flex: 1; min-height: 54px; background: var(--acid); color: var(--acid-ink); border-radius: 8px; touch-action: manipulation; box-shadow: 0 4px 0 #6b892b; }
+.room .arena .lockin:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #6b892b; }
+.room .arena .lockin:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.room .arena .actions__pass { min-width: 72px; min-height: 48px; }
+.room .arena .actions__note { font-size: 12px; line-height: 1.4; margin: 0; }
+.room .arena .actions--waiting { gap: 6px; }
+.room .arena .actions--waiting .actions__note::before { display: none; }
+.room .arena .actions--waiting > svg { color: var(--acid-text); }
+.room .arena .actions--result { display: flex; flex-direction: column; gap: 8px; }
+.room .arena .actions__headline { font-size: 24px; }
+.room .arena > .duel-actors { grid-area: actors; align-self: end; }
+.room .arena .duel-actors__figure { height: 88px; }
+.room .arena .duel-actors__figure .hero-avatar { width: 80px; }
+.room .arena .duel-actors__name { font-size: 11px; margin-top: 0; }
+.room .arena .duel-actors__stage { border-bottom: 0; padding-bottom: 0; }
+.room .arena .duel-actors__figure::before { width: 78px; }
+.room .arena .timer { width: 100%; max-width: 570px; }
+.room .arena .timer__value { font-family: var(--font-ui); font-size: 34px; font-weight: 850; }
+.room .arena .timer__track { height: 5px; }
+.room .arena .meter { max-width: 570px; }
+.meter__fill { width: 100%; transform-origin: left; transition: transform 140ms linear; }
+.meter__label { min-width: 12ch; text-align: right; color: var(--text-dim); font-size: 11px; }
+.meter--hit .meter__label { color: var(--acid-text); }
+.room .scorestrip__target { min-width: 80px; }
+.room .scorestrip__target span { max-width: 12ch; text-align: center; font-size: 10px; }
+.room .scorestrip__name { font-size: 15px; }
+.room .scorestrip__score { font-size: 34px; }
+.evidence.evidence--mirrored { transform: scaleX(-1); animation: captured-in 160ms ease-out both; }
+.capture-flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; animation: capture-flash 220ms ease-out; }
+.capture-guide { position: absolute; inset: 24%; opacity: .5; pointer-events: none; }
+.capture-guide i { position: absolute; width: 22px; height: 22px; border: solid white; border-width: 2px 0 0 2px; }
+.capture-guide i:nth-child(2) { right: 0; transform: rotate(90deg); }
+.capture-guide i:nth-child(3) { right: 0; bottom: 0; transform: rotate(180deg); }
+.capture-guide i:nth-child(4) { bottom: 0; transform: rotate(270deg); }
+.pending-spin { animation: pending-spin 1s linear infinite; }
+.judging-scan, .recovery-signal { animation: signal-breathe 1.6s ease-in-out infinite; }
+.conn__latency { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.conn--slow, .conn--slow .conn__latency { color: var(--warn); }
+.conn--slow i { background: var(--warn); }
+.connection-recovery { z-index: 50; }
+.connection-recovery .overlay__inner { display: grid; justify-items: center; gap: 16px; max-width: 460px; padding: 24px; }
+.connection-recovery h2 { font-size: 30px; }
+.connection-recovery p { line-height: 1.5; }
+.leave-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+.round-comparison__side.is-winner .round-comparison__player { color: var(--acid-text); }
+.round-comparison__time { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.match-insight { width: min(100%, 590px); margin-inline: auto; }
+.match-insight__stats { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--line); padding-block: 16px; }
+.match-insight__stats > div { display: grid; gap: 8px; text-align: center; }
+.match-insight__stats > div + div { border-left: 1px solid var(--line); }
+.match-insight__stats span { font-size: 12px; color: var(--text-dim); }
+.match-insight__stats strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.match-insight__stats small { font-size: 12px; color: var(--text-faint); font-weight: 500; }
+.match-insight > p { text-align: center; color: var(--text-dim); font-size: 13px; line-height: 1.5; margin-top: 12px; }
+.room .payout__xp, .room .over--win .over__title { color: var(--acid-text); }
+.payout__cosmetic { display: flex; align-items: center; gap: 16px; border-top: 1px solid var(--line-strong); padding-top: 12px; text-align: left; }
+.payout__cosmetic > span { display: grid; gap: 6px; }
+.payout__cosmetic strong { font-size: 19px; }
+.payout__cosmetic small { font-size: 12px; color: var(--text-dim); }
+.payout__cosmetic .eyebrow { color: var(--acid-text); }
+.sound-mixer { display: grid; gap: 18px; padding-block: 12px; }
+.sound-mixer input { accent-color: var(--acid-text); min-height: 28px; cursor: pointer; }
+
+/* Home prioritizes a rival and a tangible next reward over account statistics. */
+.home .hero-band { background: var(--s-1); border-color: var(--line-strong); }
+.hero-band__eyebrow { color: var(--acid-text); margin-bottom: 12px; }
+.hero-band__objective { color: var(--text-dim); font-size: 13px; margin-bottom: 4px; }
+.home .hero-plinth { position: relative; isolation: isolate; }
+.home .hero-plinth::before { content: ''; position: absolute; z-index: -1; width: 210px; height: 210px; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--s-2); }
+.home .playbutton { box-shadow: 0 5px 0 #6b892b; margin-bottom: 5px; }
+.home .playbutton:active:not(:disabled) { box-shadow: 0 1px 0 #6b892b; transform: translateY(4px); }
+.home .hero-band__friend { border-color: transparent; background: transparent; }
+.home .hero-band__friend:hover { background: var(--s-2); }
+.home .stats { gap: 0; padding-block: 8px; border-block: 1px solid var(--line); }
+.home .stat { border: 0; border-radius: 0; background: none; padding-block: 8px; }
+.home .stat + .stat { border-left: 1px solid var(--line); }
+.milestone { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.milestone__rank { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.milestone__body { flex: 1; min-width: 0; display: grid; gap: 8px; }
+.milestone__body h2 { font-size: 18px; }
+.milestone__body p { color: var(--text-dim); font-size: 12px; line-height: 1.4; }
+.milestone__body .bar { margin: 4px 0; }
+.placement-path { display: flex; gap: 8px; }
+.placement-path > span { display: grid; place-items: center; height: 26px; flex: 1; border: 1px solid var(--line-strong); background: var(--s-2); color: var(--text-faint); font-size: 11px; font-weight: 750; border-radius: 3px; }
+.placement-path > .is-complete { background: var(--acid); color: var(--acid-ink); border-color: var(--acid); }
+.placement-path > .is-next { border-color: var(--acid-text); color: var(--acid-text); }
+.milestone__reward { display: flex; align-items: center; gap: 18px; padding: 16px 20px; text-align: left; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--s-1); color: var(--warn); cursor: pointer; transition: background var(--d-ui); }
+.milestone__reward:hover { background: var(--s-2); }
+.milestone__reward > span { display: grid; gap: 6px; flex: 1; }
+.milestone__reward strong { font-size: 18px; color: var(--text); }
+.milestone__reward small { font-size: 12px; color: var(--text-dim); }
+@media (max-width: 760px) {
+  .room .over { width: calc(100% - 28px); gap: 12px; padding-block: 16px 160px; }
+  .room .over .celebration--finale { height: 64px; width: 120px; }
+  .room .over .celebration--finale .celebration__badge { padding: 8px; }
+  .room .over .celebration--finale svg { width: 32px; height: 32px; }
+  .room .over .duel-actors--match .duel-actors__figure { height: 118px; }
+  .room .over .duel-actors--match .hero-avatar { width: 102px; }
+  .room .over .duel-actors__caption { margin-top: 4px; }
+  .room .over__side { padding: 8px 10px; }
+  .room .over__number { font-size: 34px; }
+  .room .over .payout { padding: 14px; gap: 8px; }
+  .room .over .payout__xp { font-size: 36px; }
+  .room .over .match-insight__stats { padding-block: 12px; }
+  .room .over .match-insight__stats span { font-size: 11px; }
+  .room .over .match-insight__stats strong { font-size: 20px; }
+  .room .over__actions {
+    position: fixed; z-index: 20; left: 50%; bottom: 0; transform: translateX(-50%);
+    display: grid; grid-template-columns: 1fr 1fr; width: min(100%, 760px);
+    padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+    background: var(--s-0); border-top: 1px solid var(--line-strong);
+  }
+  .room .over__actions > .btn--primary { grid-column: 1 / -1; min-height: 48px; }
+  .room .over__actions > .btn:not(.btn--primary) { min-height: 42px; font-size: 12px; padding-inline: 8px; }
+  .room .over__actions > .btn--ghost:last-child:nth-child(2) { grid-column: 1 / -1; }
+  .milestone { grid-template-columns: 1fr; gap: 16px; }
+  .milestone__rank { gap: 12px; }
+  .milestone__rank > svg { width: 52px; }
+  .milestone__body h2 { font-size: 16px; }
+  .milestone__reward { padding: 12px 16px; }
+  .home .hero-plinth::before { width: 160px; height: 160px; }
+}
+
+/* The VS moment is a real identity reveal. It never blocks the ready button. */
+.versus-intro { position: relative; display: grid; grid-template-columns: 1fr 1fr; width: 100%; border-block: 1px solid var(--line-strong); background: var(--s-1); overflow: hidden; }
+.versus-intro__fighter { display: flex; align-items: center; gap: 18px; min-width: 0; padding: 12px 24px; border-left: 4px solid var(--seat-a); }
+.versus-intro__fighter--1 { flex-direction: row-reverse; text-align: right; border-left: 0; border-right: 4px solid var(--seat-b); }
+.versus-intro__portrait { flex-shrink: 0; width: 90px; height: 90px; overflow: hidden; border-radius: 50%; background: var(--s-3); border: 1px solid var(--line-strong); }
+.versus-intro__portrait .hero-avatar { width: 90px; }
+.versus-intro__identity { display: flex; flex-direction: column; min-width: 0; gap: 6px; }
+.versus-intro__identity strong { font-size: 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.versus-intro__identity > span:last-child { font-size: 12px; color: var(--text-dim); }
+.versus-intro__fighter--0 .eyebrow { color: var(--seat-a); }
+.versus-intro__fighter--1 .eyebrow { color: var(--seat-b); }
+.versus-intro__seal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-9deg); font-size: 28px; font-weight: 950; font-style: italic; color: var(--acid-text); background: var(--s-0); padding: 12px 9px; border: 1px solid var(--line-strong); }
+.versus-intro.is-arriving .versus-intro__fighter--0 { animation: rival-left 500ms var(--ease) both; }
+.versus-intro.is-arriving .versus-intro__fighter--1 { animation: rival-right 500ms var(--ease) both; }
+.lobby:has(.versus-intro) .lobby__stages .vs { display: none; }
+
+@keyframes capture-flash { from { opacity: .55; } to { opacity: 0; } }
+@keyframes captured-in { from { opacity: .6; } to { opacity: 1; } }
+@keyframes pending-spin { to { transform: rotate(360deg); } }
+@keyframes signal-breathe { 50% { opacity: .4; } }
+@keyframes rival-left { from { opacity: 0; transform: translateX(-50px); } }
+@keyframes rival-right { from { opacity: 0; transform: translateX(50px); } }
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .room--battle .room__bar { flex-basis: 44px; min-height: 44px; }
+  .room .arena {
+    width: calc(100% - 24px); height: calc(100dvh - 44px); min-height: 560px;
+    grid-template-columns: 1fr; grid-template-areas: 'scores' 'prompt' 'stages' 'actors' 'actions';
+    grid-template-rows: auto auto minmax(190px, 1fr) 58px auto;
+    gap: 8px; padding: 8px 0 max(12px, env(safe-area-inset-bottom));
+  }
+  .room .arena > .scorestrip { min-height: 48px; }
+  .room .arena .scorestrip__name { font-size: 12px; }
+  .room .arena .scorestrip__score { font-size: 26px; }
+  .room .arena .scorestrip__target { min-width: 58px; }
+  .room .arena .scorestrip__target b { font-size: 17px; }
+  .room .arena .scorestrip__pips { display: none; }
+  .room .arena .scorestrip__you { display: none; }
+  .room .arena > .prompt { display: flex; align-items: stretch; padding: 2px 0; gap: 5px; }
+  .room .arena .prompt__meta { gap: 8px; }
+  .room .arena .prompt__text { font-size: 23px; }
+  .room .arena .prompt__meta .eyebrow { font-size: 10px; }
+  .room .arena .badge { font-size: 10px; padding-block: 2px; }
+  .room .arena .timer__value { font-size: 20px; }
+  .room .arena > .arena__stages { display: block; position: relative; width: 100%; height: 100%; max-height: calc((100vw - 24px) * .75); align-self: center; }
+  .room .arena__stages > .stage:first-of-type { position: absolute; inset: 0; aspect-ratio: auto; }
+  .room .arena__stages > .stage:nth-of-type(2) { position: absolute; top: 8px; right: 8px; width: 30%; height: auto; aspect-ratio: 4 / 3; z-index: 3; box-shadow: 0 4px 14px #0008; border-width: 2px; }
+  .room .arena__stages .stage__bar { position: absolute; left: 0; bottom: 0; right: 0; min-height: 28px; border: 0; background: #0a0c07db; color: #fff; }
+  .room .arena__stages > .stage:nth-of-type(2) .stage__bar { padding-inline: 5px; min-height: 21px; gap: 4px; }
+  .room .arena__stages > .stage:nth-of-type(2) .stage__name { font-size: 10px; }
+  .room .arena__stages > .stage:nth-of-type(2) .lockedbadge { padding: 4px 6px; font-size: 9px; }
+  .room .arena__stages > .vision-controls { left: 8px; top: 8px; }
+  .room .arena__stages > .vision-controls button { min-height: 28px; font-size: 10px; }
+  .room .arena .vision-controls__rate { display: none; }
+  .room .arena > .actions { min-height: 94px; padding: 10px; }
+  .room .arena .actions__note { font-size: 11px; }
+  .room .arena .actions__key { display: none; }
+  .room .arena > .duel-actors { display: block; }
+  .room .arena .duel-actors__figure { height: 58px; }
+  .room .arena .duel-actors__figure .hero-avatar { width: 55px; }
+  .room .arena .duel-actors__name { display: none; }
+  .room .arena--roundResult { grid-template-areas: 'scores' 'prompt' 'stages' 'actors' 'actions'; }
+  .room .arena--roundResult { grid-template-rows: auto auto minmax(190px, 1fr) auto auto; }
+  .room .arena--roundResult .vision-controls { display: none; }
+  .room .arena--roundResult > .duel-actors { display: block; }
+  .room .arena--roundResult .duel-actors__figure { height: 58px; }
+  .room .arena--roundResult .duel-actors__figure .hero-avatar { width: 55px; }
+  .room .arena--roundResult .duel-actors__name { display: none; }
+  .room .arena--roundResult .arena__stages { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .room .arena--roundResult > .arena__stages { max-height: calc((100vw - 32px) * .375); }
+  .room .arena--roundResult .arena__stages > .stage { position: relative; inset: auto; width: auto; height: 100%; aspect-ratio: auto; }
+  .versus-intro__fighter { padding: 12px 10px; flex-direction: column; text-align: center; gap: 8px; }
+  .versus-intro__identity strong { font-size: 17px; max-width: 130px; }
+  .versus-intro__identity > span:last-child { font-size: 10px; }
+  .versus-intro__seal { font-size: 22px; padding: 8px; }
+  .versus-intro__portrait, .versus-intro__portrait .hero-avatar { width: 68px; height: 68px; }
+  .lobby:has(.versus-intro) .lobby__stages { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 760px) and (max-height: 740px) and (orientation: portrait) {
+  .room .arena:not(.arena--roundResult) { grid-template-areas: 'scores' 'prompt' 'stages' 'actions'; grid-template-rows: auto auto minmax(170px, 1fr) auto; min-height: 520px; }
+  .room .arena:not(.arena--roundResult) > .duel-actors { display: none; }
+  .room .arena--roundResult { min-height: 600px; }
+}
+@media (max-height: 620px) and (orientation: landscape) {
+  .room .arena { min-height: 410px; height: calc(100dvh - 44px); width: calc(100% - 24px); gap: 6px 12px; grid-template-rows: 42px auto minmax(160px, 1fr) auto; }
+  .room .arena > .scorestrip { min-height: 42px; }
+  .room .arena .prompt__text { font-size: 21px; }
+  .room .arena .prompt__meta, .room .arena .meter, .room .arena .prompt-help { display: none; }
+  .room .arena .duel-actors__figure { height: 54px; }
+  .room .arena .duel-actors__figure .hero-avatar { width: 50px; }
+  .room .arena .duel-actors__name, .room .arena .actions__note { display: none; }
+  .room .arena > .actions { min-height: 60px; padding: 6px; }
+  .room .arena .lockin { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .capture-flash, .capture-guide { display: none; }
+  .versus-intro *, .pending-spin, .judging-scan, .recovery-signal, .evidence.evidence--mirrored { animation: none !important; }
+  .room .arena .lockin:active:not(:disabled) { transform: none; }
+}

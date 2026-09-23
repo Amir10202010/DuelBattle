@@ -380,7 +380,6 @@ export class Gateway {
       this.fail(session, 'rejected', 'That duel was opened for two players. Ask for an invite.');
       return;
     }
-    // Releasing the current seat first — even when it is in this same room —
     if (room.ranked) {
       this.fail(
         session,
@@ -389,6 +388,7 @@ export class Gateway {
       );
       return;
     }
+    // Releasing the current seat first — even when it is in this same room —
     // is what stops one socket from occupying both sides of a match.
     this.leaveCurrentRoom(session, now);
     this.seat(session, room, room.join(name, now), now);
@@ -690,7 +690,7 @@ export class Gateway {
         session.socket.terminate();
         continue;
       }
-      if (!session.room && now - session.connectedAt > config.idleSocketTtlMs) {
+      if (isIdle(session, this.queued.has(session.key), now, config.idleSocketTtlMs)) {
         session.socket.close(4001, 'idle');
         continue;
       }
@@ -703,6 +703,26 @@ export class Gateway {
 function send(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState !== socket.OPEN) return;
   socket.send(JSON.stringify(message));
+}
+
+/**
+ * Whether a socket is doing nothing and may be recycled.
+ *
+ * Holding a seat is obviously not idle. Neither is waiting for an opponent,
+ * and that is the case this missed: on a quiet server a queue wait is
+ * unbounded, so a player who pressed the button and waited was reaped as a
+ * squatter — and the close carries no error frame, so their screen kept
+ * promising a search the server had already forgotten. Exported for the test
+ * that pins it, because reaching the sweep itself means waiting ten minutes.
+ */
+export function isIdle(
+  session: Pick<Session, 'room' | 'connectedAt'>,
+  queued: boolean,
+  now: number,
+  ttlMs: number,
+): boolean {
+  if (session.room || queued) return false;
+  return now - session.connectedAt > ttlMs;
 }
 
 function isFrameMessage(parsed: unknown): boolean {

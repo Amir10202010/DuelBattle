@@ -1,5 +1,6 @@
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Radio, Swords } from 'lucide-react';
 import { opponentOf, type PublicMatchState } from '@battle/shared';
 import type { MatchStore, StoreSnapshot } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
@@ -12,6 +13,7 @@ import { MAX_FRAME_BYTES } from '@battle/shared';
 import { Announcer } from '../components/Announcer.jsx';
 import { ConnectionBadge, PausedOverlay } from '../components/Hud.jsx';
 import { AudioControls } from '../components/AudioControls.jsx';
+import { Dialog } from '../components/Dialog.jsx';
 import { useAnimationClock } from '../hooks/useNow.js';
 import { useMatchSound } from '../hooks/useMatchSound.js';
 import { useWakeLock } from '../hooks/useWakeLock.js';
@@ -50,7 +52,8 @@ interface RoomProps {
 export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAnother }: RoomProps) {
   useUiPreferences();
   const cameraReady = camera.status === 'ready';
-  const connected = snapshot.status === 'open';
+  const connected = snapshot.status === 'open' && !snapshot.synchronizing;
+  const [leaving, setLeaving] = useState(false);
 
   // The server needs to know about the camera again after every reconnect, so
   // this deliberately re-runs when the connection comes back.
@@ -87,7 +90,7 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
   const opponent = opponentOf(match, youId);
 
   return (
-    <div className="room" id="main-content" role="main">
+    <div className={`room ${matchRunning ? 'room--battle' : ''}`} id="main-content" role="main">
       <Announcer match={match} youId={youId} />
       {/* The finisher only. A scored point plays inside the arena, under the
           cameras, where it belongs to the round rather than to the window. */}
@@ -95,13 +98,13 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
         <span className="room__code mono" title={tr('Room code')}>
           {match.roomCode}
         </span>
-        <span className="room__phase eyebrow">{tr(phaseLabel(match))}</span>
+        <span className="room__phase eyebrow"><Swords size={15} />{tr(phaseLabel(match))}</span>
         <div className="room__right">
           <ConnectionBadge status={snapshot.status} latencyMs={snapshot.latencyMs} />
           <AudioControls />
           <button
             className="btn btn--sm room__leave"
-            onClick={onLeave}
+            onClick={() => matchRunning ? setLeaving(true) : onLeave()}
             title={tr(
               match.ranked && matchRunning ? 'Leaving can count as a ranked loss' : 'Leave room',
             )}
@@ -142,10 +145,27 @@ export function Room({ store, snapshot, match, youId, camera, onLeave, onFindAno
           evidence={snapshot.evidence}
           standings={snapshot.standings}
           now={now}
+          connected={connected && !leaving}
         />
       )}
 
-      {match.paused && <PausedOverlay paused={match.paused} now={now} opponent={opponent} />}
+      {!connected ? <div className="overlay overlay--paused connection-recovery" role="alert" aria-live="polite">
+        <div className="overlay__inner">
+          <Radio size={38} className="recovery-signal" aria-hidden="true" />
+          <p className="eyebrow">{tr('Connection interrupted')}</p>
+          <h2 className="display">{tr('Rejoining the battle')}</h2>
+          <p className="dim">{tr('Restoring your connection. We will sync the round before you continue.')}</p>
+          <button className="btn" onClick={() => setLeaving(true)}>{tr('Leave room')}</button>
+        </div>
+      </div> : match.paused && <PausedOverlay paused={match.paused} now={now} opponent={opponent} />}
+      <Dialog open={leaving} onClose={() => setLeaving(false)} title={tr('Leave this battle?')}>
+        <h2>{tr('Leave this battle?')}</h2>
+        <p className="dim">{tr(match.ranked && matchRunning ? 'Leaving now forfeits the match and may pause ranked play for five minutes.' : 'Your opponent will see that you left the room.')}</p>
+        <div className="leave-actions">
+          <button className="btn btn--primary" onClick={() => setLeaving(false)}>{tr('Stay in the battle')}</button>
+          <button className="btn btn--danger" onClick={onLeave}>{tr(match.ranked && matchRunning ? 'Forfeit' : 'Leave room')}</button>
+        </div>
+      </Dialog>
     </div>
   );
 }
@@ -178,11 +198,11 @@ function phaseLabel(match: PublicMatchState): string {
  */
 function useFrameSender(store: MatchStore, camera: CameraState, active: boolean): void {
   const seqRef = useRef(0);
-  const captureRef = useRef(createLiveCapture());
+  const captureRef = useRef<ReturnType<typeof createLiveCapture> | null>(null);
 
   useEffect(() => {
     if (!active) return;
-    const capture = captureRef.current;
+    const capture = captureRef.current ??= createLiveCapture();
     let stopped = false;
     let sentAt = 0;
     let animation: number | null = null;

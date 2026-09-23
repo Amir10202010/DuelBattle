@@ -1,11 +1,11 @@
 import { ArrowRight, Flame, Gem, Target, Trophy, Swords } from 'lucide-react';
-import { isPlaced, nextRank, rankFor, type PublicProfile } from '@battle/shared';
+import { type PublicProfile } from '@battle/shared';
 import type { BoardState, MatchStore } from '../net/store.js';
 import { tr, useUiPreferences } from '../i18n/index.js';
 import { HomeHero } from '../components/home/HomeHero.jsx';
 import { BattleHistory } from '../components/BattleHistory.jsx';
 import { DailyReward } from '../components/rewards/DailyReward.jsx';
-import { RankEmblem } from '../components/GameArt.jsx';
+import { NextMilestone } from '../components/home/NextMilestone.jsx';
 
 /**
  * Home is the game, not an account page.
@@ -29,9 +29,6 @@ export function Home({
   onNavigate: (path: string) => void;
 }) {
   useUiPreferences();
-  const next = nextRank(profile.rating);
-  const placed = isPlaced(profile.matchesPlayed);
-  const rank = rankFor(profile.rating);
   const winRate = profile.matchesPlayed
     ? Math.round((profile.wins / profile.matchesPlayed) * 100)
     : null;
@@ -39,6 +36,7 @@ export function Home({
   return (
     <main className="page home">
       <HomeHero profile={profile} store={store} offline={offline} onNavigate={onNavigate} />
+      <NextMilestone profile={profile} onNavigate={onNavigate} />
 
       <section className="stats" aria-label={tr('Your record')}>
         <div className="stat">
@@ -94,40 +92,6 @@ export function Home({
         </section>
 
         <div className="home__aside">
-          <section className="panel climb">
-            <div className="panel__head">
-              <h2>{tr(next ? 'Next rank' : 'Top rank')}</h2>
-              <span className="eyebrow">{tr(placed ? rank.label : 'Placement')}</span>
-            </div>
-            <div className="climb__body">
-              <RankEmblem rating={next?.rank.floor ?? profile.rating} size={74} />
-              <div>
-                <strong>{tr(next?.rank.label ?? 'Household Name')}</strong>
-                <span className="dim">
-                  {tr(
-                    next
-                      ? `${next.pointsAway} rating to go`
-                      : 'Nothing above you. Defend it.',
-                  )}
-                </span>
-              </div>
-            </div>
-            <div
-              className="bar"
-              role="progressbar"
-              aria-valuenow={Math.round(rank.progress * 100)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={tr('Progress to the next rank')}
-            >
-              <i style={{ width: `${Math.round(rank.progress * 100)}%` }} />
-            </div>
-            <button className="text-link" onClick={() => onNavigate('/ranks')}>
-              {tr('See the ladder')}
-              <ArrowRight size={15} />
-            </button>
-          </section>
-
           <button className="ladder-teaser" onClick={() => onNavigate('/leaderboard')}>
             <Trophy size={20} />
             <span>

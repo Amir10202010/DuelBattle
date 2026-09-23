@@ -59,13 +59,16 @@ interface ScoreStripProps {
  */
 export const ScoreStrip = memo(function ScoreStrip({ match, youId }: ScoreStripProps) {
   useUiPreferences();
-  const seats = match.seats.map((id) => (id ? (match.players[id] ?? null) : null));
+  const ordered = youId && match.seats.includes(youId)
+    ? [youId, ...match.seats.filter((id) => id !== youId)]
+    : match.seats;
+  const seats = ordered.map((id) => (id ? (match.players[id] ?? null) : null));
   const target = match.settings.winTarget;
   const scores = seats.map((player) => player?.score ?? 0);
   const best = Math.max(...scores);
 
   return (
-    <div className="scorestrip">
+    <div className="scorestrip" role="group" aria-label={tr('Match score')}>
       {seats.map((player, index) => {
         const score = scores[index] ?? 0;
         const won = match.phase === 'roundResult' && match.round?.outcome?.winnerId === player?.id;
@@ -78,7 +81,7 @@ export const ScoreStrip = memo(function ScoreStrip({ match, youId }: ScoreStripP
         ].filter(Boolean).join(' ');
 
         return (
-          <div key={index} className={classes}>
+          <div key={index} className={classes} data-player={player?.id}>
             <span className="scorestrip__name">
               {player?.name ?? '—'}
               {player && player.id === youId && (
@@ -106,7 +109,7 @@ export const ScoreStrip = memo(function ScoreStrip({ match, youId }: ScoreStripP
       {/* What both sides are racing to, once, between them. */}
       <div className="scorestrip__target" aria-hidden="true">
         <b>{target}</b>
-        <span>{tr('to win')}</span>
+        <span>{tr(scores.some((score) => score === target - 1) ? 'Match point' : 'to win')}</span>
       </div>
     </div>
   );
@@ -124,9 +127,10 @@ export const ConnectionBadge = memo(function ConnectionBadge({
   useUiPreferences();
   if (status === 'open') {
     return (
-      <span className="conn conn--ok" title={tr(latencyMs === null ? undefined : `${latencyMs}ms`)}>
+      <span className={`conn ${latencyMs !== null && latencyMs >= 250 ? 'conn--slow' : 'conn--ok'}`} title={tr(latencyMs !== null && latencyMs >= 250 ? 'Connection is slow. Your answer may take longer to confirm.' : 'Connected')}>
         <i aria-hidden="true" />
         <span className="sr-only">{tr('Connected')}</span>
+        {latencyMs !== null && <span className="conn__latency">{latencyMs} ms</span>}
       </span>
     );
   }

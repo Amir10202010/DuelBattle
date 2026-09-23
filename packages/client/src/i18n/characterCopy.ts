@@ -75,6 +75,12 @@ export const characterRu: Record<string, string> = {
   'or use email': 'или по почте',
   'Google sign-in did not finish. Try again or use email.':
     'Не получилось войти через Google. Попробуй ещё раз или войди по почте.',
+  'Google sign-in is switched off right now. Use email instead.':
+    'Вход через Google сейчас выключен. Войди по почте.',
+  'Too many sign-in attempts. Wait a moment and try again.':
+    'Слишком много попыток входа. Подожди немного и попробуй снова.',
+  'This email already signs in with a password. Use the form below.':
+    'Эта почта уже входит по паролю. Заполни форму ниже.',
   'Could not load sign-in options. Reload and try again.':
     'Не удалось загрузить вход. Обнови страницу.',
   'Join the game': 'Присоединяйся',

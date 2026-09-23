@@ -4,9 +4,9 @@ import { useSceneVision } from '../hooks/useSceneVision.js';
 import { VisionOverlay } from '../components/VisionOverlay.js';
 import { RoundComparison } from '../components/RoundComparison.js';
 import { Celebration, roundStreak } from '../components/Celebration.jsx';
-import { Camera, Check } from 'lucide-react';
+import { Camera, Check, ScanLine, LoaderCircle } from 'lucide-react';
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import {
   colorSwatch,
   customChallenge,
@@ -19,7 +19,6 @@ import {
   type PublicProfile,
   type RoundJudging,
   type PublicPlayer,
-  MAX_IMAGE_BYTES,
 } from '@battle/shared';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
@@ -27,8 +26,7 @@ import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
 import { ScoreStrip, TimerBar } from '../components/Hud.jsx';
 import { useLocalDetection } from '../hooks/useVision.js';
 import { useCountdownSound } from '../hooks/useMatchSound.js';
-import { sound } from '../media/sound.js';
-import { EVIDENCE_QUALITY, createEvidenceCapture } from '../media/capture.js';
+import { useRoundAction } from '../hooks/useRoundAction.js';
 import { DuelActors } from '../components/battle/DuelActors.jsx';
 
 interface ArenaProps {
@@ -41,20 +39,18 @@ interface ArenaProps {
   /** Loadouts, so the point animation swings the weapon somebody actually owns. */
   standings: Record<string, PublicProfile>;
   now: number;
+  connected?: boolean;
 }
 
-export function Arena({ store, match, youId, camera, evidence, standings, now }: ArenaProps) {
+export function Arena({ store, match, youId, camera, evidence, standings, now, connected = true }: ArenaProps) {
   useUiPreferences();
   const round = match.round;
   const challenge = currentChallenge(match);
   const you = match.players[youId] ?? null;
   const opponentId = opponentIdOf(match, youId);
   const opponent = opponentOf(match, youId);
-  const yourSeat = you?.seat ?? 0;
-  const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
-
-  const evidenceCapture = useRef(createEvidenceCapture());
-  const [submitting, setSubmitting] = useState(false);
+  const action = useRoundAction({ match, youId, camera, store, connected });
+  const submitting = action.pending !== null;
 
   const isChallenge = match.phase === 'challenge';
   const locked = Boolean(you?.submitted);
@@ -66,48 +62,15 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
     challenge,
     roundId: round?.id ?? null,
     phase: match.phase,
+    active: connected && !match.paused && !done && !submitting,
   });
-
-  useEffect(() => {
-    setSubmitting(false);
-  }, [round?.id, match.phase]);
-
-  // A lost acknowledgement or rejected image must leave a way to try again.
-  // Duplicate accepted submissions remain rejected by the authoritative server.
-  useEffect(() => {
-    if (!submitting || locked) return;
-    const timeout = window.setTimeout(() => setSubmitting(false), 2500);
-    return () => window.clearTimeout(timeout);
-  }, [submitting, locked]);
-
-  const lockIn = useCallback(() => {
-    if (!round || !isChallenge || done || submitting) return;
-    const image = evidenceCapture.current.toBoundedDataUrl(camera.videoRef.current, EVIDENCE_QUALITY, 0.55, MAX_IMAGE_BYTES);
-    if (!image) return;
-    setSubmitting(true);
-    sound.play('lockIn');
-    store.submit(round.id, image);
-  }, [round, isChallenge, done, submitting, camera.videoRef, store]);
-
-  useEffect(() => {
-    if (!isChallenge || done) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== ' ' && e.key !== 'Enter') return;
-      const target = e.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName)) return;
-      e.preventDefault();
-      lockIn();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isChallenge, done, lockIn]);
 
   const tracking = useSceneVision(
     camera.videoRef,
     camera.status === 'ready',
     (match.phase === 'countdown' || isChallenge) && !match.paused,
   );
-  const showVision = isChallenge && !match.paused;
+  const showVision = isChallenge && !match.paused && !done && !submitting;
   const selfState =
     match.phase === 'roundResult' ? resultState(match, youId) : done ? 'locked' : 'live';
   const peerState =
@@ -118,14 +81,16 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
         : 'live';
 
   useCountdownSound(
-    match.phase === 'countdown',
+    match.phase === 'countdown' && !match.paused && connected,
     Math.max(0, ((match.phaseEndsAt ?? now) - now) / 1000),
   );
 
   return (
-    <div className="arena">
-      <PromptBand match={match} now={now} detection={detection} showMeter={!done} />
+    <div className={`arena arena--${match.phase}`}>
+      <ScoreStrip match={match} youId={youId} />
+      <PromptBand match={match} now={now} detection={detection} showMeter={!done && !submitting} />
 
+      <div className="arena__stages">
       <div className="vision-controls" data-status={tracking.status}>
         {tracking.status === 'unavailable' && <button onClick={tracking.retry}>{tr('Retry tracking')}</button>}
         <button onClick={tracking.toggle} aria-pressed={tracking.enabled} title={tr('Body, hands and objects')}>
@@ -137,20 +102,20 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
           )}
         </button>
       </div>
-      <div className="arena__stages">
         {/* The countdown belongs to the whole arena, not to one camera: both
             players are waiting for the same number. */}
         {match.phase === 'countdown' && <Countdown match={match} now={now} />}
         <StageFrame
-          seat={yourSeat}
+          seat={0}
           player={you}
           state={selfState}
           overlay={
             <>
               {camera.status !== 'ready' && <CameraTrouble camera={camera} />}
-              {match.phase === 'roundResult' && round && (
-                <EvidenceShot image={evidence[`${round.id}:${youId}`]} />
+              {(locked || action.pending === 'snap' || match.phase === 'judging' || match.phase === 'roundResult') && round && (
+                <EvidenceShot image={evidence[`${round.id}:${youId}`] ?? action.image ?? undefined} mirrored />
               )}
+              {action.pending === 'snap' && <div className="capture-flash" aria-hidden="true" />}
               <DeadlineCue endsAt={match.phaseEndsAt} now={now} active={isChallenge && !done && !submitting && !match.paused} />
               {isChallenge && (locked || passed) && <LockedBadge passed={passed} />}
               {selfState === 'won' && round && (
@@ -160,6 +125,7 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
           }
         >
           <SelfVideo videoRef={camera.videoRef}>
+            {showVision && <div className="capture-guide" aria-hidden="true"><i /><i /><i /><i /></div>}
             {showVision && tracking.enabled && (
               <VisionOverlay tracking={tracking} mirrored region={detection.result?.region?.box} />
             )}
@@ -167,7 +133,7 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
         </StageFrame>
 
         <StageFrame
-          seat={theirSeat}
+          seat={1}
           player={opponent}
           state={peerState}
           overlay={
@@ -195,18 +161,14 @@ export function Arena({ store, match, youId, camera, evidence, standings, now }:
       <DuelActors match={match} youId={youId} standings={standings} placement="round" />
 
       <ActionRow
-        store={store}
         match={match}
         youId={youId}
         opponent={opponent}
         detection={detection}
         done={done}
         passed={passed}
-        submitting={submitting}
-        onLockIn={lockIn}
+        action={action}
       />
-
-      <ScoreStrip match={match} youId={youId} />
     </div>
   );
 }
@@ -349,13 +311,13 @@ function DetectionMeter({ detection, detector }: { detection: Detection; detecto
         <div
           className={`meter__fill ${matched ? 'is-hit' : ''}`}
           style={{
-            width: `${Math.round(progress * 100)}%`,
-            background: matched ? 'var(--lime)' : tint,
+            transform: `scaleX(${Math.min(1, Math.max(0, progress))})`,
+            background: matched ? 'var(--acid)' : tint,
           }}
         />
       </div>
       <span className="meter__label mono">
-        {tr(matched ? 'LOCKED' : `${Math.round(progress * 100)}%`)}
+        {tr(matched ? 'Ready to snap' : `${Math.round(progress * 100)}% match`)}
       </span>
     </div>
   );
@@ -405,10 +367,10 @@ function LockedBadge({ them = false, passed = false }: { them?: boolean; passed?
   );
 }
 
-function EvidenceShot({ image }: { image: string | undefined }) {
+function EvidenceShot({ image, mirrored = false }: { image: string | undefined; mirrored?: boolean }) {
   useUiPreferences();
   if (!image) return null;
-  return <img className="evidence" src={image} alt={tr('Submitted answer')} />;
+  return <img className={`evidence ${mirrored ? 'evidence--mirrored' : ''}`} src={image} alt={tr('Submitted answer')} />;
 }
 
 /**
@@ -442,37 +404,38 @@ function aimingHint(detector: DetectorSpec | null, judging?: RoundJudging): stri
 }
 
 function ActionRow({
-  store,
   match,
   youId,
   opponent,
   detection,
   done,
   passed,
-  submitting,
-  onLockIn,
+  action,
 }: {
-  store: MatchStore;
   match: PublicMatchState;
   youId: string;
   opponent: PublicPlayer | null;
   detection: Detection;
   done: boolean;
   passed: boolean;
-  submitting: boolean;
-  onLockIn: () => void;
+  action: ReturnType<typeof useRoundAction>;
 }) {
   useUiPreferences();
   const round = match.round;
 
   if (match.phase === 'challenge' && round) {
-    if (done || submitting) {
+    if (action.expired && !done && !action.pending) return <div className="actions actions--waiting" role="status">
+      <strong>{tr('Time is up')}</strong><p className="actions__note">{tr('Waiting for the round result.')}</p>
+    </div>;
+    if (done || action.pending) {
       return (
-        <div className="actions actions--waiting">
+        <div className="actions actions--waiting" role="status">
+          {action.pending ? <LoaderCircle className="pending-spin" size={22} /> : <Check size={22} />}
+          <strong>{tr(action.pending === 'snap' ? 'Sending your answer…' : action.pending === 'pass' ? 'Passing this round…' : passed ? 'Round passed' : 'Answer locked in')}</strong>
           <p className="actions__note">
             {tr(passed ? 'Passed. ' : '')}
             {tr(
-              opponent?.submitted || opponent?.passed
+              action.pending ? 'Waiting for the arena to confirm.' : opponent?.submitted || opponent?.passed
                 ? 'Scoring…'
                 : `Waiting for ${opponent?.name ?? 'your opponent'}…`,
             )}
@@ -488,7 +451,8 @@ function ActionRow({
         <div className="actions__row">
           <button
             className={`lockin ${matched || !isAuto ? 'lockin--hot' : ''}`}
-            onClick={onLockIn}
+            onClick={action.snap}
+            disabled={!action.canSnap}
           >
             {matched ? (
               <Check size={22} aria-hidden="true" />
@@ -499,12 +463,14 @@ function ActionRow({
           </button>
           <button
             className="btn actions__pass"
-            onClick={() => store.pass(round.id)}
+            onClick={action.pass}
+            disabled={!action.canPass}
             title={tr('Give up on this round')}
           >
             {tr('Pass')}
           </button>
         </div>
+        {action.error && <p className="error-text" role="alert">{tr(action.error)}</p>}
         <p className="actions__note dim">
           {tr(matched ? 'The camera has it. Be quick.' : aimingHint(detector, round.judging))}
           <kbd className="actions__key">{tr('Space')}</kbd>
@@ -513,10 +479,12 @@ function ActionRow({
     );
   }
 
-  if (match.phase === 'judging' && round?.aiPending) {
+  if (match.phase === 'judging') {
     return (
-      <div className="actions actions--waiting">
-        <p className="actions__note">{tr('The AI judge is looking at both answers…')}</p>
+      <div className="actions actions--waiting" role="status">
+        <ScanLine size={24} className="judging-scan" />
+        <strong>{tr('Comparing your answers')}</strong>
+        <p className="actions__note">{tr('Best answer wins. Speed breaks a close tie.')}</p>
       </div>
     );
   }

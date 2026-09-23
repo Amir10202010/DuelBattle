@@ -142,6 +142,26 @@ describe('Google sign-in round trip', () => {
     });
   });
 
+  /**
+   * An email account is not a Google account, and "try again" is the one
+   * instruction that cannot work for it. The player is told to sign in the
+   * way they actually registered.
+   */
+  it('tells a player who registered by email to sign in that way', async () => {
+    const { log } = await providers();
+    vi.spyOn(log, 'warn').mockImplementation(() => {});
+    const { blankProfile } = await import('../src/profiles.js');
+    db.save(blankProfile('acct-1', Date.now()));
+    db.sql
+      .prepare(
+        'INSERT INTO accounts(id,username,password_hash,recovery_hash,created_at,email) VALUES(?,?,?,?,?,?)',
+      )
+      .run('acct-1', 'p_acct_1', 'hash', 'recovery', Date.now(), 'player@example.test');
+    const res = await roundTrip({ sub: 'google-9', email: 'player@example.test' });
+    expect(res.headers.location).toBe('/login?auth_error=use_email');
+    expect(cookieValue(res, 'battle_session')).toBe('');
+  });
+
   it('names the missing configuration rather than failing silently', async () => {
     vi.stubEnv('GOOGLE_CLIENT_ID', '');
     vi.resetModules();

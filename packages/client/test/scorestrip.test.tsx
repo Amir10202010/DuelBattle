@@ -34,6 +34,13 @@ function scored(a: number, b: number, over: Partial<Parameters<typeof publicMatc
 }
 
 describe('the scoreboard', () => {
+  it('keeps the joining player on the left, matching the camera and result positions', () => {
+    const view = render({ match: scored(1, 2), youId: 'p2' });
+    expect(view.side(0)?.dataset.player).toBe('p2');
+    expect(view.side(0)?.querySelector('.scorestrip__score')?.textContent).toBe('2');
+    expect(view.side(1)?.dataset.player).toBe('p1');
+    view.unmount();
+  });
   it('shows both scores and the target once, between them', () => {
     const view = render({ match: scored(2, 1), youId: 'p1' });
     expect(view.side(0)?.querySelector('.scorestrip__score')?.textContent).toBe('2');

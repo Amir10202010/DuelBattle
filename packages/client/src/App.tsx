@@ -242,7 +242,7 @@ export function App() {
           <div
             className={`shell ${publicOnly ? 'shell--public' : 'shell--game'} ${page === 'home' ? 'shell--landing' : ''}`}
           >
-            <Nav page={page} profile={profile} onNavigate={route.go} publicOnly={publicOnly} />
+            <Nav page={page} profile={profile} onNavigate={route.go} publicOnly={publicOnly} pinned={page === 'onboarding'} />
             <Skeleton />
           </div>
         }
@@ -263,7 +263,7 @@ export function App() {
           <div
             className={`shell ${publicOnly ? 'shell--public' : 'shell--game'} ${page === 'home' ? 'shell--landing' : ''}`}
           >
-            <Nav page={page} profile={profile} onNavigate={route.go} publicOnly={publicOnly} />
+            <Nav page={page} profile={profile} onNavigate={route.go} publicOnly={publicOnly} pinned={page === 'onboarding'} />
             <div id="main-content" className="screen-content" key={page}>
               {content}
             </div>

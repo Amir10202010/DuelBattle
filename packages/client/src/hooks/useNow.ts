@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 /** Keeps the clock honest in a background tab, where rAF does not run. */
 const FALLBACK_INTERVAL_MS = 250;
+const DISPLAY_INTERVAL_MS = 100;
 
 /**
  * A clock for anything counting down.
@@ -18,15 +19,21 @@ export function useAnimationClock(active: boolean): number {
   useEffect(() => {
     if (!active) return;
     let frame = 0;
+    let renderedAt = 0;
     const tick = () => setNow(Date.now());
-    const loop = () => {
-      tick();
+    const loop = (time: number) => {
+      // React only needs tenths of a second. CSS interpolates the timer bar;
+      // video and vision have their own independent rendering clocks.
+      if (time - renderedAt >= DISPLAY_INTERVAL_MS) {
+        tick();
+        renderedAt = time;
+      }
       frame = requestAnimationFrame(loop);
     };
 
     tick();
     frame = requestAnimationFrame(loop);
-    const interval = window.setInterval(tick, FALLBACK_INTERVAL_MS);
+    const interval = window.setInterval(() => { if (document.hidden) tick(); }, FALLBACK_INTERVAL_MS);
     document.addEventListener('visibilitychange', tick);
 
     return () => {

@@ -214,7 +214,7 @@ describe('what the match paid out', () => {
 
   it('shows the XP a match was worth', () => {
     const view = render(props({ rewards: rewards(), standings: { p1: card() } }));
-    expect(view.container.querySelector('.payout__xp')?.textContent).toBe('+128');
+    expect(view.container.querySelector('.payout__xp')?.getAttribute('aria-label')).toBe('+128 XP');
     view.unmount();
   });
 

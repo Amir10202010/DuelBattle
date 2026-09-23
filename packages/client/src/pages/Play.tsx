@@ -172,7 +172,7 @@ export function Play({ store, invitedCode, joining, error, offline, queue, profi
             {tr(
               playMode === 'ranked' && profile
                 ? 'Find someone your size.'
-                : 'Someone is always up for it.',
+                : 'Find your next rival.',
             )}
           </h2>
           <button className="playbutton" onClick={find} disabled={busy}>
@@ -351,7 +351,7 @@ function Searching({
           {tr(
             alone
               ? 'You are first in line. The moment somebody else presses battle, you are in.'
-              : 'The skill range widens the longer you wait, so a long queue always ends.',
+              : queue.mode === 'ranked' ? 'The skill range widens while you wait. A match needs another available player.' : 'Matching you with the next available player.',
           )}
         </p>
 

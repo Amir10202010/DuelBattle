@@ -302,9 +302,26 @@
   color: var(--text-dim);
 }
 
+/*
+ * On a phone the wordmark is the mark alone.
+ *
+ * Coins, the audio control and the player chip come to a little over two
+ * hundred pixels and none of them can be dropped, so on a 375- or 360-point
+ * screen the seven letters of the wordmark are the one thing that does not
+ * fit. Spelled out they overran the gutter and the coin pill sat on top of
+ * them. The mark still carries the brand and is still the link home.
+ */
+.topbar__brand .wordmark__text {
+  display: none;
+}
+
 @media (min-width: 560px) {
   .topbar__where {
     display: flex;
+  }
+
+  .topbar__brand .wordmark__text {
+    display: initial;
   }
 }
 
@@ -318,6 +335,8 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  /* Never let the left half push the player chip off the screen. */
+  flex: 0 0 auto;
 }
 
 .topbar__coins {

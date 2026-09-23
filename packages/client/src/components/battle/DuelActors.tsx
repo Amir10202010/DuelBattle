@@ -1,11 +1,11 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useState, type CSSProperties } from 'react';
 import { gearById, type PublicMatchState, type PublicProfile } from '@battle/shared';
 import { Hero } from '../avatar/Hero.jsx';
 import { sound } from '../../media/sound.js';
 import { tr, useUiPreferences } from '../../i18n/index.js';
 
 /** The server decides the score. This persistent stage only performs it. */
-export function DuelActors({ match, youId, standings, placement }: {
+export const DuelActors = memo(function DuelActors({ match, youId, standings, placement }: {
   match: PublicMatchState; youId: string; standings: Record<string, PublicProfile>;
   placement: 'round' | 'match';
 }) {
@@ -62,5 +62,4 @@ export function DuelActors({ match, youId, standings, placement }: {
       {winner === youId ? `${match.players[loser ?? '']?.name ?? tr('Your opponent')} ${tr('is down')}` : `${match.players[winner]?.name ?? tr('Your opponent')} ${tr('takes it')}`}
     </p>}
   </section>;
-}
-
+});

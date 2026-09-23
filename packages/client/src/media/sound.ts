@@ -1,4 +1,5 @@
 import { preparePlayback, resumeAudio, type PlaybackState } from './audioPlayback.js';
+import { audioMix } from './audioMix.js';
 
 export type Cue =
   | 'purchase' | 'equip' | 'hit' | 'finisher'
@@ -183,7 +184,7 @@ class SoundBoard {
 
   setActive(active: boolean) {
     this.active = active;
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(active && !this.muted ? 1 : 0, this.ctx.currentTime, .02);
+    this.updateMix();
     if (active && !this.muted) void this.unlock();
   }
 
@@ -191,13 +192,18 @@ class SoundBoard {
     this.muted = muted;
     for (const listener of this.listeners) listener();
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(muted || !this.active ? 0 : 1, this.ctx.currentTime, 0.01);
+      this.updateMix();
     }
     try {
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
     } catch {
       // A remembered preference is a convenience, not a requirement.
     }
+  }
+
+  updateMix() {
+    const { master, sfx } = audioMix.getSnapshot();
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.active && !this.muted ? master * sfx : 0, this.ctx.currentTime, .02);
   }
 
   /** Safe to call on every gesture; only the first one does any work. */
@@ -216,7 +222,7 @@ class SoundBoard {
         return;
       }
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 1;
+      this.master.gain.value = this.muted ? 0 : audioMix.getSnapshot().master * audioMix.getSnapshot().sfx;
       this.master.connect(this.ctx.destination);
       this.ctx.onstatechange = () => {
         this.setPlayback(this.ctx?.state === 'running' ? 'running' : 'blocked');
@@ -279,3 +285,4 @@ class SoundBoard {
 }
 
 export const sound = new SoundBoard();
+audioMix.subscribe(() => sound.updateMix());

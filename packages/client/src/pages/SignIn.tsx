@@ -5,6 +5,28 @@ import { authRequest, type AuthState } from '../hooks/useAuth.js';
 import { Hero } from '../components/avatar/Hero.jsx';
 import { Auth as LegacyAuth } from './Auth.jsx';
 
+/**
+ * What a bounced Google sign-in left in the address bar.
+ *
+ * The server can only answer a navigated-to auth route with a page, so it
+ * sends the player here with the reason as a query parameter. Each one gets
+ * the sentence that tells them what to do next; an unrecognised one gets the
+ * general apology rather than nothing, because arriving with `auth_error` at
+ * all means something went wrong.
+ */
+const AUTH_ERRORS: Record<string, string> = {
+  google: 'Google sign-in did not finish. Try again or use email.',
+  google_unavailable: 'Google sign-in is switched off right now. Use email instead.',
+  busy: 'Too many sign-in attempts. Wait a moment and try again.',
+  use_email: 'This email already signs in with a password. Use the form below.',
+};
+
+function authErrorMessage(search: string): string {
+  const reason = new URLSearchParams(search).get('auth_error');
+  if (reason === null) return '';
+  return AUTH_ERRORS[reason] ?? AUTH_ERRORS.google!;
+}
+
 export function Auth({
   mode,
   onSuccess,
@@ -25,11 +47,7 @@ export function Auth({
   const [developmentCode, setDevelopmentCode] = useState('');
   const [providers, setProviders] = useState<{ google: boolean; email: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(
-    new URLSearchParams(location.search).has('auth_error')
-      ? 'Google sign-in did not finish. Try again or use email.'
-      : '',
-  );
+  const [error, setError] = useState(() => authErrorMessage(location.search));
   const registration = mode === 'register' || reset;
   useEffect(() => {
     const abort = new AbortController();
@@ -43,6 +61,12 @@ export function Auth({
           setError('Could not load sign-in options. Reload and try again.');
       });
     return () => abort.abort();
+  }, []);
+  // The reason has been read and shown; leaving it in the address bar would
+  // make a reload look like a second failed attempt.
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has('auth_error')) return;
+    history.replaceState(null, '', location.pathname);
   }, []);
   if (mode === 'recover' || legacy)
     return <LegacyAuth mode={mode} onSuccess={onSuccess} onNavigate={onNavigate} />;

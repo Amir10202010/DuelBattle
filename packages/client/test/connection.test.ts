@@ -133,6 +133,40 @@ describe('sending', () => {
 });
 
 describe('reconnection', () => {
+  it('recovers an open but silent connection without waiting for a close event', () => {
+    const connection = new Connection('ws://test/ws'); connection.connect(); latest().accept();
+    const stuck = latest();
+    vi.advanceTimersByTime(12_000);
+    expect(stuck.readyState).toBe(MockSocket.CLOSED);
+    expect(connection.connectionStatus).toBe('reconnecting');
+    vi.advanceTimersByTime(1000);
+    expect(latest()).not.toBe(stuck);
+    connection.close();
+  });
+  it('bounds a handshake that never opens', () => {
+    const connection = new Connection('ws://test/ws'); connection.connect();
+    const stuck = latest(); vi.advanceTimersByTime(9000);
+    expect(latest()).not.toBe(stuck);
+    connection.close();
+  });
+  it('keeps a responsive socket alive and reports changing latency', () => {
+    const connection = new Connection('ws://test/ws');
+    const latency = vi.fn(); connection.on('latency', latency);
+    connection.connect(); latest().accept(); const socket = latest();
+    for (let i = 0; i < 5; i++) {
+      vi.advanceTimersByTime(i === 0 ? 4000 : 3900);
+      const ping = socket.parsed().filter((message) => message.t === 'ping').at(-1)!;
+      vi.advanceTimersByTime(100);
+      socket.deliver({ t: 'pong', id: ping.id as number, serverTime: Date.now() });
+    }
+    expect(latest()).toBe(socket); expect(connection.connectionStatus).toBe('open');
+    expect(latency).toHaveBeenLastCalledWith(100); connection.close();
+  });
+  it('never reconnects after intentional shutdown', () => {
+    const connection = new Connection('ws://test/ws'); connection.connect(); latest().accept();
+    connection.close(); vi.advanceTimersByTime(60000);
+    expect(MockSocket.instances).toHaveLength(1);
+  });
   it('reports status through the whole cycle', () => {
     const connection = new Connection('ws://test/ws');
     const seen: string[] = [];
@@ -212,7 +246,7 @@ describe('clock sync', () => {
     expect(connection.serverNow() - Date.now()).toBeCloseTo(5_000, -1);
   });
 
-  it('ignores a slower sample that would skew the estimate', () => {
+  it('reports current latency while keeping a slower sample out of the clock estimate', () => {
     vi.setSystemTime(new Date('2024-01-01T00:00:00Z'));
     const connection = new Connection('ws://test/ws');
     connection.connect();
@@ -230,7 +264,7 @@ describe('clock sync', () => {
       vi.advanceTimersByTime(900);
       latest().deliver({ t: 'pong', id: second.id as number, serverTime: Date.now() + 400 });
     }
-    expect(connection.latencyMs).toBe(20);
+    expect(connection.latencyMs).toBe(920);
     expect(connection.serverNow() - Date.now()).toBeCloseTo(fast, 0);
   });
 
@@ -266,6 +300,7 @@ describe('message handling', () => {
     connection.connect();
     latest().accept();
     expect(() => latest().onmessage?.({ data: 'not json' })).not.toThrow();
+    for (const data of ['null', '42', '[]', '{}']) expect(() => latest().onmessage?.({ data })).not.toThrow();
     latest().deliver({ t: 'toast', kind: 'info', message: 'still here' });
     expect(seen).toHaveLength(1);
   });

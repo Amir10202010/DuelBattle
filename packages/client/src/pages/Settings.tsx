@@ -22,6 +22,7 @@ import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { sound } from '../media/sound.js';
 import { MusicControl } from '../components/MusicControl.jsx';
+import { SoundMixer } from '../components/SoundMixer.jsx';
 import { TelegramLink } from '../components/TelegramLink.jsx';
 
 /**
@@ -185,6 +186,7 @@ export function Settings({
           </h2>
         </div>
         <p className="dim">{tr('Countdowns, locks and round results. No microphone, ever.')}</p>
+        <SoundMixer />
         <div className="setting__row setting__row--wrap">
           <button
             className={muted ? 'btn' : 'btn btn--primary'}

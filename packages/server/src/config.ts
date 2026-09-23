@@ -15,7 +15,7 @@ function int(name: string, fallback: number): number {
     !/^\d+$/.test(raw) ||
     !Number.isSafeInteger(parsed) ||
     parsed < 1 ||
-    (name === 'PORT' && parsed > 65535)
+    (name.endsWith('PORT') && parsed > 65535)
   ) {
     throw new Error(
       `Environment variable ${name} must be a positive integer within its supported range.`,
@@ -33,10 +33,36 @@ function list(name: string): string[] {
     .filter(Boolean);
 }
 
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+
+/**
+ * Where the API listens.
+ *
+ * In production, `PORT` and nothing else. It is the contract every host has,
+ * most of them assign it at boot, and a deployment that binds some other port
+ * simply fails its health check.
+ *
+ * In development the answer is `SERVER_PORT`, because there are two processes
+ * and they have to agree: Vite serves the page on `CLIENT_PORT` and forwards
+ * `/api` and `/ws` to `SERVER_PORT`. `.env.example` has shipped `SERVER_PORT`
+ * as the server's port from the start while nothing here read it, so anything
+ * that put a `PORT` in the environment — CI, a launcher, a shell — moved the
+ * server out from under the proxy, and the only symptom was a browser
+ * reporting that the API had vanished.
+ *
+ * Kept apart deliberately: a developer's `.env` is loaded in any environment,
+ * and letting the `SERVER_PORT` in it outrank a production `PORT` would trade
+ * a broken dev stack for a deploy that never comes up.
+ */
+function apiPort(): number {
+  if (nodeEnv === 'production') return int('PORT', 8787);
+  return int('SERVER_PORT', int('PORT', 8787));
+}
+
 export const config = {
-  port: int('PORT', 8787),
+  port: apiPort(),
   host: process.env.HOST ?? '0.0.0.0',
-  nodeEnv: process.env.NODE_ENV ?? 'development',
+  nodeEnv,
   /**
    * Origins allowed to open a WebSocket. Empty means "same origin only", which
    * is what a single-service deployment wants; set it when the client is served

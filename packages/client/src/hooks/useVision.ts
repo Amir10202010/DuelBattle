@@ -23,6 +23,7 @@ export interface UseLocalDetectionOptions {
   challenge: Challenge | null;
   roundId: string | null;
   phase: Phase;
+  active?: boolean;
 }
 
 /**
@@ -44,11 +45,14 @@ export function useLocalDetection({
   challenge,
   roundId,
   phase,
+  active = true,
 }: UseLocalDetectionOptions): LocalDetection {
   const [result, setResult] = useState<DetectionResult | null>(null);
   const [armed, setArmed] = useState(false);
   const baselineRef = useRef<Frame | null>(null);
-  const captureRef = useRef(createAnalysisCapture());
+  const captureRef = useRef<ReturnType<typeof createAnalysisCapture> | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   // Read inside the sampler so a phase change does not restart the round's
   // baseline, which is the one thing that has to survive the countdown.
@@ -63,11 +67,11 @@ export function useLocalDetection({
     const detector = challenge?.detector;
     if (!roundId || !detector) return;
 
-    const capture = captureRef.current;
+    const capture = captureRef.current ??= createAnalysisCapture();
     let cancelled = false;
 
     const sample = () => {
-      if (cancelled) return;
+      if (cancelled || !activeRef.current || document.hidden) return;
       const current = phaseRef.current;
       if (current !== 'countdown' && current !== 'challenge') return;
 

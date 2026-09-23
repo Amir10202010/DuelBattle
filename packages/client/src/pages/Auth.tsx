@@ -200,6 +200,19 @@ export function Auth({
                 {tr('Forgot your password?')}
               </button>
             )}
+            {/*
+             * The way out for somebody who took a wrong turn.
+             *
+             * This screen wants a recovery key, and only a player who joined
+             * before accounts had email addresses was ever given one. Everyone
+             * else arrives here, finds two fields they cannot fill, and has no
+             * link to the reset that would actually work for them.
+             */}
+            {recovering && (
+              <button className="text-link" onClick={() => onNavigate('/login')}>
+                {tr('Signed up with an email? Reset it there instead.')}
+              </button>
+            )}
             <p className="auth-switch">
               {tr(registering ? 'Already have a player?' : 'New to DuelBattle?')}{' '}
               <button

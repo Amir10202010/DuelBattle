@@ -31,6 +31,9 @@ export default defineConfig({
          * across releases that never touched it.
          */
         manualChunks(id) {
+          // Cache the framework separately from frequently changing game UI.
+          const path = id.replaceAll('\\', '/');
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(path)) return 'react-runtime';
           if (id.includes('shared/dist/topics/pool')) return 'topics';
           return undefined;
         },

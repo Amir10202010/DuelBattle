@@ -532,6 +532,8 @@ export const ru: Record<string, string> = {
   'New to DuelBattle?': 'Нет аккаунта?',
   'Create one': 'Зарегистрироваться',
   'Forgot your password?': 'Забыл пароль?',
+  'Signed up with an email? Reset it there instead.':
+    'Регистрировался по почте? Сбрось пароль там.',
   'Keep playing as a guest': 'Продолжить без регистрации',
   'Your room is the arena.': 'Покажи, что нашёл',
   'Both players see the same prompt. Find something nearby, hold it up clearly, and lock in your answer. Your microphone stays off.':

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
+import { useAnimatedNumber } from '../../hooks/useAnimatedNumber.js';
 import { tr, useUiPreferences } from '../../i18n/index.js';
 import { useEconomy } from '../../hooks/useEconomy.js';
 export function CoinIcon({ size = 24 }: { size?: number }) {
@@ -13,26 +14,7 @@ export function CoinIcon({ size = 24 }: { size?: number }) {
 }
 export function CoinCounter({ value }: { value: number }) {
   useUiPreferences();
-  const [shown, setShown] = useState(value);
-  const previous = useRef(value);
-  useEffect(() => {
-    const from = previous.current;
-    previous.current = value;
-    if (from === value) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setShown(value);
-      return;
-    }
-    const start = performance.now();
-    let frame = 0;
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / 480);
-      setShown(Math.round(from + (value - from) * (1 - (1 - t) ** 3)));
-      if (t < 1) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
+  const shown = useAnimatedNumber(value, 480);
   return (
     <span className="coin-counter" aria-label={`${tr('Battle coins')}: ${value}`}>
       <CoinIcon />

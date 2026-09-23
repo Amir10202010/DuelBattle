@@ -54,6 +54,7 @@ export function HomeHero({
   return (
     <section className="hero-band plate">
       <div className="hero-band__id">
+        <span className="eyebrow hero-band__eyebrow">{tr('Your arena')}</span>
         <h1 className="hero-band__name display">{profile.name || tr('New player')}</h1>
         <span className={`hero-band__rank ${placed ? '' : 'is-placing'}`}>
           <RankEmblem rating={profile.rating} size={30} placing={!placed} />
@@ -86,6 +87,7 @@ export function HomeHero({
       </div>
 
       <div className="hero-band__play">
+        <p className="hero-band__objective">{tr('Find it. Show it. Win the round.')}</p>
         <ModePicker value={mode} onChange={chooseMode} canRank />
         <button className="playbutton" onClick={play} disabled={offline}>
           <Swords size={24} strokeWidth={2.4} aria-hidden="true" />
@@ -98,7 +100,11 @@ export function HomeHero({
             {tr('Reconnecting to the arena…')}
           </p>
         )}
-        <button className="hero-band__friend" onClick={() => onNavigate('/play')}>
+        <button className="hero-band__friend" disabled={offline} onClick={() => {
+          onNavigate('/play');
+          const name = profile.name || rememberedName();
+          if (name && !offline) store.createRoom(name);
+        }}>
           <Users size={17} />
           <span>
             <strong>{tr('Play a friend')}</strong>

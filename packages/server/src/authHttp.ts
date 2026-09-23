@@ -15,6 +15,13 @@ import { log } from './log.js';
 
 const recoverySchema = credentialsSchema.extend({ code: z.string().regex(/^[a-f0-9]{48}$/) });
 
+/** The one answer a navigated-to auth route may give: the login page, with a reason. */
+function backToLogin(res: ServerResponse, reason: string): true {
+  res.writeHead(303, { location: `/login?auth_error=${reason}`, 'cache-control': 'no-store' });
+  res.end();
+  return true;
+}
+
 export function authHttp(auth: AuthService) {
   const providers = new AuthProviders(auth);
   // Said once, at boot, for the same reason the Telegram integration says it:
@@ -42,9 +49,25 @@ export function authHttp(auth: AuthService) {
     try {
       if (path === '/api/auth/providers' && req.method === 'GET') { respond(200, providers.options()); return true; }
       if (req.method === 'GET' && (path === '/api/auth/google' || path === '/api/auth/google/callback')) {
-        if (!mutationBudget.take(ip, Date.now())) throw new AuthError(429, 'Too many attempts. Try again shortly.');
-        if (path.endsWith('/callback')) await providers.googleCallback(req, res);
-        else providers.googleStart(res);
+        /*
+         * A browser arrives here by navigating, not by fetching, so the reply
+         * is the whole page the player is left on. JSON would strand them on a
+         * blob of text with nothing to press; the callback already knew that
+         * and redirected on its own errors, but the limiter above it and an
+         * unconfigured `googleStart` below it did not. Both now land on the
+         * login page, which reads the reason out of the query string.
+         */
+        try {
+          if (!mutationBudget.take(ip, Date.now())) return backToLogin(res, 'busy');
+          if (path.endsWith('/callback')) await providers.googleCallback(req, res);
+          else providers.googleStart(res);
+        } catch (error) {
+          log.warn('google sign-in unavailable', {
+            reason: providers.googleGap() ?? (error instanceof Error ? error.message : 'unknown'),
+          });
+          if (!res.headersSent) backToLogin(res, 'google_unavailable');
+          else res.end();
+        }
         return true;
       }
       if (path === '/api/economy' && req.method === 'GET') {

@@ -9,6 +9,7 @@ import {
   type ServerMessage,
 } from '@battle/shared';
 import { createApp, type App } from '../src/app.js';
+import { isIdle } from '../src/gateway.js';
 import { Identities } from '../src/identity.js';
 import { MemoryProfileStore, blankProfile } from '../src/profiles.js';
 
@@ -296,5 +297,28 @@ describe('the card a browser carries', () => {
     person.send({ t: 'setProfile', name: 'x'.repeat(200) } as ClientMessage);
     const error = await person.waitFor<Extract<ServerMessage, { t: 'error' }>>((m) => m.t === 'error');
     expect(error.code).toBe('bad-message');
+  });
+});
+
+describe('the idle sweep', () => {
+  const ttl = 600_000;
+  const stale = { room: null, connectedAt: 0 };
+
+  it('recycles a socket that has sat on the landing page', () => {
+    expect(isIdle(stale, false, ttl + 1, ttl)).toBe(true);
+  });
+
+  it('leaves a socket that is waiting for an opponent alone', () => {
+    // A queue wait is unbounded on a quiet server; reaping it strands the
+    // player on a spinner for a search the server no longer has.
+    expect(isIdle(stale, true, ttl + 1, ttl)).toBe(false);
+  });
+
+  it('leaves a seated socket alone', () => {
+    expect(isIdle({ room: {} as never, connectedAt: 0 }, false, ttl + 1, ttl)).toBe(false);
+  });
+
+  it('leaves a fresh socket alone', () => {
+    expect(isIdle(stale, false, ttl - 1, ttl)).toBe(false);
   });
 });

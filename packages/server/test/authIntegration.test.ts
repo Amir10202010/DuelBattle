@@ -225,4 +225,32 @@ describe('real authentication HTTP and socket boundaries', () => {
     await request('logout', {}, cookie);
     expect((await post('buy', { itemId: 'visor' })).status).toBe(401);
   });
+
+  /**
+   * The two Google routes are opened by a top-level browser navigation, so
+   * whatever they answer with is what the player is left looking at. A JSON
+   * body is a dead end there: no navigation back, no explanation they can
+   * read. Every refusal has to come back as the login page carrying a reason.
+   */
+  it('sends a blocked Google sign-in back to the login page, never raw JSON', async () => {
+    const { url } = await setup();
+    const unconfigured = await fetch(`${url}/api/auth/google`, { redirect: 'manual' });
+    expect(unconfigured.status).toBe(303);
+    expect(unconfigured.headers.get('location')).toBe('/login?auth_error=google_unavailable');
+    expect(unconfigured.headers.get('content-type')).toBeNull();
+    expect(await unconfigured.text()).toBe('');
+
+    // Burn the per-IP budget, then confirm the limiter answers the same way.
+    let limited: Response | null = null;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const response = await fetch(`${url}/api/auth/google/callback?state=x`, {
+        redirect: 'manual',
+      });
+      if (response.headers.get('location') === '/login?auth_error=busy') {
+        limited = response;
+        break;
+      }
+    }
+    expect(limited?.status).toBe(303);
+  });
 });

@@ -108,6 +108,29 @@ describe('sending the code', () => {
     expect(calls).toHaveLength(0);
   });
 
+  /**
+   * A provider that starts refusing — a rotated key, an unverified sender, a
+   * quota — breaks every registration at once, and the player is told only
+   * "try again shortly". If the server says nothing either, the first anyone
+   * hears of it is a support message, so the reason goes in the log.
+   */
+  it('records why delivery failed, without putting anything private in the log', async () => {
+    const { log } = await import('../src/log.js');
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => {});
+    const provider = withMail({ BREVO_API_KEY: 'xkeysib-secret', MAIL_FROM: 'me@gmail.test' });
+    captureFetch(false);
+
+    await expect(provider.startEmail({ email: 'player@example.test' })).rejects.toThrow();
+
+    expect(warn).toHaveBeenCalledWith('verification email failed', {
+      provider: 'brevo',
+      status: 422,
+    });
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain('xkeysib-secret');
+    expect(logged).not.toContain('player@example.test');
+  });
+
   it('drops the challenge when delivery fails, so the next attempt is not refused', async () => {
     const provider = withMail({ BREVO_API_KEY: 'xkeysib-test', MAIL_FROM: 'me@gmail.test' });
     captureFetch(false);

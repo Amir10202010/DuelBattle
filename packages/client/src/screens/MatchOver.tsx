@@ -3,6 +3,7 @@ import { CoinIcon } from '../components/currency/Coins.jsx';
 import { useEffect, useState } from 'react';
 import {
   getAchievement,
+  COSMETICS,
   getChallenge,
   opponentOf,
   rankFor,
@@ -21,6 +22,8 @@ import { LevelBar } from '../components/Identity.jsx';
 import { RankEmblem, RewardArt } from '../components/GameArt.jsx';
 import { sound } from '../media/sound.js';
 import { DuelActors } from '../components/battle/DuelActors.jsx';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber.js';
+import { Hero } from '../components/avatar/Hero.jsx';
 
 interface MatchOverProps {
   store: MatchStore;
@@ -62,14 +65,15 @@ function yourOutcome(outcome: RoundOutcome, youId: string): { label: string; kin
 
   if (mine.valid) {
     const theirs = outcome.winnerId ? outcome.perPlayer[outcome.winnerId] : undefined;
-    if (mine.elapsedMs != null && theirs?.elapsedMs != null) {
+    if (outcome.reason === 'faster' && mine.elapsedMs != null && theirs?.elapsedMs != null) {
       const behind = (mine.elapsedMs - theirs.elapsedMs) / 1000;
       // Under a twentieth of a second this rounds to "0.0s slower", which reads
       // as a bug to the person who lost by it.
       if (behind < 0.05) return { label: 'photo finish', kind: 'slower' };
       return { label: `${behind.toFixed(1)}s slower`, kind: 'slower' };
     }
-    return { label: 'slower', kind: 'slower' };
+    return outcome.reason === 'better-answer' ? { label: 'Less accurate answer', kind: 'fit' }
+      : outcome.winnerId === null ? { label: 'Matched', kind: 'matched' } : { label: 'slower', kind: 'slower' };
   }
 
   const note = mine.note.toLowerCase();
@@ -110,7 +114,7 @@ export function MatchOver({
           : 'Good game';
 
   return (
-    <main className={`over ${won ? 'over--win' : drawn ? 'over--draw' : 'over--loss'}`}>
+    <section className={`over ${won ? 'over--win' : drawn ? 'over--draw' : 'over--loss'}`} aria-label={tr('Match result')}>
       <div className="over__head">
         {won && <Celebration finale />}
         <span className="eyebrow">{tr(match.ranked ? 'Ranked duel' : 'Friendly room')}</span>
@@ -145,6 +149,7 @@ export function MatchOver({
       </div>
 
       <Payout rewards={rewards} profile={standings[youId]} />
+      <MatchInsight match={match} youId={youId} />
 
       {!rewards &&
         (match.ranked ? (
@@ -231,7 +236,7 @@ export function MatchOver({
           </ol>
         </details>
       )}
-    </main>
+    </section>
   );
 }
 
@@ -253,6 +258,8 @@ function Payout({
 }) {
   useUiPreferences();
   const [revealed, setRevealed] = useState(false);
+  const xp = useAnimatedNumber(revealed ? rewards?.xp ?? 0 : 0);
+  const coins = useAnimatedNumber(revealed ? rewards?.coins ?? 0 : 0);
   useEffect(() => {
     if (!rewards) return;
     const xpTimer = window.setTimeout(() => {
@@ -261,7 +268,7 @@ function Payout({
     }, 650);
     const rewardTimer = window.setTimeout(() => {
       if (rewards.rankMove === 'promoted') sound.play('rankUp');
-      else if (rewards.unlocked.length) sound.play('reward');
+      else if (rewards.unlocked.length || COSMETICS.some((item) => item.price === 0 && item.level && item.level > rewards.levelBefore && item.level <= rewards.levelAfter)) sound.play('reward');
     }, 1400);
     return () => {
       window.clearTimeout(xpTimer);
@@ -273,6 +280,7 @@ function Payout({
   const unlocked = rewards.unlocked
     .map((id) => getAchievement(id))
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
+  const cosmetics = COSMETICS.filter((item) => item.price === 0 && item.level && item.level > rewards.levelBefore && item.level <= rewards.levelAfter);
 
   return (
     <section
@@ -290,15 +298,15 @@ function Payout({
       )}
 
       <div className="payout__head">
-        <span className="payout__xp display num">
+        <span className="payout__xp display num" aria-label={`+${rewards.xp} ${tr('XP')}`}>
           {'+'}
-          {rewards.xp}
+          {xp}
         </span>
         <span className="payout__label">{tr('XP')}</span>
         {!!rewards.coins && (
           <span className="payout__coins">
             <CoinIcon size={24} />
-            <strong className="num">{`+${rewards.coins}`}</strong>
+            <strong className="num" aria-label={`+${rewards.coins} ${tr('Battle coins')}`}>{`+${coins}`}</strong>
           </span>
         )}
         {levelled && (
@@ -316,6 +324,11 @@ function Payout({
       </div>
 
       <LevelBar xp={revealed ? profile.xp : Math.max(0, profile.xp - rewards.xp)} />
+
+      {cosmetics.map((item) => <div className="payout__cosmetic" key={item.id}>
+        <Hero loadout={{ ...profile.loadout, [item.slot]: item.id }} size={80} pose="unlock" animated={revealed} />
+        <span><small className="eyebrow">{tr('Unlocked')}</small><strong>{tr(item.name)}</strong><small>{tr('Ready in your locker')}</small></span>
+      </div>)}
 
       {!!rewards.dailyBonus && (
         <p className="payout__daily">
@@ -345,6 +358,26 @@ function Payout({
       )}
     </section>
   );
+}
+
+function MatchInsight({ match, youId }: { match: PublicMatchState; youId: string }) {
+  useUiPreferences();
+  if (!match.history.length) return null;
+  const answers = match.history.map((round) => round.perPlayer[youId]).filter((answer) => answer?.valid);
+  const times = answers.flatMap((answer) => answer?.elapsedMs == null ? [] : [answer.elapsedMs]);
+  const scores = answers.flatMap((answer) => answer?.evaluation ? [answer.evaluation.score] : []);
+  const inaccurate = match.history.some((round) => round.winnerId && round.winnerId !== youId && round.reason === 'better-answer');
+  const tip = match.winnerId === youId ? 'Keep the momentum. Your next rival is waiting.'
+    : inaccurate ? 'Get the object closer and keep it clearly in frame.'
+      : answers.length ? 'A strong answer comes first. Then work on your speed.' : 'Find the object, fill the centre, then snap before time runs out.';
+  return <section className="match-insight" aria-label={tr('Your battle highlights')}>
+    <div className="match-insight__stats">
+      <div><span>{tr('Valid answers')}</span><strong>{answers.length}<small> / {match.history.length}</small></strong></div>
+      <div><span>{tr('Best answer')}</span><strong>{scores.length ? Math.max(...scores) : '—'}<small>{scores.length ? '/100' : ''}</small></strong></div>
+      <div><span>{tr('Fastest snap')}</span><strong>{times.length ? `${(Math.min(...times) / 1000).toFixed(1)}` : '—'}<small>{times.length ? ` ${tr('sec')}` : ''}</small></strong></div>
+    </div>
+    <p>{tr(tip)}</p>
+  </section>;
 }
 
 /**

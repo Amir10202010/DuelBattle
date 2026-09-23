@@ -8,6 +8,7 @@ import './styles/screens.css';
 import './styles/arena.css';
 import './styles/characters.css';
 import './styles/heroes.css';
+import './styles/battle-product.css';
 import { App } from './App.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 

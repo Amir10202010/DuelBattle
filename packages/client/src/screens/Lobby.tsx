@@ -7,13 +7,14 @@ import {
   type PublicMatchState,
   type PublicProfile,
 } from '@battle/shared';
-import { RatingLine, Stakes } from '../components/Rating.jsx';
+import { Stakes } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import type { CameraState } from '../media/useCamera.js';
 import { PeerVideo, SelfVideo, StageFrame } from '../components/Stage.jsx';
 import { SeriesLine } from '../components/Series.jsx';
 import { Deck } from '../components/Deck.jsx';
 import { roomUrl } from '../hooks/useRoute.js';
+import { VersusIntro } from '../components/battle/VersusIntro.jsx';
 
 interface LobbyProps {
   store: MatchStore;
@@ -35,8 +36,8 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
   useUiPreferences();
   const you = match.players[youId] ?? null;
   const opponent = opponentOf(match, youId);
-  const yourSeat = you?.seat ?? 0;
-  const theirSeat = (yourSeat === 0 ? 1 : 0) as 0 | 1;
+  const yourSeat = 0;
+  const theirSeat = 1;
   const bothReady = Boolean(you?.ready && opponent?.ready);
   const arriving = useArrival(opponent?.id ?? null);
 
@@ -58,20 +59,10 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
           {match.settings.winTarget}
         </span>
         <h1 className="lobby__title display">{tr(headline)}</h1>
-        {opponent && (
-          <div className="lobby__standings">
-            <span className="lobby__side">
-              <span className="lobby__who">{you?.name ?? tr('You')}</span>
-              <RatingLine profile={standings[youId]} delta={undefined} />
-            </span>
-            {match.ranked && <Stakes you={standings[youId]} them={standings[opponent.id]} />}
-            <span className="lobby__side lobby__side--them">
-              <span className="lobby__who">{opponent.name}</span>
-              <RatingLine profile={standings[opponent.id]} delta={undefined} />
-            </span>
-          </div>
-        )}
+        {opponent && match.ranked && <Stakes you={standings[youId]} them={standings[opponent.id]} />}
       </header>
+
+      {opponent && <VersusIntro match={match} youId={youId} standings={standings} arriving={arriving} />}
 
       <div className="lobby__stages">
         <span className="vs" aria-hidden="true">
@@ -128,7 +119,7 @@ export function Lobby({ store, match, youId, camera, standings }: LobbyProps) {
  */
 function useArrival(opponentId: string | null): boolean {
   const [arriving, setArriving] = useState(false);
-  const previous = useRef<string | null>(opponentId);
+  const previous = useRef<string | null>(null);
   useEffect(() => {
     const had = previous.current;
     previous.current = opponentId;

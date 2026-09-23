@@ -1,4 +1,5 @@
 import { preparePlayback, resumeAudio, type PlaybackState } from './audioPlayback.js';
+import { audioMix } from './audioMix.js';
 
 type Arrangement = 'menu' | 'battle';
 type MusicSettings = { enabled: boolean; volume: number; unavailable: boolean; playback: PlaybackState };
@@ -84,9 +85,9 @@ export class MusicPlayer {
     this.mix();
   }
 
-  private mix() {
+  mix() {
     if (!this.ctx || !this.master) return;
-    const level = this.active && this.settings.enabled ? this.settings.volume * (this.ducked ? 0.2 : 0.65) : 0;
+    const level = this.active && this.settings.enabled ? this.settings.volume * audioMix.getSnapshot().master * (this.ducked ? 0.2 : 0.65) : 0;
     this.master.gain.setTargetAtTime(level, this.ctx.currentTime, 0.15);
   }
 
@@ -240,3 +241,4 @@ export class MusicPlayer {
 }
 
 export const music = new MusicPlayer();
+audioMix.subscribe(() => music.mix());

@@ -11,7 +11,7 @@ export function RoundComparison({ match, youId }: { match: PublicMatchState; you
   const entries = match.seats.filter((id): id is string => Boolean(id)).map((id) => ({
     id, result: outcome.perPlayer[id], name: match.players[id]?.name ?? tr('Opponent'),
   }));
-  entries.sort((a, b) => a.id === outcome.winnerId ? -1 : b.id === outcome.winnerId ? 1 : a.id === youId ? -1 : 1);
+  entries.sort((a, b) => a.id === youId ? -1 : b.id === youId ? 1 : 0);
   const label = (r?: PlayerRoundResult) => r?.evaluation
     ? locale === 'ru' ? r.evaluation.labelRu ?? tr('Shown object') : r.evaluation.label
     : tr(r?.elapsedMs == null ? 'No photo' : 'Answer');
@@ -19,13 +19,14 @@ export function RoundComparison({ match, youId }: { match: PublicMatchState; you
   const criterion = color ? tr(`${color} colour fit`) : tr('Task fit');
   return <div className="round-comparison">
     <div className="round-comparison__scores">
-      {entries.map(({ id, result, name }, i) => <div key={id} className="round-comparison__side">
-        {i === 1 && <span className="round-comparison__versus" aria-hidden="true">{outcome.winnerId ? '>' : '='}</span>}
+      {entries.map(({ id, result, name }, i) => <div key={id} className={`round-comparison__side ${outcome.winnerId === id ? 'is-winner' : ''}`}>
+        {i === 1 && <span className="round-comparison__versus" aria-hidden="true">VS</span>}
         <span className="round-comparison__player">{id === youId ? tr('You') : name}</span>
         <strong>{label(result)}</strong>
         <span className={result?.valid ? 'round-comparison__value is-valid' : 'round-comparison__value'}>
           {result?.evaluation ? `${result.valid ? result.evaluation.score : 0}/100` : '—'}
         </span>
+        {result?.elapsedMs != null && <span className="round-comparison__time">{(result.elapsedMs / 1000).toFixed(1)} {tr('sec')}</span>}
       </div>)}
     </div>
     <p className="round-comparison__explanation">{outcome.reason === 'faster' ? tr('Close answers. Speed won.') :

@@ -68,6 +68,21 @@ beforeEach(() => {
 });
 
 describe('joining', () => {
+  it('keeps controls synchronizing until the room snapshot returns after reconnect', () => {
+    const { connection, store } = setup();
+    connection.deliver({ t: 'joined', roomCode: 'AB12C', playerId: 'p1', token: 'tok' });
+    connection.deliver({ t: 'state', state: publicMatch({ version: 3 }), serverTime: Date.now() });
+    expect(store.getSnapshot().synchronizing).toBe(false);
+    connection.drop(); connection.open();
+    expect(store.getSnapshot().synchronizing).toBe(true);
+    connection.deliver({ t: 'state', state: publicMatch({ version: 4 }), serverTime: Date.now() });
+    expect(store.getSnapshot().synchronizing).toBe(false);
+    connection.deliver({ t: 'state', state: publicMatch({ version: 2 }), serverTime: Date.now() });
+    expect(store.getSnapshot().match?.version).toBe(4);
+    connection.deliver({ t: 'state', state: publicMatch({ roomCode: 'OTHER', version: 99 }), serverTime: Date.now() });
+    expect(store.getSnapshot().match?.roomCode).toBe('AB12C');
+    store.stop();
+  });
   it('says hello before anything else on every connection', () => {
     const { connection } = setup();
     expect(connection.sentTypes()[0]).toBe('hello');
@@ -315,5 +330,32 @@ describe('match traffic', () => {
     store.subscribe(() => calls++);
     connection.deliver({ t: 'state', state: publicMatch(), serverTime: 0 });
     expect(calls).toBe(1);
+  });
+});
+
+describe('waiting for an opponent', () => {
+  /**
+   * A dropped socket is already out of the queue: the server removes the entry
+   * the moment the connection closes, and the client deliberately does not
+   * replay `findMatch` in case the player has walked away. So the spinner has
+   * to come down with the connection. Left up, it promises a search nobody is
+   * running, and the player waits for an opponent who is never coming.
+   */
+  it('stops promising a search once the connection drops', () => {
+    const { connection, store } = setup();
+    store.findMatch('Ada', 'casual');
+    connection.deliver({ t: 'queued', position: 1, waiting: 1 });
+    expect(store.getSnapshot().queue).not.toBeNull();
+
+    connection.drop();
+    expect(store.getSnapshot().queue).toBeNull();
+  });
+
+  it('does not silently re-queue a player when the socket comes back', () => {
+    const { connection, store } = setup();
+    store.findMatch('Ada', 'casual');
+    connection.drop();
+    connection.open();
+    expect(connection.sent.filter((m) => m.t === 'findMatch')).toHaveLength(1);
   });
 });
