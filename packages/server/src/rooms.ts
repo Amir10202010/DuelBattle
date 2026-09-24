@@ -3,7 +3,7 @@ import { generateRoomCode, isValidRoomCode } from '@battle/shared';
 import { Room } from './room.js';
 import type { AiJudge } from './ai/judge.js';
 import type { ProfileStore } from './profiles.js';
-import type { SettlementListener } from './settlement.js';
+import type { MetaSettlement, SettlementListener } from './settlement.js';
 import { log } from './log.js';
 
 /**
@@ -22,8 +22,10 @@ export interface RoomManagerOptions {
   judge?: AiJudge;
   /** Shared by every room: one set of ratings for the whole server. */
   profiles?: ProfileStore;
-  /** Told about every ranked match any room settles. */
+  /** Told about every match any room settles. */
   onSettled?: SettlementListener;
+  /** Moves the season and quests for every settled match. */
+  meta?: MetaSettlement;
 }
 
 export class RoomCapacityError extends Error {}
@@ -37,7 +39,7 @@ export class RoomManager {
     return this.rooms.size;
   }
 
-  create(now: number, ranked = false): Room {
+  create(now: number, ranked = false, matchmade = false): Room {
     if (this.rooms.size >= this.options.maxRooms) {
       // Try to make space before giving up; a full table is usually stale rooms.
       this.sweep(now);
@@ -53,6 +55,8 @@ export class RoomManager {
         ...(this.options.judge ? { judge: this.options.judge } : {}),
         ...(this.options.profiles ? { profiles: this.options.profiles } : {}),
         ...(this.options.onSettled ? { onSettled: this.options.onSettled } : {}),
+        ...(this.options.meta ? { meta: this.options.meta } : {}),
+        matchmade,
       });
       this.rooms.set(code, room);
       log.info('room created', { room: code, total: this.rooms.size });

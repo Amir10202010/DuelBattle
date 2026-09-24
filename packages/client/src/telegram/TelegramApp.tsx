@@ -23,6 +23,7 @@ import {
   loadTelegramSdk,
   onBackButton,
   onTelegramEvent,
+  openInvoice,
   type LaunchContext,
 } from './sdk.js';
 import { isTab, pathOf, viewFrom, type Tab, type View } from './router.js';
@@ -32,6 +33,9 @@ import { PlayerScreen, SocialScreen } from './screens/Social.jsx';
 import { MatchesScreen, MatchScreen } from './screens/Profile.jsx';
 import { PremiumScreen, QuestsScreen, SettingsScreen } from './screens/More.jsx';
 import { EconomyProvider } from '../hooks/useEconomy.jsx';
+import { MetaProvider } from '../hooks/useMeta.jsx';
+import { RewardReveal } from '../components/meta/RewardReveal.jsx';
+import { Pass } from '../pages/Pass.jsx';
 import { EconomyFeedback } from '../components/currency/Coins.jsx';
 import { Nav } from '../components/Nav.jsx';
 import { BrandMark } from '../components/BrandMark.jsx';
@@ -44,6 +48,9 @@ import { Ranks } from '../pages/Ranks.jsx';
 import { Awards } from '../pages/Awards.jsx';
 import { Settings } from '../pages/Settings.jsx';
 import type { Page } from '../hooks/useRoute.js';
+import { startAnalytics, track } from '../analytics.js';
+import { useMusic } from '../hooks/useMusic.js';
+import { useInterfaceSound } from '../hooks/useInterfaceSound.js';
 
 /** Telegram supplies authentication, safe areas and deep links. Game screens are shared. */
 const Room = lazy(() => import('../screens/Room.jsx').then((m) => ({ default: m.Room })));
@@ -71,6 +78,8 @@ export function TelegramApp() {
   const [stack, setStack] = useState<View[]>([]);
   const [foundAt, setFoundAt] = useState<number | null>(null);
   const [nowTick, setNowTick] = useState(0);
+  useMusic(snapshot.screen === 'room' ? snapshot.match : null, store, boot.phase === 'ready');
+  useInterfaceSound(boot.phase === 'ready');
 
   // -- Boot ----------------------------------------------------------------
 
@@ -119,6 +128,12 @@ export function TelegramApp() {
     store.start();
     return () => store.stop();
   }, [store]);
+  useEffect(() => {
+    if (boot.phase === 'ready') return startAnalytics(sessionToken());
+  }, [boot.phase]);
+  useEffect(() => {
+    if (boot.phase === 'ready') track('screen_view', { screen: snapshot.screen === 'room' ? 'room' : view.k });
+  }, [boot.phase, view.k, snapshot.screen]);
 
   // Telegram's palette is the player's choice for their chat, not for a game
   // that is mostly a camera feed. What is taken from it is the chrome colour,
@@ -353,11 +368,27 @@ export function TelegramApp() {
 
   const { home } = boot;
   const profile = snapshot.profile ?? home.me;
+  /**
+   * Inside Telegram, digital goods are paid in Stars: the invoice opens in
+   * Telegram's own sheet, and the bot delivers the order when Telegram says
+   * it is paid. The status here only decides what the page says next.
+   */
+  const payWithStars = async (offerId: string): Promise<{ status: 'paid' | 'cancelled' | 'failed'; orderId: string }> => {
+      const { link, orderId } = await api.offerInvoice(offerId);
+      const status = await openInvoice(link);
+      return { status: status === 'paid' ? 'paid' : status === 'cancelled' ? 'cancelled' : 'failed', orderId };
+  };
   const wrap = (children: React.ReactNode) => <EconomyProvider
     accountKey={home.me.referralCode}
     authToken={sessionToken()}
     revision={`${profile.xp}:${view.k}:${snapshot.match?.phase}`}>
-      <EconomyFeedback />{children}
+      <MetaProvider
+        accountKey={home.me.referralCode}
+        authToken={sessionToken()}
+        payWithStars={payWithStars}
+        revision={`${profile.xp}:${view.k}:${snapshot.match?.phase}`}>
+        <EconomyFeedback /><RewardReveal />{children}
+      </MetaProvider>
     </EconomyProvider>;
 
   if (snapshot.screen === 'room' && snapshot.match && snapshot.you) {
@@ -416,10 +447,11 @@ export function TelegramApp() {
     '/': { k: 'home' }, '/home': { k: 'home' }, '/play': { k: 'duel' },
     '/leaderboard': { k: 'rank' }, '/ranks': { k: 'ranks' }, '/awards': { k: 'awards' },
     '/profile': { k: 'profile' }, '/store': { k: 'store' }, '/settings': { k: 'settings' },
+    '/pass': { k: 'pass' }, '/store#gems': { k: 'store' },
   };
   const navigate = (path: string) => { const next = destinations[path]; if (next) go(next); };
   const page: Page = ({ home: 'dashboard', duel: 'play', rank: 'leaderboard', social: 'profile',
-    store: 'store', ranks: 'ranks', awards: 'awards', settings: 'settings' } as Partial<Record<View['k'], Page>>)[view.k] ?? 'profile';
+    store: 'store', pass: 'pass', ranks: 'ranks', awards: 'awards', settings: 'settings' } as Partial<Record<View['k'], Page>>)[view.k] ?? 'profile';
   const platformScreen = ['social', 'quests', 'matches', 'match', 'player', 'challenge', 'premium'].includes(view.k);
   return wrap(
     <div className="shell shell--game telegram-game" style={{
@@ -446,6 +478,7 @@ export function TelegramApp() {
         </>}
         {view.k === 'duel' && <Play store={store} profile={profile} invitedCode={null} joining={snapshot.joining} error={snapshot.joinError} offline={snapshot.status !== 'open'} queue={snapshot.queue} />}
         {view.k === 'store' && <Store />}
+        {view.k === 'pass' && <Pass />}
         {view.k === 'profile' && <Profile profile={profile} store={store} onNavigate={navigate} />}
         {view.k === 'rank' && <Leaderboard store={store} board={snapshot.board} loading={snapshot.boardLoading} profile={profile} error={snapshot.boardError ?? null} />}
         {view.k === 'ranks' && <Ranks profile={profile} />}

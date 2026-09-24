@@ -2,12 +2,14 @@ import { Fragment } from 'react';
 import { tr, useUiPreferences } from '../i18n/index.js';
 import {
   ArrowRight,
+  BarChart3,
   Gem,
   Gift,
   House,
   Settings,
   ShoppingBag,
   Swords,
+  Ticket,
   Trophy,
   UserRound,
 } from 'lucide-react';
@@ -15,7 +17,8 @@ import { levelFor, rankFor, isPlaced, type PublicProfile } from '@battle/shared'
 import { pagePath, type Page } from '../hooks/useRoute.js';
 import { AudioControls } from './AudioControls.jsx';
 import { useEconomy } from '../hooks/useEconomy.js';
-import { CoinCounter } from './currency/Coins.jsx';
+import { Wallet } from './meta/Currency.jsx';
+import { useOptionalMeta } from '../hooks/useMeta.js';
 import { Hero } from './avatar/Hero.jsx';
 import { LandingNav } from './landing/LandingNav.js';
 import { BrandMark } from './BrandMark.js';
@@ -30,12 +33,15 @@ import { BrandMark } from './BrandMark.js';
  */
 const LINKS = [
   { page: 'dashboard', label: 'Home', Icon: House },
+  { page: 'pass', label: 'Season', Icon: Ticket },
   { page: 'leaderboard', label: 'Ladder', Icon: Trophy },
-  { page: 'ranks', label: 'Ranks', Icon: Gem },
-  { page: 'awards', label: 'Rewards', Icon: Gift },
   { page: 'store', label: 'Store', Icon: ShoppingBag },
+  { page: 'awards', label: 'Rewards', Icon: Gift },
   { page: 'profile', label: 'Locker', Icon: UserRound },
 ] as const;
+
+/** On a wide screen there is room for the rank ladder too; a phone bar has six slots. */
+const RAIL_EXTRAS = [{ page: 'ranks', label: 'Ranks', Icon: Gem }] as const;
 
 /** Battle sits in the middle of the bar, not at the end of the list. */
 const BAR_SPLIT = 3;
@@ -49,6 +55,8 @@ const TITLES: Partial<Record<Page, string>> = {
   ranks: 'Ranks',
   profile: 'Locker',
   settings: 'Settings',
+  pass: 'Season pass',
+  admin: 'Dashboard',
 };
 
 export function Nav({
@@ -75,6 +83,7 @@ export function Nav({
 }) {
   useUiPreferences();
   const { data: economy } = useEconomy();
+  const meta = useOptionalMeta();
   if (publicOnly && page === 'home') {
     return <LandingNav signedIn={Boolean(profile)} onNavigate={onNavigate} />;
   }
@@ -133,6 +142,20 @@ export function Nav({
     );
 
   const level = profile ? levelFor(profile.xp).level : 0;
+  /**
+   * Where something is waiting to be collected. A dot, never a number that
+   * nags: it says "there is a reason to look" and nothing more.
+   */
+  const view = meta?.view;
+  const waiting: Partial<Record<Page, boolean>> = view
+    ? {
+        dashboard:
+          !view.calendar.claimedToday ||
+          [...view.quests.daily, ...view.quests.weekly, ...view.quests.starter].some((q) => q.done && !q.claimed),
+        pass: view.season.tiers.some((t) => t.reached && (!t.freeClaimed || (view.season.premium && !t.premiumClaimed))),
+      }
+    : {};
+  const railLinks = [...LINKS, ...RAIL_EXTRAS, ...(view?.admin ? [{ page: 'admin', label: 'Dashboard', Icon: BarChart3 } as const] : [])];
 
   return (
     <>
@@ -147,16 +170,17 @@ export function Nav({
           <span>{tr('Battle')}</span>
         </a>
         <nav className="rail__nav" aria-label={tr('Main navigation')}>
-          {LINKS.map(({ page: to, label, Icon }) => (
+          {railLinks.map(({ page: to, label, Icon }) => (
             <a
               key={to}
-              className={`rail__link ${page === to ? 'is-current' : ''}`}
+              className={`rail__link ${page === to ? 'is-current' : ''} ${waiting[to] ? 'has-dot' : ''}`}
               href={mapPath(pagePath(to))}
               onClick={go(pagePath(to))}
               aria-current={page === to ? 'page' : undefined}
             >
               <Icon size={20} strokeWidth={1.9} />
               <span>{tr(label)}</span>
+              {waiting[to] && <i className="nav-dot" aria-label={tr('Something to collect')} />}
             </a>
           ))}
         </nav>
@@ -181,9 +205,7 @@ export function Nav({
         <div className="topbar__right">
           {profile &&
             (economy ? (
-              <a className="topbar__coins" href={mapPath("/store")} onClick={go('/store')}>
-                <CoinCounter value={economy.coins} />
-              </a>
+              <Wallet coins={economy.coins} gems={economy.gems ?? 0} onNavigate={onNavigate} mapPath={mapPath} />
             ) : (
               <span className="skel topbar__coins-skel" aria-hidden="true" />
             ))}
@@ -236,11 +258,12 @@ export function Nav({
             <a
               href={mapPath(pagePath(to))}
               onClick={go(pagePath(to))}
-              className={`tabbar__link ${page === to ? 'is-current' : ''}`}
+              className={`tabbar__link ${page === to ? 'is-current' : ''} ${waiting[to] ? 'has-dot' : ''}`}
               aria-current={page === to ? 'page' : undefined}
             >
               <Icon size={20} strokeWidth={1.9} />
               <span>{tr(label)}</span>
+              {waiting[to] && <i className="nav-dot" aria-label={tr('Something to collect')} />}
             </a>
           </Fragment>
         ))}

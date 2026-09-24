@@ -1,5 +1,4 @@
-import { sound } from './media/sound.js';
-import { AUDIO_GESTURES, isAudioControl } from './media/audioPlayback.js';
+import { useInterfaceSound } from './hooks/useInterfaceSound.js';
 import { useMusic } from './hooks/useMusic.js';
 import { tr, useUiPreferences } from './i18n/index.js';
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -16,7 +15,10 @@ import { Home } from './pages/Home.jsx';
 import { Onboarding } from './pages/Auth.jsx';
 import { Auth } from './pages/SignIn.jsx';
 import { EconomyProvider } from './hooks/useEconomy.jsx';
+import { MetaProvider } from './hooks/useMeta.jsx';
 import { EconomyFeedback } from './components/currency/Coins.jsx';
+import { RewardReveal } from './components/meta/RewardReveal.jsx';
+import { startAnalytics, track } from './analytics.js';
 const Play = lazy(() => import('./pages/Play.jsx').then((m) => ({ default: m.Play })));
 const Leaderboard = lazy(() =>
   import('./pages/Leaderboard.jsx').then((m) => ({ default: m.Leaderboard })),
@@ -27,6 +29,8 @@ const Awards = lazy(() => import('./pages/Awards.jsx').then((m) => ({ default: m
 const Settings = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.Settings })));
 const Store = lazy(() => import('./pages/Store.jsx').then((m) => ({ default: m.Store })));
 const Room = lazy(() => import('./screens/Room.jsx').then((m) => ({ default: m.Room })));
+const Pass = lazy(() => import('./pages/Pass.jsx').then((m) => ({ default: m.Pass })));
+const Admin = lazy(() => import('./pages/Admin.jsx').then((m) => ({ default: m.Admin })));
 
 export function App() {
   const preferences = useUiPreferences();
@@ -39,13 +43,17 @@ export function App() {
   const route = useRoute();
   const inGame = snapshot.screen === 'room' || !['home', 'login', 'register', 'recover'].includes(route.page);
   useMusic(snapshot.screen === 'room' ? snapshot.match : null, store, inGame);
-  useEffect(() => { sound.setActive(inGame); return () => sound.setActive(false); }, [inGame]);
+  useInterfaceSound(inGame);
   useDocumentTitle(snapshot.match, snapshot.you);
   const profile = auth.account ? (snapshot.profile ?? auth.profile) : null;
   useEffect(() => {
     store.start();
-    return () => store.stop();
+    const stopAnalytics = startAnalytics();
+    return () => { stopAnalytics(); store.stop(); };
   }, [store]);
+  useEffect(() => {
+    track('screen_view', { screen: snapshot.screen === 'room' ? 'room' : route.page });
+  }, [route.page, snapshot.screen]);
   const resumedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!route.code || snapshot.status !== 'open' || snapshot.screen === 'room') return;
@@ -85,24 +93,6 @@ export function App() {
   useEffect(() => {
     store.setLanguage(preferences.locale);
   }, [preferences.locale, store]);
-  useEffect(() => {
-    const unlock = (event: Event) => {
-      if (isAudioControl(event)) return;
-      if (!sound.isMuted) sound.unlock();
-    };
-    for (const event of AUDIO_GESTURES) document.addEventListener(event, unlock, true);
-    const click = (event: MouseEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target?.closest('button:not(:disabled), a[href], summary')) return;
-      if (isAudioControl(event) || target.closest('.lockin')) return;
-      sound.play('button');
-    };
-    document.addEventListener('click', click);
-    return () => {
-      for (const event of AUDIO_GESTURES) document.removeEventListener(event, unlock, true);
-      document.removeEventListener('click', click);
-    };
-  }, []);
   const completedAuth = (state: AuthState) => {
     auth.setState(state);
     store.refreshAccount(state.profile);
@@ -146,6 +136,8 @@ export function App() {
     'ranks',
     'awards',
     'onboarding',
+    'pass',
+    'admin',
   ].includes(page);
   const gateName = {
     store: 'the store',
@@ -155,6 +147,8 @@ export function App() {
     ranks: 'the rank ladder',
     awards: 'your rewards',
     onboarding: 'your player',
+    pass: 'the season pass',
+    admin: 'the dashboard',
   }[page as 'dashboard'];
   let content;
   if (page === 'home') content = <Landing onNavigate={route.go} />;
@@ -193,6 +187,8 @@ export function App() {
   else if (page === 'ranks') content = <Ranks profile={profile} />;
   else if (page === 'awards') content = <Awards profile={profile} />;
   else if (page === 'store') content = <Store />;
+  else if (page === 'pass') content = <Pass />;
+  else if (page === 'admin') content = <Admin />;
   else if (page === 'settings')
     content = (
       <Settings
@@ -217,7 +213,9 @@ export function App() {
     );
   return (
     <EconomyProvider accountKey={auth.account?.username ?? null} revision={`${profile?.xp}:${route.page}:${snapshot.match?.phase === 'matchResult'}`}>
+      <MetaProvider accountKey={auth.account?.username ?? null} revision={`${profile?.xp}:${route.page}:${snapshot.match?.phase === 'matchResult'}`}>
       <EconomyFeedback />
+      <RewardReveal />
       <a className="skip-link" href="#main-content">
         {tr('Skip to content')}
       </a>
@@ -286,6 +284,7 @@ export function App() {
         )}
       </Suspense>
       <Toasts toasts={snapshot.toasts} />
+      </MetaProvider>
     </EconomyProvider>
   );
 }

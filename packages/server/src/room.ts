@@ -15,6 +15,7 @@ import {
   type AutoVerdict,
   type ClientMessage,
   countsForRating,
+  countsForRewards,
   type Challenge,
   type EngineContext,
   type MatchRewards,
@@ -32,8 +33,8 @@ import { cropEvidence, decodeEvidence, verifySubmission } from './verify.js';
 import { JudgeUnavailable, type AiJudge, type JudgePhoto } from './ai/judge.js';
 import { validateAssessments } from './ai/pipeline.js';
 import { publicView, type PlayerProfile, type ProfileStore } from './profiles.js';
-import { profileFor, recordMatch } from './standings.js';
-import type { SettledPlayer, SettlementListener } from './settlement.js';
+import { profileFor, recordCasual, recordMatch, type RatingUpdate } from './standings.js';
+import type { MetaSettlement, SettledMatch, SettledPlayer, SettlementListener } from './settlement.js';
 import { log } from './log.js';
 
 export type Send = (message: ServerMessage) => void;
@@ -51,6 +52,14 @@ export interface RoomOptions {
    * referrals and notifications all hang off this instead of reaching in.
    */
   onSettled?: SettlementListener;
+  /** Moves the season and the quests for a settled match, and says what moved. */
+  meta?: MetaSettlement;
+  /**
+   * Opened by the matchmaking queue for two strangers, rather than by a player
+   * for a friend. Such a room skips the ready button: both players asked to
+   * play by joining the queue, so the match starts once both cameras are on.
+   */
+  matchmade?: boolean;
   /**
    * Restricts the deck this room draws from. The engine has always supported
    * it; a room passes it through for a themed deck, or for a test that needs
@@ -170,6 +179,8 @@ export class Room {
   private aiUnavailableUntil = 0;
   private readonly profiles: ProfileStore | undefined;
   private readonly onSettled: SettlementListener | undefined;
+  private readonly meta: MetaSettlement | undefined;
+  readonly matchmade: boolean;
   /**
    * Who is allowed in, when the room was opened for named people.
    *
@@ -191,6 +202,8 @@ export class Room {
     this.judge = options.judge;
     this.profiles = options.profiles;
     this.onSettled = options.onSettled;
+    this.meta = options.meta;
+    this.matchmade = options.matchmade ?? false;
     this.pool = options.pool;
   }
 
@@ -276,6 +289,12 @@ export class Room {
    *
    * A match nobody can be identified in is simply not recorded: no rating, no
    * error, no complaint. Playing without one is a supported way to play.
+   *
+   * Ranked matches move the rating and everything that hangs off it. Casual
+   * matches — the queue's default and every friend room — move XP, coins, the
+   * season and the quests, and leave the ladder alone. Either way the season
+   * and the quest boards are asked afterwards, in their own transaction, and
+   * what they say rides along with the rewards to the result screen.
    */
   private settleRatings(now: number): void {
     const store = this.profiles;
@@ -291,7 +310,8 @@ export class Room {
           store.setQueueCooldown?.(seat.identity, now + 5 * 60_000);
       }
     }
-    if (!store || !this.state.ranked || !countsForRating(this.state)) return;
+    const ranked = this.state.ranked ?? false;
+    if (!store || !(ranked ? countsForRating(this.state) : countsForRewards(this.state))) return;
 
     const seated = this.state.seats
       .map((playerId) => (playerId ? this.seats.get(playerId) : undefined))
@@ -308,26 +328,28 @@ export class Room {
     ];
     if (a.seat.identity === b.seat.identity) return; // One browser, both seats.
 
-    const updates = recordMatch(
-      store,
-      {
-        id: a.seat.identity!,
-        name: this.state.players[a.playerId]?.name ?? '',
-        score: this.state.players[a.playerId]?.score ?? 0,
-        summary: summarise(this.state, a.playerId, b.playerId),
-      },
-      {
-        id: b.seat.identity!,
-        name: this.state.players[b.playerId]?.name ?? '',
-        score: this.state.players[b.playerId]?.score ?? 0,
-        summary: summarise(this.state, b.playerId, a.playerId),
-      },
-      now,
-      `${this.code}:${this.createdAt}:${this.state.round?.id}`,
-      this.state.endReason === 'forfeit' && this.state.winnerId
-        ? (this.seats.get(this.state.winnerId)?.identity ?? undefined)
-        : undefined,
-    );
+    const matchId = `${this.code}:${this.createdAt}:${this.state.round?.id}`;
+    const contestant = (me: { playerId: PlayerId; seat: Seat }, them: { playerId: PlayerId }) => ({
+      id: me.seat.identity!,
+      name: this.state.players[me.playerId]?.name ?? '',
+      score: this.state.players[me.playerId]?.score ?? 0,
+      summary: summarise(this.state, me.playerId, them.playerId),
+    });
+    const updates: Record<string, RatingUpdate & { rewarded?: boolean; anyStreak?: number }> = ranked
+      ? recordMatch(
+          store,
+          contestant(a, b),
+          contestant(b, a),
+          now,
+          matchId,
+          this.state.endReason === 'forfeit' && this.state.winnerId
+            ? (this.seats.get(this.state.winnerId)?.identity ?? undefined)
+            : undefined,
+        )
+      : recordCasual(store, contestant(a, b), contestant(b, a), now, matchId,
+          this.state.endReason === 'forfeit' && this.state.winnerId
+            ? (this.seats.get(this.state.winnerId)?.identity ?? undefined)
+            : undefined);
 
     if (!updates[a.seat.identity!] || !updates[b.seat.identity!]) {
       this.broadcast({
@@ -338,58 +360,77 @@ export class Room {
       return;
     }
 
-    // Keyed by seat rather than by identity, because that is what a client can
-    // match against the players it already knows about.
-    this.lastRatings = {
-      [a.playerId]: ratingDelta(updates[a.seat.identity!]!),
-      [b.playerId]: ratingDelta(updates[b.seat.identity!]!),
-    };
-    this.lastRewards = {
-      [a.playerId]: updates[a.seat.identity!]!.rewards,
-      [b.playerId]: updates[b.seat.identity!]!.rewards,
+    const players = [a, b].map(({ seat, playerId }) => {
+      const update = updates[seat.identity!]!;
+      const summary = summarise(this.state, playerId, playerId === a.playerId ? b.playerId : a.playerId);
+      return {
+        accountId: seat.identity!,
+        name: this.state.players[playerId]?.name ?? '',
+        score: this.state.players[playerId]?.score ?? 0,
+        result: update.result,
+        ratingBefore: update.before,
+        ratingAfter: update.after,
+        ratingChange: update.change,
+        streak: ranked ? update.profile.streak : (update.anyStreak ?? 0),
+        rewards: update.rewards,
+        validAnswers: summary.validAnswers,
+        fastestWinMs: summary.fastestWinMs,
+        rewarded: ranked ? update.rewards.xp > 0 : (update.rewarded ?? false),
+        forfeited: summary.forfeited ?? false,
+      } satisfies SettledPlayer;
+    }) as [SettledPlayer, SettledPlayer];
+    const settled: SettledMatch = {
+      matchId,
+      roomCode: this.code,
+      ranked,
+      friendRoom: !this.matchmade && !ranked,
+      at: now,
+      players,
     };
 
-    this.announceSettlement(
-      `${this.code}:${this.createdAt}:${this.state.round?.id}`,
-      [a, b].map(({ seat, playerId }) => {
-        const update = updates[seat.identity!]!;
-        return {
-          accountId: seat.identity!,
-          name: this.state.players[playerId]?.name ?? '',
-          score: this.state.players[playerId]?.score ?? 0,
-          result: update.result,
-          ratingBefore: update.before,
-          ratingAfter: update.after,
-          ratingChange: update.change,
-          streak: update.profile.streak,
-          rewards: update.rewards,
-        } satisfies SettledPlayer;
-      }) as [SettledPlayer, SettledPlayer],
-      now,
-    );
+    // The season and the quests, after the rating has committed.
+    if (this.meta) {
+      try {
+        const moved = this.meta(settled);
+        for (const player of players) {
+          const meta = moved[player.accountId];
+          if (!meta) continue;
+          player.meta = meta;
+          const { questsCompleted: _completed, ...shown } = meta;
+          player.rewards = { ...player.rewards, meta: shown };
+        }
+      } catch (error) {
+        log.error('meta settlement threw', { room: this.code, errorType: error instanceof Error ? error.name : 'unknown' });
+      }
+    }
+
+    // Keyed by seat rather than by identity, because that is what a client can
+    // match against the players it already knows about.
+    this.lastRatings = ranked
+      ? {
+          [a.playerId]: ratingDelta(updates[a.seat.identity!]!),
+          [b.playerId]: ratingDelta(updates[b.seat.identity!]!),
+        }
+      : null;
+    this.lastRewards = {
+      [a.playerId]: players[0].rewards,
+      [b.playerId]: players[1].rewards,
+    };
+
+    this.announceSettlement(settled);
   }
 
   /**
-   * Tells whoever is listening that a ranked match finished.
+   * Tells whoever is listening that a match finished.
    *
    * Wrapped, because everything downstream of a result — a quest, a message, a
    * referral reward — is allowed to fail, and none of it may take the rating
    * with it. The match is already committed by the time this runs.
    */
-  private announceSettlement(
-    matchId: string,
-    players: [SettledPlayer, SettledPlayer],
-    now: number,
-  ): void {
+  private announceSettlement(match: SettledMatch): void {
     if (!this.onSettled) return;
     try {
-      this.onSettled({
-        matchId,
-        roomCode: this.code,
-        ranked: this.state.ranked ?? false,
-        at: now,
-        players,
-      });
+      this.onSettled(match);
     } catch (error) {
       log.error('settlement listener threw', {
         room: this.code,
@@ -612,7 +653,24 @@ export class Room {
       default:
         return;
     }
+    if (this.matchmade) this.autoReady(now);
     this.broadcastIfChanged(now);
+  }
+
+  /**
+   * Readies everybody in a queue-made lobby whose camera is on.
+   *
+   * Joining the queue was the "I want to play"; asking again on the next
+   * screen is a second tap between wanting a match and having one. A friend
+   * room keeps its ready button, because there the lobby is where two people
+   * agree on a length and write their own prompts.
+   */
+  private autoReady(now: number): void {
+    if (this.state.phase !== 'lobby') return;
+    for (const player of Object.values(this.state.players)) {
+      if (player.cameraReady && player.connected && !player.ready)
+        this.dispatch({ type: 'setReady', playerId: player.id, ready: true }, now);
+    }
   }
 
   /**

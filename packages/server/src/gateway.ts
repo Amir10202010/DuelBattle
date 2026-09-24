@@ -567,7 +567,7 @@ export class Gateway {
 
       let room: Room;
       try {
-        room = this.rooms.create(now, first!.mode === 'ranked');
+        room = this.rooms.create(now, first!.mode === 'ranked', true);
       } catch (err) {
         if (!(err instanceof RoomCapacityError)) throw err;
         for (const session of live) {

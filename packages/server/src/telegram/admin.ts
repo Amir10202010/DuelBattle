@@ -97,10 +97,15 @@ export class AdminConsole {
       };
 
     this.audit(adminTelegramId, 'payment.refund', chargeId, { telegramUserId }, now);
-    const result = await this.service.payments.refund({ chargeId, telegramUserId, now });
+    const result = await this.service.payments.refund({
+      chargeId,
+      telegramUserId,
+      now,
+      ...(this.service.meta ? { revokeOffer: this.service.meta.starOffers().revoke } : {}),
+    });
     return {
       text: result.ok
-        ? `💳 Refunded <code>${escapeHtml(chargeId)}</code>. Premium has been revoked.`
+        ? `💳 Refunded <code>${escapeHtml(chargeId)}</code>. The purchase has been revoked.`
         : [
             `💳 Telegram refused the refund: ${escapeHtml(result.error)}`,
             '',

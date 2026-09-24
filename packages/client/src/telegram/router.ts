@@ -18,6 +18,7 @@ export type View =
   | { k: Tab }
   | { k: 'quests' }
   | { k: 'store' }
+  | { k: 'pass' }
   | { k: 'ranks' }
   | { k: 'awards' }
   | { k: 'matches' }
@@ -70,6 +71,7 @@ export function viewFrom(pathname: string): View {
     ...TABS,
     'quests',
     'store',
+    'pass',
     'ranks',
     'awards',
     'matches',
@@ -86,6 +88,8 @@ export function tabFor(view: View): Tab {
       return 'rank';
     case 'store':
       return 'profile';
+    case 'pass':
+      return 'home';
     case 'quests':
     case 'challenge':
       return 'duel';

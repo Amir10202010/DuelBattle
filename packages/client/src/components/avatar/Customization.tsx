@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Check, ChevronRight, Gem, Gift, LockKeyhole, Search, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronRight, Gem, LockKeyhole, Search, Sparkles, X } from 'lucide-react';
 import { HEROES, cosmetic, cosmeticState, heroById, previewItem, type EconomyView } from '@battle/shared';
 import { useEconomy } from '../../hooks/useEconomy.js';
 import { tr, useUiPreferences } from '../../i18n/index.js';
 import { HeroCard } from './HeroCard.js';
 import { HeroScene } from './HeroScene.js';
 import { GearArt } from './GearArt.js';
-import { HeroPreview, cosmeticsForHero } from './HeroPreview.js';
+import { EXCLUSIVE_SOURCE, HeroPreview, cosmeticsForHero } from './HeroPreview.js';
+import { BannerSwatch } from '../meta/RewardChip.js';
 import { CoinIcon } from '../currency/Coins.js';
 import { Dialog } from '../Dialog.js';
 
@@ -33,7 +34,7 @@ export function Customization({ shop = false }: { shop?: boolean }) {
 }
 
 function Collection({ shop, data }: { shop: boolean; data: EconomyView }) {
-  const { busy, act, feedback } = useEconomy();
+  const { feedback } = useEconomy();
   const [selected, setSelected] = useState(shop ? 'spider-man' : data.loadout.skin ?? data.loadout.body ?? 'cloud');
   const [category, setCategory] = useState('heroes');
   const [filter, setFilter] = useState(shop ? 'all' : 'owned');
@@ -55,11 +56,11 @@ function Collection({ shop, data }: { shop: boolean; data: EconomyView }) {
   const matchesItem = (entry: { id: string; name: string; rarity: string; price: number }) => {
     const definition = heroById(cosmetic(entry.id)?.heroId ?? entry.id);
     const matches = [entry.name, tr(entry.name), ...(category === 'gear' ? [] : [definition.name, tr(definition.name), definition.title, ...definition.tags])].some((part) => part.toLocaleLowerCase().includes(needle));
-    return matches && (rarity === 'all' || entry.rarity === rarity) && (filter === 'all' || (filter === 'owned' && data.owned.includes(entry.id)) || (filter === 'missing' && !data.owned.includes(entry.id)) || (filter === 'affordable' && !data.owned.includes(entry.id) && data.coins >= entry.price && !cosmeticState(cosmetic(entry.id)!, data).requiresHero) || (filter === 'new' && definition.shop.isNew));
+    return matches && (rarity === 'all' || entry.rarity === rarity) && (filter === 'all' || (filter === 'owned' && data.owned.includes(entry.id)) || (filter === 'missing' && !data.owned.includes(entry.id)) || (filter === 'affordable' && !data.owned.includes(entry.id) && cosmeticState(cosmetic(entry.id)!, data).affordable && !cosmeticState(cosmetic(entry.id)!, data).requiresHero) || (filter === 'new' && definition.shop.isNew));
   };
   const compare = (a: { name: string; price: number; rarity: string }, b: { name: string; price: number; rarity: string }) => sort === 'price-up' ? a.price - b.price : sort === 'price-down' ? b.price - a.price : sort === 'rarity' ? ranks[b.rarity]! - ranks[a.rarity]! : sort === 'name' ? tr(a.name).localeCompare(tr(b.name)) : 0;
   const visible = HEROES.filter(matchesItem).sort(compare);
-  const categories = [['heroes', 'Heroes'], ['styles', 'Forms'], ['gear', 'Gear']];
+  const categories = [['heroes', 'Heroes'], ['styles', 'Forms'], ['gear', 'Gear'], ['looks', 'Looks'], ['identity', 'Titles & banners']];
   const visibleCosmetics = cosmeticsForHero(styleHero, category).filter(matchesItem).sort(compare);
   const resetFilters = () => { setQuery(''); setFilter('all'); setRarity('all'); setStyleHero('all'); };
   const setCollectionFilter = (value: string) => { setFilter(value); setLimit(24); };
@@ -69,7 +70,6 @@ function Collection({ shop, data }: { shop: boolean; data: EconomyView }) {
       <div className="collection-featured">
         {HEROES.filter((entry) => entry.shop.featured).map((entry) => <HeroCard key={entry.id} hero={entry} economy={data} selected={selected === entry.id} onSelect={() => select(entry.id)} featured />)}
       </div>
-      <div className="collection-drop"><span className="collection-drop__icon"><Gift size={23} /></span><span><b>{tr(data.dailyClaimed ? 'A little closer to your next hero' : 'A little gift for your next adventure')}</b><small>{tr(data.dailyClaimed ? 'Your daily coins are collected. See you tomorrow!' : '30 Battle coins. On the house, every day.')}</small></span><button disabled={busy || data.dailyClaimed} onClick={() => void act('daily')}><CoinIcon size={18} />{tr(data.dailyClaimed ? 'Claimed' : 'Claim 30')}{data.dailyClaimed ? <Check size={15} /> : <ArrowRight size={15} />}</button></div>
     </>}
     <div className="collection-heading"><div><span className="collection-eyebrow">{tr(shop ? 'MAKE ROOM FOR A NEW FAVORITE' : 'YOUR PERSONAL LINEUP')}</span><h2>{tr(shop ? 'The collection' : 'Make it yours.')}<span>{HEROES.length}</span></h2></div><div className="collection-progress"><span><Gem size={15} />{tr(`${ownedCount} of ${HEROES.length} collected`)}</span><div role="progressbar" aria-label={tr('Hero collection')} aria-valuenow={ownedCount} aria-valuemin={0} aria-valuemax={HEROES.length}><i style={{ width: `${ownedCount / HEROES.length * 100}%` }} /></div></div></div>
     <div className="collection-layout">
@@ -86,11 +86,15 @@ function Collection({ shop, data }: { shop: boolean; data: EconomyView }) {
           {!visible.length && <div className="collection-empty"><Search size={26} /><h3>{tr('No heroes here yet')}</h3><p>{tr('Try another name. Your next favorite is close.')}</p><button className="collection-button" onClick={resetFilters}>{tr('Explore all heroes')}<ArrowRight size={16} /></button></div>}
           {visible.length > limit && <button className="collection-more" onClick={() => setLimit((value) => value + 24)}>{tr('Show more heroes')}<ChevronRight size={16} /></button>}
         </> : <>
-          {category === 'styles' ? <div className="collection-form-heroes" role="group" aria-label={tr('Choose a hero')}><button aria-pressed={styleHero === 'all'} onClick={() => setStyleHero('all')}>{tr('All heroes')}</button>{HEROES.filter((entry) => entry.category !== 'originals').map((entry) => <button key={entry.id} aria-pressed={styleHero === entry.id} onClick={() => setStyleHero(entry.id)}>{tr(entry.name)}</button>)}</div> : <div className="collection-slot-heading"><span>{tr('Signature weapons. Distinct strikes.')}</span></div>}
+          {category === 'styles' ? <div className="collection-form-heroes" role="group" aria-label={tr('Choose a hero')}><button aria-pressed={styleHero === 'all'} onClick={() => setStyleHero('all')}>{tr('All heroes')}</button>{HEROES.filter((entry) => entry.category !== 'originals').map((entry) => <button key={entry.id} aria-pressed={styleHero === entry.id} onClick={() => setStyleHero(entry.id)}>{tr(entry.name)}</button>)}</div> : <div className="collection-slot-heading"><span>{tr(category === 'gear' ? 'Signature weapons. Distinct strikes.' : category === 'looks' ? 'Coats, hair and auras for the original crew.' : 'Worn on your card, the ladder and the versus screen.')}</span></div>}
           {visibleCosmetics.length ? <div className="collection-cosmetics">
             {visibleCosmetics.map((entry) => { const state = cosmeticState(entry, data); return <button key={entry.id} className={`cosmetic-tile ${item.id === entry.id ? 'is-selected' : ''}`} aria-pressed={item.id === entry.id} onClick={() => select(entry.id)}>
-              {entry.slot === 'weapon' ? <div className="gear-display"><GearArt id={entry.id} /><span className="gear-display__orbit" /></div> : <HeroScene size={150} loadout={{ body: entry.heroId, skin: entry.id }} />}
-              <strong>{tr(entry.name)}</strong><span>{state.equipped ? <><Check size={13} />{tr('Equipped')}</> : state.owned ? tr('Owned') : state.locked ? <><LockKeyhole size={13} />{tr(`Level ${entry.level}`)}</> : <><CoinIcon size={17} />{entry.price || tr('Free')}</>}</span>
+              {entry.slot === 'weapon' ? <div className="gear-display"><GearArt id={entry.id} /><span className="gear-display__orbit" /></div>
+                : entry.slot === 'title' ? <div className="identity-display"><span className="identity-display__title" style={{ '--title-color': entry.color } as React.CSSProperties}>{tr(entry.name)}</span></div>
+                : entry.slot === 'banner' ? <div className="identity-display"><BannerSwatch itemId={entry.id} className="identity-display__banner" /></div>
+                : entry.slot === 'skin' ? <HeroScene size={150} loadout={{ body: entry.heroId, skin: entry.id }} />
+                : <HeroScene size={150} loadout={{ body: 'cloud', [entry.slot]: entry.id }} />}
+              <strong>{tr(entry.name)}</strong><span>{state.equipped ? <><Check size={13} />{tr('Equipped')}</> : state.owned ? tr('Owned') : entry.exclusive ? <><Sparkles size={13} />{tr(EXCLUSIVE_SOURCE[entry.exclusive])}</> : state.locked ? <><LockKeyhole size={13} />{tr(`Level ${entry.level}`)}</> : <><CoinIcon size={17} />{entry.price || tr('Free')}</>}</span>
             </button>; })}
           </div> : <div className="collection-empty"><Search size={26} /><h3>{tr('No matching collectibles')}</h3><p>{tr('Try another name. Your next favorite is close.')}</p><button className="collection-button" onClick={resetFilters}>{tr('Reset filters')}<ArrowRight size={16} /></button></div>}
         </>}

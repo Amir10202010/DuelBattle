@@ -39,7 +39,7 @@ describe('hero content and loadout compatibility', () => {
     expect(kit.body).toBe('cloud');
   });
   it('separates ownership, funds, level gates and upcoming content', () => {
-    const state = { coins: 100, level: 1, owned: ['cloud'], loadout: DEFAULT_LOADOUT, dailyClaimed: false };
+    const state = { coins: 100, gems: 0, level: 1, owned: ['cloud'], loadout: DEFAULT_LOADOUT, dailyClaimed: false };
     expect(cosmeticState(cosmetic('cloud')!, state)).toMatchObject({ owned: true, equipped: true });
     expect(cosmeticState(cosmetic('pikachu')!, state)).toMatchObject({ affordable: false, owned: false, locked: false });
     expect(cosmeticState(cosmetic('stardust')!, state).locked).toBe(true);

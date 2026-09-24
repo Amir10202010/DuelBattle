@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "battle-sandbox",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:sandbox"],
+      "port": 5173
+    },
+    {
       "name": "battle",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],

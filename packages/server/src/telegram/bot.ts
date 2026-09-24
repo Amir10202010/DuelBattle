@@ -1,10 +1,11 @@
-import { isPlaced, levelFor, rankFor, type TelegramMe } from '@battle/shared';
+import { isPlaced, levelFor, rankFor, totals, type TelegramMe } from '@battle/shared';
 import { log } from '../log.js';
 import type { InlineKeyboardButton } from './api.js';
 import { botLink, botStartLink, isAdmin, telegramConfig } from './config.js';
 import type { TelegramLaunchUser } from './initData.js';
 import { AdminConsole } from './admin.js';
 import { escapeHtml, type TelegramService } from './service.js';
+import { PREMIUM_PRODUCT } from './payments.js';
 
 /**
  * The bot, as a product rather than a command table.
@@ -63,6 +64,7 @@ export interface TelegramUpdate {
     from: TelegramChatUser;
     invoice_payload: string;
     total_amount: number;
+    currency: string;
   };
   my_chat_member?: {
     from: TelegramChatUser;
@@ -113,6 +115,9 @@ export class TelegramBot {
         updateId: update.update_id,
         errorType: error instanceof Error ? error.name : 'unknown',
       });
+      // A failed payment transaction must be retried by Telegram. Ordinary
+      // chat commands remain best-effort; charges are idempotent in the DB.
+      if (update.message?.successful_payment) throw error;
     }
   }
 
@@ -245,11 +250,28 @@ export class TelegramBot {
       chargeId: payment.telegram_payment_charge_id,
       payload: payment.invoice_payload,
       stars: payment.total_amount,
+      currency: payment.currency,
       now,
     });
     if (!grant) {
       await this.reply(message.chat.id, {
         text: '💎 <b>Payment received</b>\n\nWe could not match this payment to an account automatically. Send /paysupport and we will sort it out.',
+      });
+      return;
+    }
+    if (grant.product !== PREMIUM_PRODUCT) {
+      // A store offer: the shop has already recorded and delivered it.
+      const summary = totals(grant.granted);
+      const parts = [
+        summary.gems ? `💎 ${summary.gems} gems` : '',
+        summary.coins ? `🪙 ${summary.coins} coins` : '',
+        summary.items.length ? `🎁 ${summary.items.length} new item${summary.items.length === 1 ? '' : 's'}` : '',
+      ].filter(Boolean);
+      await this.reply(message.chat.id, {
+        text: grant.fresh
+          ? `🛍 <b>Thank you.</b>\n\n${parts.join('\n') || 'Your purchase is in your account.'}`
+          : '🛍 This purchase is already in your account.',
+        buttons: this.mainKeyboard(false),
       });
       return;
     }
@@ -268,7 +290,7 @@ export class TelegramBot {
                 ? `Until ${new Date(grant.until).toISOString().slice(0, 10)}.`
                 : 'For good.',
               '',
-              'Your badge is live, advanced stats are unlocked and premium cosmetics are in the store.',
+              'Your badge is live, the premium track of the season pass is open, and the Patron title and banner are in your locker.',
             ].join('\n'),
           },
         },
@@ -336,9 +358,9 @@ export class TelegramBot {
     await this.reply(query.from.id, card);
   }
 
-  private async onPreCheckout(update: TelegramUpdate, _now: number): Promise<void> {
+  private async onPreCheckout(update: TelegramUpdate, now: number): Promise<void> {
     const query = update.pre_checkout_query!;
-    const verdict = this.service.payments.approvePreCheckout(query.invoice_payload);
+    const verdict = this.service.payments.approvePreCheckout(query.invoice_payload, now, { amount: query.total_amount, currency: query.currency });
     await this.service.api.answerPreCheckoutQuery({
       id: query.id,
       ok: verdict.ok,
@@ -596,9 +618,8 @@ export class TelegramBot {
         '💎 <b>DUEL BATTLE PREMIUM</b>',
         '',
         '🏆  A premium badge on your card and on the ladder',
-        '📊  Advanced stats: form, opponents, round breakdowns',
-        '🎨  Premium cosmetics in the store',
-        '⚡  Priority in the matchmaking queue',
+        '🎟  The premium track of the current season pass, while Premium lasts',
+        '🎖  The Patron title and banner, yours to keep',
         '',
         `${telegramConfig.premiumStars} ⭐ Telegram Stars${telegramConfig.premiumDays ? ` · ${telegramConfig.premiumDays} days` : ''}`,
       ].join('\n'),

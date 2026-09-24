@@ -9,6 +9,7 @@ import './styles/arena.css';
 import './styles/characters.css';
 import './styles/heroes.css';
 import './styles/battle-product.css';
+import './styles/meta.css';
 import { App } from './App.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 

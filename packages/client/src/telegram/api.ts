@@ -130,6 +130,8 @@ export const api = {
   premium: () =>
     call<TelegramPremiumOffer & { premium: TelegramMe['premium'] }>('premium'),
   premiumInvoice: () => call<{ link: string }>('premium/invoice', { body: {} }),
+  /** A Stars invoice for one of the store's real-money offers. */
+  offerInvoice: (offerId: string) => call<{ link: string; orderId: string }>(`offers/${offerId}/invoice`, { body: {} }),
 
   saveProfile: (changes: { name?: string; avatar?: { shape: number; color: number } }) =>
     call<TelegramMe>('profile', { body: changes }),

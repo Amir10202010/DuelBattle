@@ -36,7 +36,7 @@ const button = (view: HTMLElement, name: string) => [...view.querySelectorAll('b
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   setPreferences({ language: 'en' });
-  data = { coins: 160, owned: ['cloud', 'pilot', 'tuft', 'mitten'], loadout: { ...DEFAULT_LOADOUT }, level: 1, dailyClaimed: false };
+  data = { coins: 160, gems: 0, owned: ['cloud', 'pilot', 'tuft', 'mitten'], loadout: { ...DEFAULT_LOADOUT }, level: 1, dailyClaimed: false };
   error = ''; missing = false; loading = false; busy = false;
   action.mockClear(); refresh.mockClear();
 });

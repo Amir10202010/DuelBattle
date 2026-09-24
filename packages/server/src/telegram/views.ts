@@ -15,7 +15,7 @@ import {
 import { botLink } from './config.js';
 import type { Database } from '../database.js';
 import type { PlayerProfile } from '../profiles.js';
-import { Entitlements } from './entitlements.js';
+import { Entitlements } from '../entitlements.js';
 import type { TelegramIdentities } from './identity.js';
 import type { NotificationService } from './notifications.js';
 import type { Referrals } from './referrals.js';
@@ -110,6 +110,9 @@ export class TelegramViews {
       loadout: profile.loadout,
       rating: profile.rating,
       peakRating: profile.peakRating,
+      casualPlayed: profile.casualPlayed,
+      casualWins: profile.casualWins,
+      history: profile.history,
       matchesPlayed: profile.matchesPlayed,
       wins: profile.wins,
       losses: profile.losses,
@@ -150,16 +153,16 @@ export class TelegramViews {
     return profile.history.slice(offset, offset + limit).map((record, index) => ({
       ...record,
       index: offset + index,
-      // A recorded match is by definition one that counted: the settlement path
-      // only writes history for ranked rooms.
-      ranked: true,
+      // Rows written before casual matches were recorded carry no mode, and
+      // every one of those was ranked.
+      ranked: record.mode !== 'casual',
     }));
   }
 
   match(accountId: string, index: number): TelegramMatchRow | null {
     const profile = this.db.get(accountId);
     const record = profile?.history[index];
-    return record ? { ...record, index, ranked: true } : null;
+    return record ? { ...record, index, ranked: record.mode !== 'casual' } : null;
   }
 
   /**

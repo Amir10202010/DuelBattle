@@ -219,9 +219,12 @@ describe('real authentication HTTP and socket boundaries', () => {
     expect((await session.json()).profile.loadout.accessory).toBe('visor');
     expect((await (await post('unequip', { slot: 'accessory' })).json()).loadout.accessory).toBeUndefined();
     expect((await post('buy', { itemId: 'comet' })).status).toBe(409);
+    // The daily claim is the first square of the calendar, once per UTC day.
     const claim = await post('daily', {});
-    expect(await claim.json()).toMatchObject({ coins: 110, granted: 30 });
-    expect(await (await post('daily', {})).json()).toMatchObject({ coins: 110, granted: 0 });
+    expect(await claim.json()).toMatchObject({ coins: 120, granted: 40 });
+    const again = await post('daily', {});
+    expect(again.status).toBe(409);
+    expect(db.sql.prepare("SELECT coins FROM wallets").all().some((row) => Number(row.coins) === 120)).toBe(true);
     await request('logout', {}, cookie);
     expect((await post('buy', { itemId: 'visor' })).status).toBe(401);
   });

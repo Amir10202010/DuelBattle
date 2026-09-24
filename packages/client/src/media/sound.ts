@@ -21,18 +21,40 @@ export type Cue =
   | 'xpGain'
   | 'reward'
   | 'rankUp'
-  | 'opponentJoined';
+  | 'opponentJoined'
+  | 'coin'
+  | 'gem'
+  | 'claim'
+  | 'questComplete'
+  | 'chestShake'
+  | 'chestOpen'
+  | 'rareReveal'
+  | 'levelUp'
+  | 'impact'
+  | 'whoosh'
+  | 'shutter'
+  | 'error';
 
 interface Note {
-  /** Hertz. A second value sweeps to it over the note's length. */
+  /** Hertz. A second value sweeps to it over the note's length. Ignored by noise. */
   freq: number;
   to?: number;
   /** Seconds from the start of the cue. */
   at: number;
   duration: number;
   gain: number;
-  type?: OscillatorType;
+  /**
+   * `noise` is filtered white noise: the air in a whoosh, the crack of an
+   * impact, the shimmer on a chest. Oscillators alone sound like a phone from
+   * 2004; one layer of noise under them is most of the difference.
+   */
+  type?: OscillatorType | 'noise';
+  /** A band for noise to live in, optionally sweeping. */
+  filter?: { type: BiquadFilterType; freq: number; to?: number; q?: number };
 }
+
+const sparkle = (at: number, base = 1760): Note[] =>
+  [0, 0.05, 0.1].map((offset, i) => ({ freq: base * (1 + i * 0.26), at: at + offset, duration: 0.12, gain: 0.05 }));
 
 /**
  * Every sound in the game, written as notes rather than shipped as files.
@@ -44,8 +66,18 @@ interface Note {
 const CUES: Record<Cue, Note[]> = {
   purchase: [{ freq: 660, at: 0, duration: .12, gain: .13 }, { freq: 880, at: .09, duration: .13, gain: .14 }, { freq: 1320, at: .19, duration: .3, gain: .12 }],
   equip: [{ freq: 440, to: 880, at: 0, duration: .1, gain: .13, type: 'triangle' }],
-  hit: [{ freq: 170, to: 48, at: 0, duration: .16, gain: .3, type: 'triangle' }, { freq: 780, to: 240, at: .02, duration: .07, gain: .1 }],
-  finisher: [{ freq: 140, to: 38, at: 0, duration: .32, gain: .3, type: 'triangle' }, { freq: 523, at: .12, duration: .16, gain: .1 }, { freq: 784, at: .23, duration: .28, gain: .12 }],
+  hit: [
+    { freq: 170, to: 48, at: 0, duration: .16, gain: .3, type: 'triangle' },
+    { freq: 780, to: 240, at: .02, duration: .07, gain: .1 },
+    { freq: 0, at: 0, duration: .08, gain: .14, type: 'noise', filter: { type: 'lowpass', freq: 3200, to: 500 } },
+  ],
+  finisher: [
+    { freq: 0, at: 0, duration: .22, gain: .06, type: 'noise', filter: { type: 'bandpass', freq: 500, to: 4000, q: 1.6 } },
+    { freq: 140, to: 38, at: .12, duration: .32, gain: .3, type: 'triangle' },
+    { freq: 0, at: .12, duration: .14, gain: .18, type: 'noise', filter: { type: 'lowpass', freq: 2600, to: 300 } },
+    { freq: 523, at: .24, duration: .16, gain: .1 },
+    { freq: 784, at: .35, duration: .28, gain: .12 },
+  ],
   button: [{ freq: 520, to: 720, at: 0, duration: 0.045, gain: 0.065, type: 'triangle' }],
   hurry: [{ freq: 440, to: 330, at: 0, duration: 0.075, gain: 0.09, type: 'triangle' }],
   hurryFinal: [
@@ -71,7 +103,10 @@ const CUES: Record<Cue, Note[]> = {
     { freq: 1320, at: 0.02, duration: 0.2, gain: 0.14 },
   ],
   // A low, blunt thunk: the sound of committing to an answer.
-  lockIn: [{ freq: 220, to: 110, at: 0, duration: 0.14, gain: 0.3, type: 'triangle' }],
+  lockIn: [
+    { freq: 220, to: 110, at: 0, duration: 0.14, gain: 0.3, type: 'triangle' },
+    { freq: 0, at: 0, duration: 0.03, gain: 0.1, type: 'noise', filter: { type: 'highpass', freq: 2500 } },
+  ],
   // Deliberately distinct from your own lock-in — this is the sound of losing
   // the race, and you should be able to tell without looking.
   opponentLocked: [
@@ -136,6 +171,70 @@ const CUES: Record<Cue, Note[]> = {
   opponentJoined: [
     { freq: 587, at: 0, duration: 0.1, gain: 0.16 },
     { freq: 880, at: 0.09, duration: 0.16, gain: 0.16 },
+  ],
+  // Two bright metallic pings: the sound a coin makes landing on a pile.
+  coin: [
+    { freq: 1568, at: 0, duration: 0.08, gain: 0.08, type: 'triangle' },
+    { freq: 2093, at: 0.06, duration: 0.16, gain: 0.07, type: 'triangle' },
+    { freq: 0, at: 0, duration: 0.05, gain: 0.03, type: 'noise', filter: { type: 'highpass', freq: 5000 } },
+  ],
+  // Glassier and higher than a coin, with a shimmer tail.
+  gem: [
+    { freq: 1319, at: 0, duration: 0.12, gain: 0.08 },
+    { freq: 1976, at: 0.07, duration: 0.2, gain: 0.07 },
+    ...sparkle(0.12, 2637),
+  ],
+  claim: [
+    { freq: 660, to: 990, at: 0, duration: 0.12, gain: 0.1, type: 'triangle' },
+    { freq: 1320, at: 0.1, duration: 0.18, gain: 0.08 },
+    { freq: 0, at: 0, duration: 0.2, gain: 0.04, type: 'noise', filter: { type: 'bandpass', freq: 3000, to: 7000, q: 1.2 } },
+  ],
+  questComplete: [
+    ...[784, 988, 1175, 1568].map((freq, i) => ({ freq, at: i * 0.07, duration: 0.2, gain: 0.1, type: 'triangle' as const })),
+    ...sparkle(0.3),
+  ],
+  // The chest rattling on its lid: short low knocks.
+  chestShake: [
+    { freq: 140, to: 90, at: 0, duration: 0.06, gain: 0.16, type: 'triangle' },
+    { freq: 0, at: 0, duration: 0.05, gain: 0.08, type: 'noise', filter: { type: 'lowpass', freq: 900 } },
+    { freq: 150, to: 95, at: 0.11, duration: 0.06, gain: 0.16, type: 'triangle' },
+    { freq: 0, at: 0.11, duration: 0.05, gain: 0.08, type: 'noise', filter: { type: 'lowpass', freq: 900 } },
+  ],
+  // The lid going: a thump, a rush of air up the spectrum, and a chord.
+  chestOpen: [
+    { freq: 110, to: 45, at: 0, duration: 0.3, gain: 0.26, type: 'triangle' },
+    { freq: 0, at: 0, duration: 0.45, gain: 0.12, type: 'noise', filter: { type: 'bandpass', freq: 600, to: 6000, q: 0.8 } },
+    ...[523, 659, 784, 1047].map((freq) => ({ freq, at: 0.12, duration: 0.7, gain: 0.05 })),
+    ...sparkle(0.25, 2093),
+  ],
+  rareReveal: [
+    { freq: 0, at: 0, duration: 0.6, gain: 0.08, type: 'noise', filter: { type: 'bandpass', freq: 1500, to: 9000, q: 1.5 } },
+    ...[659, 831, 988, 1319, 1661].map((freq, i) => ({ freq, at: 0.05 + i * 0.06, duration: 0.5, gain: 0.07 })),
+    ...sparkle(0.4, 2637),
+  ],
+  levelUp: [
+    { freq: 392, at: 0, duration: 0.12, gain: 0.12, type: 'triangle' },
+    { freq: 523, at: 0.1, duration: 0.12, gain: 0.12, type: 'triangle' },
+    { freq: 659, at: 0.2, duration: 0.12, gain: 0.12, type: 'triangle' },
+    { freq: 1047, at: 0.3, duration: 0.5, gain: 0.13, type: 'triangle' },
+    ...sparkle(0.42),
+  ],
+  // A body blow: low sine drop under a short cracked-air transient.
+  impact: [
+    { freq: 120, to: 40, at: 0, duration: 0.22, gain: 0.32 },
+    { freq: 0, at: 0, duration: 0.09, gain: 0.16, type: 'noise', filter: { type: 'lowpass', freq: 2400, to: 400 } },
+  ],
+  whoosh: [
+    { freq: 0, at: 0, duration: 0.28, gain: 0.07, type: 'noise', filter: { type: 'bandpass', freq: 400, to: 3200, q: 2 } },
+  ],
+  // A camera shutter: two short clicks of bright noise.
+  shutter: [
+    { freq: 0, at: 0, duration: 0.025, gain: 0.14, type: 'noise', filter: { type: 'highpass', freq: 2500 } },
+    { freq: 0, at: 0.07, duration: 0.035, gain: 0.1, type: 'noise', filter: { type: 'highpass', freq: 1800 } },
+  ],
+  error: [
+    { freq: 220, at: 0, duration: 0.09, gain: 0.1, type: 'square' },
+    { freq: 196, at: 0.1, duration: 0.14, gain: 0.08, type: 'square' },
   ],
 };
 
@@ -258,12 +357,16 @@ class SoundBoard {
 
     const start = ctx.currentTime;
     for (const note of CUES[cue]) {
-      const osc = ctx.createOscillator();
+      const noise = note.type === 'noise';
+      const source: AudioScheduledSourceNode = noise ? this.noiseSource(ctx) : ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = note.type ?? 'sine';
-      osc.frequency.setValueAtTime(note.freq, start + note.at);
-      if (note.to !== undefined) {
-        osc.frequency.exponentialRampToValueAtTime(note.to, start + note.at + note.duration);
+      if (!noise) {
+        const osc = source as OscillatorNode;
+        osc.type = (note.type as OscillatorType | undefined) ?? 'sine';
+        osc.frequency.setValueAtTime(note.freq, start + note.at);
+        if (note.to !== undefined) {
+          osc.frequency.exponentialRampToValueAtTime(note.to, start + note.at + note.duration);
+        }
       }
 
       // A fast attack and an exponential tail: anything slower reads as a hum
@@ -272,15 +375,44 @@ class SoundBoard {
       gain.gain.exponentialRampToValueAtTime(note.gain, start + note.at + 0.008);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + note.at + note.duration);
 
-      osc.onended = () => {
-        osc.disconnect();
+      let tail: AudioNode = source;
+      let filter: BiquadFilterNode | null = null;
+      if (note.filter) {
+        filter = ctx.createBiquadFilter();
+        filter.type = note.filter.type;
+        filter.Q.value = note.filter.q ?? 0.9;
+        filter.frequency.setValueAtTime(note.filter.freq, start + note.at);
+        if (note.filter.to !== undefined)
+          filter.frequency.exponentialRampToValueAtTime(note.filter.to, start + note.at + note.duration);
+        source.connect(filter);
+        tail = filter;
+      }
+      source.onended = () => {
+        source.disconnect();
+        filter?.disconnect();
         gain.disconnect();
       };
-      osc.connect(gain);
+      if (!note.filter) source.connect(gain);
+      else tail.connect(gain);
       gain.connect(master);
-      osc.start(start + note.at);
-      osc.stop(start + note.at + note.duration + 0.02);
+      source.start(start + note.at);
+      source.stop(start + note.at + note.duration + 0.02);
     }
+  }
+
+  /** One second of white noise, made once per context and replayed from a random offset. */
+  private noise: AudioBuffer | null = null;
+  private noiseSource(ctx: AudioContext): AudioBufferSourceNode {
+    if (!this.noise || this.noise.sampleRate !== ctx.sampleRate) {
+      this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const data = this.noise.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = this.noise;
+    source.loop = true;
+    source.loopStart = Math.random() * 0.5;
+    return source;
   }
 }
 

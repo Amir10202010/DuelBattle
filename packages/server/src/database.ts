@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { hydrate, type PlayerProfile, type ProfileStore } from './profiles.js';
 import type { BoardKind } from './leaderboard.js';
-import { migrateEconomy, matchCoins } from './economy.js';
+import { CASUAL_DAILY_CAP, casualCoins, casualRewardsToday, migrateEconomy, matchCoins } from './economy.js';
 import { migrateTelegram } from './telegram/schema.js';
+import { migrateMeta } from './meta/schema.js';
 import { normalizeLoadout, type MatchRewards } from '@battle/shared';
 
 /** One authoritative store. All game writes commit before a result is announced. */
@@ -83,6 +84,7 @@ export class Database implements ProfileStore {
       `);
       migrateEconomy(this.sql);
       migrateTelegram(this.sql);
+      migrateMeta(this.sql);
     });
   }
 
@@ -126,6 +128,32 @@ export class Database implements ProfileStore {
 
   rewardMatch(id: string, receipt: string, reward: MatchRewards, at: number) {
     return matchCoins(this.sql, id, receipt, reward, at);
+  }
+
+  rewardCasual(id: string, receipt: string, reward: MatchRewards, won: boolean, at: number) {
+    return casualCoins(this.sql, id, receipt, reward, won, at);
+  }
+
+  /** Whether this account still has casual rewards left today. */
+  casualAllowance(id: string, at: number): boolean {
+    return casualRewardsToday(this.sql, id, at) < CASUAL_DAILY_CAP;
+  }
+
+  /**
+   * Records a casual match between two accounts, if the pair has not already
+   * been paid for enough of them today. Five a day between the same two people
+   * is an evening of rematches; more than that is two browsers farming.
+   */
+  claimCasual(id: string, a: string, b: string, at: number): boolean | null {
+    if (this.sql.prepare('SELECT 1 FROM casual_receipts WHERE id=?').get(id)) return null;
+    const [one, two] = [a, b].sort() as [string, string];
+    const recent = this.sql
+      .prepare('SELECT count(*) AS n FROM casual_receipts WHERE a=? AND b=? AND at>? AND rewarded=1')
+      .get(one, two, at - 86_400_000);
+    const rewarded = Number(recent!.n) < 5;
+    this.sql.prepare('INSERT INTO casual_receipts(id,a,b,at,rewarded) VALUES(?,?,?,?,?)')
+      .run(id, one, two, at, Number(rewarded));
+    return rewarded;
   }
 
   all(): PlayerProfile[] {

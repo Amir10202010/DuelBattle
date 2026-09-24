@@ -47,11 +47,16 @@ export function BattleHistory({ history, onPlay }: { history: MatchRecord[]; onP
               <i>{'–'}</i>
               {record.theirScore}
             </span>
-            <span className={`history__delta num ${change >= 0 ? 'is-up' : 'is-down'}`}>
-              {change >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-              {change > 0 ? '+' : ''}
-              {change}
-            </span>
+            {record.mode === 'casual' ? (
+              // A casual match never touched the rating, so it says what it was instead of "+0".
+              <span className="history__delta history__delta--casual">{tr('Quick play')}</span>
+            ) : (
+              <span className={`history__delta num ${change >= 0 ? 'is-up' : 'is-down'}`}>
+                {change >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                {change > 0 ? '+' : ''}
+                {change}
+              </span>
+            )}
             <span className="history__xp num">
               {'+'}
               {record.xp ?? 0}

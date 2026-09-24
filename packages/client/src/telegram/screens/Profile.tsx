@@ -28,7 +28,7 @@ export function MatchesScreen({ onGo }: { onGo: (view: View) => void }) {
     return (
       <Empty
         title="No matches yet"
-        body="You have not finished a ranked duel. The first one starts your rating."
+        body="Finish a duel to start your battle history."
       />
     );
 
@@ -57,10 +57,11 @@ export function MatchesScreen({ onGo }: { onGo: (view: View) => void }) {
               <span>{when(match.at)}</span>
             </span>
             <span className="tg-row__end">
+              {match.mode === 'casual' ? <b>{tr('Casual')}</b> :
               <b className={change >= 0 ? 'tg-win' : 'tg-loss'}>
                 {change >= 0 ? '+' : ''}
                 {change}
-              </b>
+              </b>}
             </span>
           </button>
         );
@@ -111,8 +112,10 @@ export function MatchScreen({ index }: { index: number }) {
             {tr('vs')} {match.opponentName || tr('Player')}
           </span>
           <span className={tone}>
+            {match.mode === 'casual' ? tr('Casual') : <>
             {change >= 0 ? '+' : ''}
             {change} {tr('rating')} · {match.ratingAfter}
+            </>}
           </span>
           {match.xp ? <span>+{match.xp} {tr('XP')}</span> : null}
           <span className="dim">{formatDate(match.at, { dateStyle: 'medium', timeStyle: 'short' })}</span>

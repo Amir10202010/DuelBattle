@@ -1010,6 +1010,24 @@ export function countsForRating(state: MatchState): boolean {
   return seated.every((player) => roundsAnswered(state.history, player.id) >= needed);
 }
 
+/**
+ * Whether a finished casual match should pay out progression.
+ *
+ * The same test of "did this match actually happen" the ladder uses — nobody
+ * abandoned it, and both sides answered at least half the rounds — without the
+ * ladder's demand on the judge. A round the referee could not settle is a round
+ * nobody won, which is a perfectly good thing to have happened in a friendly.
+ */
+export function countsForRewards(state: MatchState): boolean {
+  if (state.phase !== 'matchResult' || state.endReason === 'abandoned') return false;
+  const seated = playersInSeatOrder(state);
+  if (seated.length !== 2 || state.history.length === 0) return false;
+  if (state.endReason === 'forfeit')
+    return Boolean(state.winnerId && state.history.some((r) => r.perPlayer[state.winnerId!]?.valid));
+  const needed = Math.ceil(state.history.length / 2);
+  return seated.every((player) => roundsAnswered(state.history, player.id) >= needed);
+}
+
 function afterRoundResult(state: MatchState, ctx: EngineContext): MatchState {
   const seated = playersInSeatOrder(state);
   const leader = [...seated].sort((a, b) => b.score - a.score)[0];

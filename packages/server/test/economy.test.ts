@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '../src/database.js';
 import { blankProfile } from '../src/profiles.js';
-import { ensureWallet, economyView, purchase, equip, dailyCoins, grantCoins, unequip } from '../src/economy.js';
+import { ensureWallet, economyView, purchase, equip, grantCoins, unequip } from '../src/economy.js';
+import { MetaService } from '../src/meta/service.js';
 import { plainSummary, recordMatch } from '../src/standings.js';
 import { COSMETICS } from '@battle/shared';
 let db: Database;
@@ -33,9 +34,10 @@ describe('server-owned cosmetics economy', () => {
       COSMETICS.filter((item) => item.availability !== 'coming-soon').map((item) => item.id).sort(),
     );
     expect(view().loadout.accessory).toBe('visor');
-    db.transaction(() => dailyCoins(db.sql, 'a', now));
+    new MetaService(db).claimDaily('a', now);
     db.transaction(() => ensureWallet(db.sql, 'a', now + 86400000));
-    expect(view().coins).toBe(10110);
+    // The first square of the daily calendar pays forty.
+    expect(view().coins).toBe(10120);
     expect(view('b').coins).toBe(160);
     expect(view('b').owned).not.toContain('pikachu');
   });
@@ -124,10 +126,18 @@ describe('server-owned cosmetics economy', () => {
   });
   it('gates level items and makes daily rewards idempotent in UTC', () => {
     expect(() => purchase(db.sql, 'a', 'stardust', 0, now)).toThrow('level');
-    expect(db.transaction(() => dailyCoins(db.sql, 'a', now))).toBe(30);
-    expect(db.transaction(() => dailyCoins(db.sql, 'a', now + 1000))).toBe(0);
-    expect(db.transaction(() => dailyCoins(db.sql, 'a', now + 86400000))).toBe(30);
-    expect(view().dailyClaimed).toBe(true);
+    const meta = new MetaService(db);
+    expect(meta.claimDaily('a', now).granted).toEqual([{ kind: 'coins', amount: 40 }]);
+    expect(() => meta.claimDaily('a', now + 1000)).toThrow('Already collected');
+    // The next day is the next square, not the first one again.
+    expect(meta.claimDaily('a', now + 86400000).granted).toEqual([{ kind: 'coins', amount: 60 }]);
+    expect(economyView(db.sql, 'a', 0, now + 86400000).dailyClaimed).toBe(true);
+  });
+  it('never sells an exclusive for coins, even at a price of zero', () => {
+    db.transaction(() => grantCoins(db.sql, 'a', 'rich', 9000, now));
+    expect(() => db.transaction(() => purchase(db.sql, 'a', 'lamplighter', 0, now))).toThrow('earned, not bought');
+    expect(() => db.transaction(() => purchase(db.sql, 'a', 'title-founder', 0, now))).toThrow('earned, not bought');
+    expect(view().owned).not.toContain('lamplighter');
   });
   it('commits battle rewards with the result and rejects replayed receipts', () => {
     const a = { id: 'a', name: 'A', score: 3, summary: { ...plainSummary(), validAnswers: 3 } };

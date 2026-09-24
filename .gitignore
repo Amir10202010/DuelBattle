@@ -26,3 +26,4 @@ data/
 
 # Downloaded, checksum-verified browser vision runtime
 packages/client/public/vision-runtime/
+.gstack/

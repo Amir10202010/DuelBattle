@@ -54,6 +54,8 @@ export function blankProfile(id: string, now: number): PlayerProfile {
     streak: 0,
     bestStreak: 0,
     xp: 0,
+    casualPlayed: 0,
+    casualWins: 0,
     achievements: [],
     createdAt: now,
     lastSeenAt: now,
@@ -78,6 +80,8 @@ export function hydrate(row: Partial<PlayerProfile> & { id: string }, now: numbe
     loadout: normalizeLoadout(row.loadout),
     peakRating: Math.max(row.peakRating ?? 0, row.rating ?? blank.rating),
     xp: Math.max(0, Math.floor(row.xp ?? 0)),
+    casualPlayed: Math.max(0, Math.floor(row.casualPlayed ?? 0)),
+    casualWins: Math.max(0, Math.floor(row.casualWins ?? 0)),
     achievements: Array.isArray(row.achievements)
       ? row.achievements.filter((a) => typeof a === 'string')
       : [],
@@ -101,6 +105,8 @@ export function publicView(profile: PlayerProfile, own: boolean): PublicProfile 
     bestStreak,
     xp,
     achievements,
+    casualPlayed,
+    casualWins,
   } = profile;
   return {
     name,
@@ -116,12 +122,18 @@ export function publicView(profile: PlayerProfile, own: boolean): PublicProfile 
     bestStreak,
     xp,
     achievements,
+    casualPlayed,
+    casualWins,
     ...(own ? { history: profile.history } : {}),
   };
 }
 
 export interface ProfileStore {
   rewardMatch?(id: string, receipt: string, reward: MatchRewards, at: number): number;
+  rewardCasual?(id: string, receipt: string, reward: MatchRewards, won: boolean, at: number): number;
+  casualAllowance?(id: string, at: number): boolean;
+  /** true: rewarded, false: capped, null: already recorded. */
+  claimCasual?(id: string, a: string, b: string, at: number): boolean | null;
   queueCooldown?(id: string): number;
   setQueueCooldown?(id: string, until: number): void;
   auditEvaluation?(roundId: string, verdict: unknown, at: number): void;

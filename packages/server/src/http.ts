@@ -8,6 +8,7 @@ import { TokenBuckets, type LimiterOptions } from './limiter.js';
 import { log } from './log.js';
 import type { AuthService } from './auth.js';
 import { authHttp } from './authHttp.js';
+import type { MetaService } from './meta/service.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -30,6 +31,10 @@ export interface HttpOptions {
   clientDir: string;
   rooms: RoomManager;
   auth?: AuthService;
+  /** Handles the lobby API, analytics, the Stripe webhook and the dashboard. */
+  meta?: (req: IncomingMessage, res: ServerResponse, path: string, ip: string) => Promise<boolean>;
+  /** The service behind it, for the economy routes that feed quests. */
+  metaService?: MetaService;
   /** Handles `/api/telegram/*`. Absent when this deployment has no bot. */
   telegram?: (
     req: IncomingMessage,
@@ -112,7 +117,7 @@ function documentHeaders(pathname: string): Record<string, string> {
 export function createHttpServer(options: HttpOptions): Server {
   const clientRoot = options.clientDir ? resolve(options.clientDir) : '';
   const lookupLimiter = new TokenBuckets(LOOKUP_LIMIT);
-  const authentication = options.auth ? authHttp(options.auth) : null;
+  const authentication = options.auth ? authHttp(options.auth, options.metaService) : null;
 
   return createServer(
     {
@@ -135,6 +140,7 @@ export function createHttpServer(options: HttpOptions): Server {
       void (async () => {
         const ip = clientKey(req);
         if (options.telegram && (await options.telegram(req, res, path, ip))) return;
+        if (options.meta && (await options.meta(req, res, path, ip))) return;
         if (authentication && (await authentication(req, res, path, ip))) return;
         await handle(req, res, options, clientRoot, lookupLimiter);
       })().catch(() => {

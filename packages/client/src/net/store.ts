@@ -10,6 +10,7 @@ import {
   type ServerMessage,
 } from '@battle/shared';
 import { Connection, type ConnectionStatus, type GameConnection } from './connection.js';
+import { track } from '../analytics.js';
 
 export interface Toast {
   id: number;
@@ -377,11 +378,14 @@ export class MatchStore {
       queue: { position: 0, waiting: 0, since: Date.now(), ...(mode ? { mode } : {}) },
     });
     this.connection.send({ t: 'findMatch', name, ...(mode ? { mode } : {}) });
+    track('queue_joined', { mode: mode ?? 'casual' });
   }
 
   cancelFind(): void {
+    const since = this.snapshot.queue?.since;
     this.patch({ queue: null });
     this.connection.send({ t: 'cancelFind' });
+    if (since) track('queue_cancelled', { wait_ms: Date.now() - since });
   }
 
   /** The name and avatar this browser plays under, kept by the server. */
@@ -455,6 +459,9 @@ export class MatchStore {
   }
 
   leave(): void {
+    const phase = this.snapshot.match?.phase;
+    // Walking out of a round in progress is the number a rage-quit chart is made of.
+    if (phase && phase !== 'lobby' && phase !== 'matchResult') track('match_left', { phase, ranked: Boolean(this.snapshot.match?.ranked) });
     this.connection.send({ t: 'leave' });
     const code = this.snapshot.roomCode;
     this.intent = null;
@@ -548,6 +555,7 @@ export class MatchStore {
         });
         return;
       case 'joined': {
+        if (this.snapshot.queue) track('match_found', { wait_ms: Date.now() - this.snapshot.queue.since, mode: this.snapshot.queue.mode ?? 'casual' });
         const name = this.intent && 'name' in this.intent ? this.intent.name : rememberedName();
         writeSession(message.roomCode, { token: message.token, name, at: Date.now() });
         // From here on, any reconnect re-enters the same seat.

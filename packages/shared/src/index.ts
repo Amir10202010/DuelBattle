@@ -18,3 +18,4 @@ export * from './vision/detect.js';
 export * from './vision/run.js';
 
 export * from './localization.js';
+export * from './meta/index.js';

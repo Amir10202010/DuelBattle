@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 /**
  * The Telegram side, end to end, through the real HTTP server.
@@ -488,6 +488,24 @@ describe('entitlements and payments', () => {
 });
 
 describe('the webhook', () => {
+  it('lets Telegram retry a payment when its transaction failed', async () => {
+    const { signIn, telegram, webhook, db } = await setup();
+    await signIn(5050);
+    const accountId = telegram.identities.byTelegramId(5050)!.accountId;
+    const settlement = vi.spyOn(telegram.payments, 'settle').mockImplementationOnce(() => { throw new Error('Temporary database failure'); });
+    const update = { update_id: 5050, message: {
+      message_id: 1, from: { id: 5050 }, chat: { id: 5050, type: 'private' },
+      successful_payment: { telegram_payment_charge_id: 'retry-charge', invoice_payload: `premium:${accountId}:${'ab'.repeat(6)}`, total_amount: 250, currency: 'XTR' },
+    } };
+    expect((await webhook(update)).status).toBe(500);
+    expect(db.sql.prepare('SELECT 1 FROM telegram_updates WHERE update_id=5050').get()).toBeUndefined();
+    expect((await webhook(update)).status).toBe(200);
+    expect(telegram.entitlements.has(accountId, 'premium', Date.now())).toBe(true);
+    expect(settlement).toHaveBeenCalledTimes(2);
+    expect((await webhook(update)).status).toBe(200);
+    expect(settlement).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects a delivery with the wrong secret, and says nothing about why', async () => {
     const { webhook } = await setup();
     const response = await webhook({ update_id: 1 }, 'not-the-secret');
@@ -756,6 +774,7 @@ describe('the settlement hook', () => {
       matchId: 'ROOMA:1:r1',
       roomCode: 'ROOMA',
       ranked: true,
+      friendRoom: false,
       at: now,
       players: [
         {
@@ -768,6 +787,9 @@ describe('the settlement hook', () => {
           ratingChange: 24,
           streak: 1,
           rewards: { xp: 120, levelBefore: 1, levelAfter: 2, unlocked: [], rankMove: null },
+          validAnswers: 2,
+          fastestWinMs: null,
+          rewarded: true,
         },
         {
           accountId: loser,
@@ -779,6 +801,9 @@ describe('the settlement hook', () => {
           ratingChange: -24,
           streak: 0,
           rewards: { xp: 40, levelBefore: 1, levelAfter: 1, unlocked: [], rankMove: null },
+          validAnswers: 2,
+          fastestWinMs: null,
+          rewarded: true,
         },
       ],
     });
@@ -803,6 +828,7 @@ describe('the settlement hook', () => {
       matchId: 'ROOMB:1:r1',
       roomCode: 'ROOMB',
       ranked: false,
+      friendRoom: true,
       at: Date.now(),
       players: [
         {
@@ -815,6 +841,9 @@ describe('the settlement hook', () => {
           ratingChange: 0,
           streak: 1,
           rewards: { xp: 0, levelBefore: 1, levelAfter: 1, unlocked: [], rankMove: null },
+          validAnswers: 2,
+          fastestWinMs: null,
+          rewarded: true,
         },
         {
           accountId: b,
@@ -826,6 +855,9 @@ describe('the settlement hook', () => {
           ratingChange: 0,
           streak: 0,
           rewards: { xp: 0, levelBefore: 1, levelAfter: 1, unlocked: [], rankMove: null },
+          validAnswers: 2,
+          fastestWinMs: null,
+          rewarded: true,
         },
       ],
     });

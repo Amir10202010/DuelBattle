@@ -50,9 +50,11 @@ export function Profile({
   const rank = rankFor(profile.rating);
   const next = nextRank(profile.rating);
   const down = demotionRisk(profile.rating);
-  const winRate = profile.matchesPlayed
-    ? Math.round((profile.wins / profile.matchesPlayed) * 100)
-    : null;
+  // Every finished match, casual included: the ladder counts only ranked ones,
+  // but a record that ignored most of somebody's evenings would read as empty.
+  const battles = profile.matchesPlayed + (profile.casualPlayed ?? 0);
+  const allWins = profile.wins + (profile.casualWins ?? 0);
+  const winRate = battles ? Math.round((allWins / battles) * 100) : null;
 
   const categories = new Map<string, number>();
   for (const record of profile.history ?? [])
@@ -138,14 +140,14 @@ export function Profile({
             <Swords size={14} />
             {tr('Battles')}
           </span>
-          <strong>{profile.matchesPlayed}</strong>
+          <strong>{battles}</strong>
         </div>
         <div className="stat">
           <span>
             <Trophy size={14} />
             {tr('Wins')}
           </span>
-          <strong>{profile.wins}</strong>
+          <strong>{allWins}</strong>
         </div>
         <div className="stat">
           <span>

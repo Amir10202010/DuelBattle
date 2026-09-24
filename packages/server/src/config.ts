@@ -128,6 +128,20 @@ export const config = {
   idleSocketTtlMs: int('IDLE_SOCKET_TTL_MS', 10 * 60_000),
   /** Trust X-Forwarded-For. Only enable behind a proxy you control. */
   trustProxy: process.env.TRUST_PROXY === '1',
+  /**
+   * Card payments through Stripe Checkout. Both halves or neither: the secret
+   * key opens a checkout, the webhook secret is how a payment is believed.
+   * Server-side only; use test-mode keys (sk_test_…) until the flow is proven.
+   */
+  stripeSecretKey: (process.env.STRIPE_SECRET_KEY ?? '').trim(),
+  stripeWebhookSecret: (process.env.STRIPE_WEBHOOK_SECRET ?? '').trim(),
+  /**
+   * Verified account emails allowed to read the KPI dashboard. An email, not a
+   * display name: display names are chosen by anybody.
+   */
+  adminEmails: list('ADMIN_EMAILS').map((email) => email.toLowerCase()),
+  /** The public origin, for building return links from a payment page. */
+  appOrigin: (process.env.APP_ORIGIN ?? '').replace(/\/+$/, ''),
 } as const;
 
 export type Config = typeof config;

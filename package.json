@@ -18,11 +18,14 @@
     "typecheck": "tsc -p tsconfig.check.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:integration": "vitest run packages/server/test",
+    "test:smoke": "node scripts/smoke-production.mjs",
     "test:watch": "vitest",
     "start": "node packages/server/dist/index.js",
     "topics:generate": "tsx packages/server/scripts/generate-topics.ts",
     "vision:prepare": "node --use-env-proxy scripts/prepare-vision.mjs",
-    "prebuild": "npm run vision:prepare"
+    "prebuild": "npm run vision:prepare",
+    "dev:sandbox": "node scripts/dev-sandbox.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

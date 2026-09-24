@@ -1,8 +1,11 @@
 import type { MatchResult } from './rating.js';
 import type { Loadout } from './cosmetics.js';
+import type { MetaMatchRewards } from './meta/index.js';
 
 /** One finished match, as it reads on a profile card. */
 export interface MatchRecord {
+  /** Absent on rows written before casual matches were recorded: those were all ranked. */
+  mode?: 'ranked' | 'casual';
   forfeited?: boolean;
   topicIds?: string[];
   id?: string;
@@ -60,6 +63,9 @@ export interface PublicProfile {
   bestStreak: number;
   /** Lifetime XP. Only ever goes up; drives the level, and nothing else. */
   xp: number;
+  /** Finished casual matches. Kept apart so placement and the ladder stay ranked-only. */
+  casualPlayed?: number;
+  casualWins?: number;
   /** Ids from the shared achievement catalogue, oldest first. */
   achievements: string[];
   /** Present only on your own card. */
@@ -84,6 +90,10 @@ export interface RatingDelta {
 export interface MatchRewards {
   coins?: number;
   dailyBonus?: number;
+  /** A casual match: progression without a rating. */
+  casual?: boolean;
+  /** The season pass and quest boards, when this server keeps them. */
+  meta?: MetaMatchRewards;
   xp: number;
   /** Level before and after, so a level-up can be announced. */
   levelBefore: number;

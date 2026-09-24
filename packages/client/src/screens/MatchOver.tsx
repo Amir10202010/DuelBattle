@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react';
 import {
   getAchievement,
   COSMETICS,
+  POINTS_PER_TIER,
   getChallenge,
   opponentOf,
+  questById,
   rankFor,
+  seasonLevel,
   type MatchRewards,
   type PublicMatchState,
   type PublicProfile,
@@ -14,7 +17,7 @@ import {
   type RoundOutcome,
 } from '@battle/shared';
 import { Celebration } from '../components/Celebration.jsx';
-import { ArrowRight, RotateCcw, Trophy } from 'lucide-react';
+import { ArrowRight, Check, RotateCcw, Share2, Target, Trophy } from 'lucide-react';
 import { RatingLine } from '../components/Rating.jsx';
 import type { MatchStore } from '../net/store.js';
 import { SeriesLine } from '../components/Series.jsx';
@@ -24,6 +27,9 @@ import { sound } from '../media/sound.js';
 import { DuelActors } from '../components/battle/DuelActors.jsx';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber.js';
 import { Hero } from '../components/avatar/Hero.jsx';
+import { PassIcon } from '../components/meta/Currency.jsx';
+import { shareResult } from '../components/meta/share.js';
+import { track } from '../analytics.js';
 
 interface MatchOverProps {
   store: MatchStore;
@@ -117,7 +123,7 @@ export function MatchOver({
     <section className={`over ${won ? 'over--win' : drawn ? 'over--draw' : 'over--loss'}`} aria-label={tr('Match result')}>
       <div className="over__head">
         {won && <Celebration finale />}
-        <span className="eyebrow">{tr(match.ranked ? 'Ranked duel' : 'Friendly room')}</span>
+        <span className="eyebrow">{tr(match.ranked ? 'Ranked duel' : 'Casual duel')}</span>
         <h1 className="over__title display">{tr(headline)}</h1>
         {match.endReason === 'forfeit' && (
           <p className="over__sub dim">{tr(won ? 'Your opponent left.' : 'You left the match.')}</p>
@@ -161,27 +167,52 @@ export function MatchOver({
               )}
             </p>
           </details>
+        ) : !standings[youId] ? (
+          <a className="over__guest plate" href="/register" onClick={() => track('tutorial_step', { step: 'guest_signup_from_result' })}>
+            <span>
+              <strong>{tr('Keep what this match was worth')}</strong>
+              <small>{tr('Players earn XP, coins, season pass tiers and quest rewards from every match. Guests keep nothing.')}</small>
+            </span>
+            <span className="btn btn--primary">
+              {tr('Create a player')}
+              <ArrowRight size={15} />
+            </span>
+          </a>
         ) : (
-          <p className="over__unrated">
-            {tr('Just for fun · no rating changes')}
-            {!standings[youId] && (
-              <a className="text-link" href="/register">
-                {tr('Unlock ranks and rewards')}
-                <ArrowRight size={14} />
-              </a>
-            )}
-          </p>
+          <p className="over__unrated">{tr('Casual rewards require two signed-in players who answer at least half the rounds.')}</p>
         ))}
 
       <div className="over__actions">
         <button
-          className="btn btn--primary btn--lg"
-          onClick={opponent?.connected ? () => store.rematch() : onFindAnother}
+          className="btn btn--primary btn--lg over__again"
+          onClick={() => {
+            track('rematch_pressed', { mode: match.ranked ? 'ranked' : 'casual', opponent: Boolean(opponent?.connected) });
+            if (opponent?.connected) store.rematch();
+            else onFindAnother();
+          }}
           disabled={Boolean(opponent?.connected && you?.rematchVote)}
         >
           <RotateCcw size={18} aria-hidden="true" />
           {tr(you?.rematchVote && opponent?.connected ? 'Waiting for them…' : 'Play again')}
         </button>
+        {match.endReason !== 'abandoned' && opponent && (
+          <button
+            className="btn btn--lg over__share"
+            onClick={() =>
+              void shareResult({
+                you: you?.name ?? tr('You'),
+                them: opponent.name,
+                yourScore: you?.score ?? 0,
+                theirScore: opponent.score,
+                won,
+                ranked: Boolean(match.ranked),
+              })
+            }
+          >
+            <Share2 size={17} aria-hidden="true" />
+            {tr('Share')}
+          </button>
+        )}
         {opponent?.connected && (
           <button className="btn btn--lg" onClick={onFindAnother}>
             {tr('New opponent')}
@@ -330,6 +361,28 @@ function Payout({
         <span><small className="eyebrow">{tr('Unlocked')}</small><strong>{tr(item.name)}</strong><small>{tr('Ready in your locker')}</small></span>
       </div>)}
 
+      {rewards.meta?.pass && <PassProgress pass={rewards.meta.pass} revealed={revealed} />}
+      {rewards.meta && rewards.meta.quests.length > 0 && (
+        <ul className="payout__quests" aria-label={tr('Quest progress')}>
+          {rewards.meta.quests.map((quest) => {
+            const definition = questById(quest.id);
+            return (
+              <li key={quest.id} className={quest.done ? 'is-done' : ''}>
+                {quest.done ? <Check size={15} /> : <Target size={15} />}
+                <span>{tr(definition?.title ?? quest.id)}</span>
+                <b className="num">
+                  {quest.progress}/{quest.target}
+                </b>
+                {quest.done && <small>{tr('Collect on home')}</small>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {rewards.meta?.capped && (
+        <p className="payout__capped">{tr('Casual reward limit reached for today or for this opponent. Quests still count.')}</p>
+      )}
+
       {!!rewards.dailyBonus && (
         <p className="payout__daily">
           {tr('Daily challenge complete · +')}
@@ -357,6 +410,40 @@ function Payout({
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * The season bar, moving: where it was before the match and where it is now,
+ * and a tier-up called out when one happened. The same arithmetic the server
+ * used, so the bar lands exactly where the pass page will show it.
+ */
+function PassProgress({ pass, revealed }: { pass: { points: number; before: number; after: number }; revealed: boolean }) {
+  useUiPreferences();
+  const before = seasonLevel(pass.before);
+  const after = seasonLevel(pass.after);
+  const shown = revealed ? after : before;
+  const tierUp = after.tier > before.tier;
+  useEffect(() => {
+    if (revealed && tierUp) {
+      const timer = window.setTimeout(() => sound.play('levelUp'), 500);
+      return () => window.clearTimeout(timer);
+    }
+  }, [revealed, tierUp]);
+  return (
+    <div className={`payout__pass ${tierUp && revealed ? 'is-tier-up' : ''}`}>
+      <PassIcon size={26} />
+      <div>
+        <span className="payout__pass-head">
+          <b>{`+${pass.points}`}</b> {tr('pass XP')}
+          {tierUp && revealed && <em>{tr(`Tier ${after.tier} reached`)}</em>}
+        </span>
+        <div className="season-card__bar" role="progressbar" aria-label={tr('Season pass')} aria-valuenow={shown.into} aria-valuemin={0} aria-valuemax={POINTS_PER_TIER}>
+          <i style={{ width: `${shown.maxed ? 100 : (shown.into / POINTS_PER_TIER) * 100}%` }} />
+        </div>
+        <small className="num">{tr(`Tier ${shown.tier}`)}</small>
+      </div>
+    </div>
   );
 }
 

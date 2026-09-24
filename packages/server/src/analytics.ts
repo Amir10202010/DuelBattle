@@ -1,34 +1,41 @@
-import type { Database } from '../database.js';
+import {
+  CLIENT_EVENTS,
+  SERVER_EVENTS,
+  isClientEvent,
+  sanitizeProps,
+  type EventProps,
+} from '@battle/shared';
+import type { Database } from './database.js';
 
 /**
  * Product events, recorded on the server, in the same database as everything
  * else.
  *
  * There is no third party here and no script in the page. The questions this
- * has to answer — how many people started the bot, how many opened the app, how
- * many of those played, how many invites turn into players — are all answerable
- * from rows this server already writes, and adding a vendor to answer them
- * would mean shipping every player's activity to somebody else for the
- * privilege.
+ * has to answer — who came back, who played, who paid and what for — are all
+ * answerable from rows this server already writes, and adding a vendor to
+ * answer them would mean shipping every player's activity to somebody else for
+ * the privilege.
  *
  * Properties are a small JSON object, never free text from a user, never an
- * identifier belonging to anybody but the account the row is about.
+ * identifier belonging to anybody but the account the row is about. Client
+ * events may only use the names the shared list allows; everything involving
+ * money, rewards or a result is written here by the server from its own
+ * records, because a client event is a hint, not evidence.
  */
 
-export const ANALYTICS_EVENTS = [
+export const TELEGRAM_EVENTS = [
   'telegram_bot_started',
   'telegram_miniapp_opened',
   'telegram_account_created',
   'telegram_account_linked',
   'telegram_account_unlinked',
   'match_started',
-  'match_completed',
   'challenge_created',
   'challenge_accepted',
   'challenge_played',
   'referral_clicked',
   'referral_activated',
-  'quest_claimed',
   'achievement_unlocked',
   'premium_viewed',
   'premium_invoice_opened',
@@ -37,7 +44,13 @@ export const ANALYTICS_EVENTS = [
   'report_filed',
 ] as const;
 
-export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];
+/** Every name a row may carry. Kept for readers of the database as much as for the compiler. */
+export const ANALYTICS_EVENTS = [...new Set([...TELEGRAM_EVENTS, ...SERVER_EVENTS, ...CLIENT_EVENTS])];
+
+export type AnalyticsEvent =
+  | (typeof TELEGRAM_EVENTS)[number]
+  | (typeof SERVER_EVENTS)[number]
+  | (typeof CLIENT_EVENTS)[number];
 
 export interface AnalyticsTotals {
   dau: number;
@@ -53,6 +66,9 @@ export interface AnalyticsTotals {
   openReports: number;
 }
 
+/** One batch a browser may send: small, named from the allow-list, and bounded. */
+export const MAX_CLIENT_BATCH = 25;
+
 export class Analytics {
   constructor(private readonly db: Database) {}
 
@@ -65,16 +81,39 @@ export class Analytics {
   track(
     name: AnalyticsEvent,
     accountId: string | null,
-    props: Record<string, string | number | boolean> = {},
+    props: EventProps = {},
     now = Date.now(),
+    sessionId: string | null = null,
   ): void {
     try {
       this.db.sql
-        .prepare('INSERT INTO analytics_events(at,name,account_id,props) VALUES(?,?,?,?)')
-        .run(now, name, accountId, JSON.stringify(props));
+        .prepare('INSERT INTO analytics_events(at,name,account_id,props,session_id) VALUES(?,?,?,?,?)')
+        .run(now, name, accountId, JSON.stringify(props), sessionId);
     } catch {
       /* Telemetry is never allowed to be the reason something failed. */
     }
+  }
+
+  /**
+   * Records what a browser reported.
+   *
+   * Unknown names are dropped rather than rejected, so an old client talking to
+   * a newer server loses a row, not a request. Timestamps are the server's:
+   * a client clock is a claim, and cohorts built on claims drift.
+   */
+  trackClient(input: unknown, accountId: string | null, now: number): number {
+    if (!input || typeof input !== 'object') return 0;
+    const { session, events } = input as { session?: unknown; events?: unknown };
+    const sessionId = typeof session === 'string' && /^[a-z0-9]{8,32}$/.test(session) ? session : null;
+    if (!Array.isArray(events)) return 0;
+    let kept = 0;
+    for (const event of events.slice(0, MAX_CLIENT_BATCH)) {
+      const { name, props } = (event ?? {}) as { name?: unknown; props?: unknown };
+      if (!isClientEvent(name)) continue;
+      this.track(name, accountId, sanitizeProps(props), now, sessionId);
+      kept++;
+    }
+    return kept;
   }
 
   /** Counts a named event over a window, for the admin dashboard. */
@@ -86,7 +125,7 @@ export class Analytics {
     );
   }
 
-  /** Everything the admin summary shows, from real rows only. */
+  /** Everything the Telegram admin summary shows, from real rows only. */
   totals(now: number): AnalyticsTotals {
     const active = (since: number) =>
       Number(
@@ -151,5 +190,14 @@ export class Analytics {
         )
         .get(since, since)!.n,
     );
+  }
+
+  /** Ninety days is enough for every cohort the dashboard draws. */
+  sweep(now: number): void {
+    try {
+      this.db.sql.prepare('DELETE FROM analytics_events WHERE at < ?').run(now - 90 * 86_400_000);
+    } catch {
+      /* Housekeeping never takes anything down with it. */
+    }
   }
 }

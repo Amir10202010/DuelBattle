@@ -127,6 +127,7 @@ function advance(
   const levelAfter = levelFor(settled.xp + totalXp).level;
 
   const record: MatchRecord = {
+    mode: 'ranked',
     forfeited: summary.forfeited ?? false,
     topicIds: summary.topicIds ?? [],
     at,
@@ -229,6 +230,107 @@ export function recordMatch(
       updateB.rewards.coins = store.rewardMatch(b.id, matchId, updateB.rewards, at);
     }
     return { [a.id]: updateA, [b.id]: updateB };
+  };
+  return store.transaction ? store.transaction(settle) : settle();
+}
+
+/** Consecutive wins at the top of a history, whatever mode each match was. */
+function historyStreak(history: readonly MatchRecord[]): number {
+  let streak = 0;
+  for (const record of history) {
+    if (record.result !== 'win') break;
+    streak++;
+  }
+  return streak;
+}
+
+export interface CasualUpdate extends RatingUpdate {
+  /** False when the daily ceiling or the per-pair limit held this one back. */
+  rewarded: boolean;
+  /** Consecutive wins across both modes, for the quest boards. */
+  anyStreak: number;
+}
+
+/**
+ * Writes a finished casual match into both records.
+ *
+ * The rating does not move and placement does not advance — a casual match is
+ * allowed to be careless, and a ladder that listened to careless matches would
+ * be measuring the wrong thing. Everything else a match is worth still lands:
+ * XP, a few coins, a line in the history. The two limits are what keep that
+ * honest: five paid matches a day between the same two accounts, and a daily
+ * ceiling per account, past which a match still counts but pays nothing.
+ */
+export function recordCasual(
+  store: ProfileStore,
+  a: Contestant,
+  b: Contestant,
+  at: number,
+  matchId: string,
+  winnerOverride?: string,
+): Record<string, CasualUpdate> {
+  if (a.id === b.id || !Number.isInteger(a.score) || !Number.isInteger(b.score) || a.score < 0 || b.score < 0)
+    throw new Error('Invalid match contestants');
+  if (winnerOverride && winnerOverride !== a.id && winnerOverride !== b.id)
+    throw new Error('Invalid winner');
+  const settle = () => {
+    const pairOk = store.claimCasual ? store.claimCasual(matchId, a.id, b.id, at) : true;
+    if (pairOk === null) return {};
+    const profiles = new Map([a, b].map((who) => [who.id, { ...(store.get(who.id) ?? blankProfile(who.id, at)), name: who.name }]));
+    const out: Record<string, CasualUpdate> = {};
+    for (const [me, them] of [[a, b], [b, a]] as const) {
+      const profile = profiles.get(me.id)!;
+      const opponent = profiles.get(them.id)!;
+      const result = winnerOverride ? (winnerOverride === me.id ? 'win' : 'loss') : resultOf(me.score, them.score);
+      const rewarded = pairOk && (store.casualAllowance ? store.casualAllowance(me.id, at) : true);
+      const xp = rewarded && !me.summary.forfeited
+        ? matchXp({ result, roundsWon: me.score, validAnswers: me.summary.validAnswers, streak: 0 })
+        : 0;
+      const record: MatchRecord = {
+        mode: 'casual',
+        forfeited: me.summary.forfeited ?? false,
+        topicIds: me.summary.topicIds ?? [],
+        at,
+        opponentName: opponent.name,
+        result,
+        ratingBefore: profile.rating,
+        ratingAfter: profile.rating,
+        yourScore: me.score,
+        theirScore: them.score,
+        xp,
+        categories: me.summary.categories ?? [],
+      };
+      const levelBefore = levelFor(profile.xp).level;
+      const updated: PlayerProfile = {
+        ...profile,
+        xp: profile.xp + xp,
+        casualPlayed: (profile.casualPlayed ?? 0) + 1,
+        casualWins: (profile.casualWins ?? 0) + (result === 'win' ? 1 : 0),
+        lastSeenAt: at,
+        history: [record, ...profile.history].slice(0, HISTORY_KEPT),
+      };
+      store.save(updated);
+      const rewards: MatchRewards = {
+        xp,
+        casual: true,
+        levelBefore,
+        levelAfter: levelFor(updated.xp).level,
+        unlocked: [],
+        rankMove: null,
+      };
+      if (rewarded && xp > 0 && store.rewardCasual) rewards.coins = store.rewardCasual(me.id, matchId, rewards, result === 'win', at);
+      out[me.id] = {
+        profile: updated,
+        result,
+        before: profile.rating,
+        after: profile.rating,
+        change: 0,
+        rewards,
+        rewarded: rewarded && xp > 0,
+        anyStreak: historyStreak(updated.history),
+      };
+    }
+    return out;
   };
   return store.transaction ? store.transaction(settle) : settle();
 }

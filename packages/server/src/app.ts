@@ -9,6 +9,9 @@ import { join } from 'node:path';
 import { Identities } from './identity.js';
 import { identitySecret } from './secret.js';
 import { YoloObjectDetector } from './ai/detector.js';
+import { MetaService } from './meta/service.js';
+import { StripeGateway } from './meta/stripe.js';
+import { sweepMeta } from './meta/schema.js';
 
 /**
  * Builds the AI referee, if this deployment has one.
@@ -69,6 +72,7 @@ import { log } from './log.js';
 import { telegramConfig } from './telegram/config.js';
 import { TelegramService } from './telegram/service.js';
 import { telegramHttp } from './telegram/http.js';
+import { metaHttp } from './meta/http.js';
 
 const SWEEP_INTERVAL_MS = 30_000;
 const MATCHMAKE_INTERVAL_MS = 1_000;
@@ -94,12 +98,16 @@ export interface AppOptions {
   profiles?: ProfileStore;
   identities?: Identities;
   auth?: AuthService;
+  /** Injected by tests that need a Stripe double; production reads the environment. */
+  stripe?: StripeGateway;
 }
 
 export interface App {
   server: Server;
   rooms: RoomManager;
   gateway: Gateway;
+  /** Quests, the season, the calendar and the shop. Present whenever accounts are. */
+  meta?: MetaService;
   /** Present only when this deployment has a bot token. */
   telegram?: TelegramService;
   listen(port: number, host?: string): Promise<number>;
@@ -127,6 +135,19 @@ export function createApp(options: AppOptions = {}): App {
    * never adds a route and never changes behaviour.
    */
   let telegram: TelegramService | undefined;
+  const stripe = options.stripe ?? new StripeGateway(config.stripeSecretKey, config.stripeWebhookSecret);
+  /**
+   * Everything around the match. Built wherever accounts exist, because every
+   * part of it — a quest, a tier, a purchase — belongs to an account.
+   */
+  const meta =
+    auth && profiles instanceof Database
+      ? new MetaService(profiles, {
+          stripe,
+          starsAvailable: () => Boolean(telegram?.payments.offersAvailable),
+          adminEmails: config.adminEmails,
+        })
+      : undefined;
   const rooms = new RoomManager({
     maxRooms: config.maxRooms,
     emptyRoomTtlMs: config.emptyRoomTtlMs,
@@ -134,10 +155,11 @@ export function createApp(options: AppOptions = {}): App {
     ...(judge ? { judge } : {}),
     ...(profiles ? { profiles } : {}),
     onSettled: (match) => telegram?.onSettled(match),
+    ...(meta ? { meta: (match) => meta.settle(match) } : {}),
   });
 
   if (telegramConfig.enabled && auth && profiles instanceof Database) {
-    telegram = new TelegramService({ db: profiles, auth, rooms });
+    telegram = new TelegramService({ db: profiles, auth, rooms, ...(meta ? { meta } : {}) });
     log.info('telegram integration enabled', {
       bot: telegramConfig.botUsername || 'unknown',
       miniApp: Boolean(telegramConfig.miniAppUrl),
@@ -154,6 +176,7 @@ export function createApp(options: AppOptions = {}): App {
     clientDir: options.clientDir ?? config.clientDir,
     rooms,
     ...(auth ? { auth } : {}),
+    ...(auth && meta ? { meta: metaHttp(auth, meta, stripe), metaService: meta } : {}),
     ...(telegram && auth ? { telegram: telegramHttp(telegram, auth) } : {}),
   });
   const gateway = new Gateway(
@@ -186,6 +209,20 @@ export function createApp(options: AppOptions = {}): App {
   // ten times for every person who joins it.
   const matchmaker = setInterval(() => gateway.matchmake(Date.now()), MATCHMAKE_INTERVAL_MS);
   const sweeper = setInterval(() => rooms.sweep(Date.now()), SWEEP_INTERVAL_MS);
+  // Old quest periods, spent receipts and analytics past their window. Hourly
+  // is plenty for rows that only matter at the scale of days.
+  const metaSweeper = meta && profiles instanceof Database
+    ? setInterval(() => {
+        const now = Date.now();
+        try {
+          sweepMeta(profiles.sql, now);
+          meta.sweep(now);
+        } catch (error) {
+          log.warn('meta sweep failed', { errorType: error instanceof Error ? error.name : 'unknown' });
+        }
+      }, 60 * 60_000)
+    : null;
+  metaSweeper?.unref?.();
   const telegramTicker = telegram
     ? setInterval(() => void telegram!.tick(Date.now()), TELEGRAM_TICK_MS)
     : null;
@@ -198,6 +235,7 @@ export function createApp(options: AppOptions = {}): App {
     server,
     rooms,
     gateway,
+    ...(meta ? { meta } : {}),
     ...(telegram ? { telegram } : {}),
     listen(port, host = config.host) {
       gateway.start();
@@ -224,6 +262,7 @@ export function createApp(options: AppOptions = {}): App {
       clearInterval(ticker);
       clearInterval(sweeper);
       clearInterval(matchmaker);
+      if (metaSweeper) clearInterval(metaSweeper);
       if (telegramTicker) clearInterval(telegramTicker);
       gateway.stop();
       return new Promise((resolve) =>

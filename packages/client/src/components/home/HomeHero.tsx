@@ -1,24 +1,28 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { ArrowRight, Shirt, Swords, Users, WifiOff } from 'lucide-react';
 import { isPlaced, rankFor, type PublicProfile } from '@battle/shared';
 import { rememberMode, rememberedMode, type PlayMode } from '../../net/playMode.js';
 import { rememberedName, type MatchStore } from '../../net/store.js';
 import { useEconomy } from '../../hooks/useEconomy.js';
 import { tr, useUiPreferences } from '../../i18n/index.js';
+import { track } from '../../analytics.js';
 import { Hero } from '../avatar/Hero.jsx';
-import { CoinCounter } from '../currency/Coins.jsx';
 import { LevelBar } from '../Identity.jsx';
 import { RankEmblem } from '../GameArt.jsx';
 import { ModePicker } from '../play/ModePicker.jsx';
+import { PlayerPlate } from '../meta/PlayerPlate.jsx';
+
+/** Floating motes over the stage: a handful, drawn by CSS, paused off screen. */
+const MOTES = Array.from({ length: 9 }, (_, i) => i);
 
 /**
  * The first thing a signed-in player sees, and the shortest path back into a
  * match.
  *
  * Pressing battle here does not open a menu: it picks the mode already chosen,
- * enters the queue, and moves to the searching screen. The old route asked for
- * the same decision twice — once here and once on the battle screen — which is
- * two taps and a page load between wanting to play and playing.
+ * enters the queue, and moves to the searching screen. The button says what
+ * the match is worth before it is played, because "why should I press this"
+ * is the only question this screen exists to answer.
  */
 export function HomeHero({
   profile,
@@ -37,6 +41,7 @@ export function HomeHero({
   const placed = isPlaced(profile.matchesPlayed);
   const rank = rankFor(profile.rating);
   const last = profile.history?.[0];
+  const loadout = economy?.loadout ?? profile.loadout;
 
   const chooseMode = (next: PlayMode) => {
     setMode(next);
@@ -45,6 +50,7 @@ export function HomeHero({
 
   const play = () => {
     const name = profile.name || rememberedName();
+    track('play_pressed', { mode, from: 'home' });
     onNavigate('/play');
     // A name the server has never seen has to be asked for, and the battle
     // screen is where that field lives.
@@ -52,59 +58,66 @@ export function HomeHero({
   };
 
   return (
-    <section className="hero-band plate">
-      <div className="hero-band__id">
-        <span className="eyebrow hero-band__eyebrow">{tr('Your arena')}</span>
-        <h1 className="hero-band__name display">{profile.name || tr('New player')}</h1>
-        <span className={`hero-band__rank ${placed ? '' : 'is-placing'}`}>
-          <RankEmblem rating={profile.rating} size={30} placing={!placed} />
-          {tr(placed ? rank.label : 'Placement in progress')}
-        </span>
+    <section className="stage-card plate" aria-label={tr('Your arena')}>
+      <header className="stage-card__id">
+        <PlayerPlate name={profile.name || tr('New player')} loadout={loadout} className="stage-card__plate">
+          <span className={`stage-card__rank ${placed ? '' : 'is-placing'}`}>
+            <RankEmblem rating={profile.rating} size={26} placing={!placed} />
+            {tr(placed ? rank.label : 'Placement in progress')}
+          </span>
+        </PlayerPlate>
         <LevelBar xp={profile.xp} />
-        <div className="hero-band__wallet">
-          {economy ? (
-            <CoinCounter value={economy.coins} />
-          ) : (
-            <span className="skel hero-band__wallet-skel" aria-hidden="true" />
-          )}
-        </div>
-      </div>
+      </header>
 
-      <div className="hero-band__char">
-        <div className="hero-plinth">
+      <div className="stage-card__stage">
+        <span className="stage-card__spot" aria-hidden="true" />
+        <span className="stage-card__floor" aria-hidden="true" />
+        <span className="stage-card__motes" aria-hidden="true">
+          {MOTES.map((i) => (
+            <i key={i} style={{ '--i': i } as CSSProperties} />
+          ))}
+        </span>
+        <div className="stage-card__hero">
           <Hero
             key={feedback?.id ?? 'idle'}
-            loadout={economy?.loadout ?? profile.loadout}
+            loadout={loadout}
             pose={feedback && feedback.amount > 0 ? 'victory' : 'idle'}
-            size={330}
+            size={300}
             label={tr('Your hero')}
           />
         </div>
-        <button className="btn btn--sm hero-band__dress" onClick={() => onNavigate('/profile')}>
+        <button className="btn btn--sm stage-card__dress" onClick={() => onNavigate('/profile')}>
           <Shirt size={15} />
           {tr('Customise')}
         </button>
       </div>
 
-      <div className="hero-band__play">
-        <p className="hero-band__objective">{tr('Find it. Show it. Win the round.')}</p>
+      <div className="stage-card__play">
         <ModePicker value={mode} onChange={chooseMode} canRank />
-        <button className="playbutton" onClick={play} disabled={offline}>
-          <Swords size={24} strokeWidth={2.4} aria-hidden="true" />
-          <span>{tr('Battle')}</span>
-          <ArrowRight size={20} aria-hidden="true" />
+        <button className="playbutton playbutton--hero" onClick={play} disabled={offline}>
+          <Swords size={28} strokeWidth={2.4} aria-hidden="true" />
+          <span className="playbutton__label">
+            <b>{tr('Battle')}</b>
+            <small>{tr(mode === 'ranked' ? 'Rating · XP · coins · pass' : 'XP · coins · pass · quests')}</small>
+          </span>
+          <ArrowRight size={22} aria-hidden="true" />
         </button>
         {offline && (
-          <p className="hero-band__note is-bad" role="status">
+          <p className="stage-card__note is-bad" role="status">
             <WifiOff size={14} />
             {tr('Reconnecting to the arena…')}
           </p>
         )}
-        <button className="hero-band__friend" disabled={offline} onClick={() => {
-          onNavigate('/play');
-          const name = profile.name || rememberedName();
-          if (name && !offline) store.createRoom(name);
-        }}>
+        <button
+          className="stage-card__friend"
+          disabled={offline}
+          onClick={() => {
+            track('play_pressed', { mode: 'friend', from: 'home' });
+            onNavigate('/play');
+            const name = profile.name || rememberedName();
+            if (name && !offline) store.createRoom(name);
+          }}
+        >
           <Users size={17} />
           <span>
             <strong>{tr('Play a friend')}</strong>
@@ -113,7 +126,7 @@ export function HomeHero({
           <ArrowRight size={16} />
         </button>
         {last && (
-          <p className={`hero-band__last is-${last.result}`}>
+          <p className={`stage-card__last is-${last.result}`}>
             <i aria-hidden="true" />
             {tr(
               last.result === 'win'

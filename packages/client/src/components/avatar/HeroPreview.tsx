@@ -7,8 +7,18 @@ import { CoinIcon } from '../currency/Coins.js';
 import { HeroScene, heroStyle } from './HeroScene.js';
 import { Rarity } from './HeroCard.js';
 import type { HeroPose } from './Hero.js';
+import { PlayerPlate } from '../meta/PlayerPlate.js';
 
-export const SLOT_NAMES: Partial<Record<CosmeticSlot, string>> = { skin: 'Style', outfit: 'Outfit', hair: 'Hair', accessory: 'Face', weapon: 'Gear', aura: 'Aura', finisher: 'Finisher' };
+export const SLOT_NAMES: Partial<Record<CosmeticSlot, string>> = { skin: 'Style', outfit: 'Outfit', hair: 'Hair', accessory: 'Face', weapon: 'Gear', aura: 'Aura', finisher: 'Finisher', title: 'Title', banner: 'Banner' };
+
+/** Where an item that is not sold for coins comes from, in the words the shop uses. */
+export const EXCLUSIVE_SOURCE: Record<NonNullable<CosmeticItem['exclusive']>, string> = {
+  'season-1': 'Season 1 pass',
+  founder: 'Founder pack',
+  premium: 'Premium',
+  starter: 'Getting started',
+  bundle: 'Shop bundle',
+};
 
 export function HeroPreview({ item, onSelect }: { item: CosmeticItem; onSelect: (id: string) => void }) {
   const { data, busy, error, feedback, act } = useEconomy();
@@ -30,7 +40,8 @@ export function HeroPreview({ item, onSelect }: { item: CosmeticItem; onSelect: 
   const reward = feedback?.itemId === item.id && ['buy', 'equip'].includes(feedback.kind);
   const pose: HeroPose = reward ? feedback.kind === 'buy' ? 'unlock' : 'victory' : reacting ? item.slot === 'weapon' ? 'attack' : item.slot === 'finisher' ? 'victory' : 'select' : 'idle';
   const skins = HERO_SKINS.filter((skin) => skin.heroId === hero.id);
-  const removable = equipped && (['skin', 'accessory', 'aura', 'finisher'].includes(item.slot) || (item.slot === 'weapon' && item.id !== 'mitten'));
+  const removable = equipped && (['skin', 'accessory', 'aura', 'finisher', 'title', 'banner'].includes(item.slot) || (item.slot === 'weapon' && item.id !== 'mitten'));
+  const identity = item.slot === 'title' || item.slot === 'banner';
   const selectClassic = () => onSelect(hero.id);
   const activate = () => void act(classicEquipped ? 'unequip' : state.owned ? 'equip' : 'buy', classicEquipped ? 'skin' : item.id);
   return <section className="hero-preview" style={heroStyle(hero)} aria-label={tr('Hero preview')}>
@@ -42,6 +53,7 @@ export function HeroPreview({ item, onSelect }: { item: CosmeticItem; onSelect: 
       <button className="hero-preview__react" onClick={() => setReaction((value) => value + 1)} aria-label={tr('Preview animation')}><Play size={13} fill="currentColor" />{tr(gear ? 'Test strike' : 'Say hello')}</button>
     </div>
     <div className="hero-preview__details">
+      {identity && <PlayerPlate className="hero-preview__plate" name={tr('Your name here')} loadout={{ ...data.loadout, [item.slot]: item.id }} />}
       <Rarity value={item.rarity} />
       <h2>{tr(gear?.name ?? hero.name)}</h2>
       <p className="hero-preview__description">{tr(gear?.description ?? hero.description)}</p>
@@ -54,9 +66,10 @@ export function HeroPreview({ item, onSelect }: { item: CosmeticItem; onSelect: 
       <div className="hero-preview__action">
         <div className="hero-preview__ownership"><span>{tr(state.owned ? 'In your collection' : 'Add to your collection')}</span>{state.owned ? <Check size={16} /> : <span><CoinIcon size={20} /><b>{item.price}</b></span>}</div>
         <button className={`collection-button ${equipped ? 'is-equipped' : ''}`} disabled={busy || equipped || state.locked || state.comingSoon || state.requiresHero || (!state.owned && !state.affordable)} onClick={activate}>
-          {busy ? <><span className="collection-spinner" />{tr('Saving…')}</> : state.comingSoon ? tr('Coming soon') : state.requiresHero ? <><LockKeyhole size={16} />{tr('Hero required')}</> : state.locked ? <><LockKeyhole size={16} />{tr(`Unlocks at level ${item.level}`)}</> : equipped ? <><Check size={17} />{tr('Equipped')}</> : state.owned ? <>{tr('Equip look')}<ArrowRight size={17} /></> : <>{tr(item.price ? 'Unlock' : 'Claim it')}<span><CoinIcon size={18} />{item.price || tr('Free')}</span></>}
+          {busy ? <><span className="collection-spinner" />{tr('Saving…')}</> : state.comingSoon ? tr('Coming soon') : !state.owned && item.exclusive ? <><Sparkles size={16} />{tr(EXCLUSIVE_SOURCE[item.exclusive])}</> : state.requiresHero ? <><LockKeyhole size={16} />{tr('Hero required')}</> : state.locked ? <><LockKeyhole size={16} />{tr(`Unlocks at level ${item.level}`)}</> : equipped ? <><Check size={17} />{tr('Equipped')}</> : state.owned ? <>{tr(identity ? 'Wear it' : 'Equip look')}<ArrowRight size={17} /></> : <>{tr(item.price ? 'Unlock' : 'Claim it')}<span><CoinIcon size={18} />{item.price || tr('Free')}</span></>}
         </button>
-        {!state.owned && !state.affordable && !state.requiresHero && <p className="hero-preview__hint">{tr(`${item.price - data.coins} more coins to unlock`)} <a href="/play">{tr('Earn in battle')}<ArrowRight size={12} /></a></p>}
+        {!state.owned && item.exclusive && <p className="hero-preview__hint">{tr(item.exclusive === 'season-1' ? 'Earned on the season pass track.' : item.exclusive === 'starter' ? 'Earned from the getting-started quests.' : 'Comes with an offer in the shop.')} <a href={item.exclusive === 'season-1' ? '/pass' : '/store'}>{tr('See where')}<ArrowRight size={12} /></a></p>}
+        {!state.owned && !item.exclusive && !state.affordable && !state.requiresHero && <p className="hero-preview__hint">{tr(`${item.price - data.coins} more coins to unlock`)} <a href="/play">{tr('Earn in battle')}<ArrowRight size={12} /></a></p>}
         {state.requiresHero && <button className="hero-preview__link" onClick={() => onSelect(item.heroId!)}>{tr('Meet the hero')}<ArrowRight size={14} /></button>}
         {removable && <button className="hero-preview__link" disabled={busy} onClick={async () => { if (await act('unequip', item.slot)) selectClassic(); }}><RotateCcw size={13} />{tr(item.slot === 'skin' ? 'Back to classic' : 'Take it off')}</button>}
         {error && <p className="error-text" role="alert">{tr(error)} <button className="hero-preview__link" onClick={activate} disabled={busy}>{tr('Try again')}</button></p>}
@@ -69,6 +82,8 @@ export function HeroPreview({ item, onSelect }: { item: CosmeticItem; onSelect: 
 export function cosmeticsForHero(body: string | undefined, category: string) {
   return COSMETICS.filter((item) => {
     if (category === 'styles') return item.slot === 'skin' && (!body || body === 'all' || item.heroId === body);
+    if (category === 'looks') return ['outfit', 'hair', 'accessory', 'aura', 'finisher'].includes(item.slot);
+    if (category === 'identity') return item.slot === 'title' || item.slot === 'banner';
     return category === 'gear' && item.slot === 'weapon';
   });
 }

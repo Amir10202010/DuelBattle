@@ -6,7 +6,7 @@ import { RoundComparison } from '../components/RoundComparison.js';
 import { Celebration, roundStreak } from '../components/Celebration.jsx';
 import { Camera, Check, ScanLine, LoaderCircle } from 'lucide-react';
 import { tr, useUiPreferences } from '../i18n/index.js';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   colorSwatch,
   customChallenge,
@@ -28,6 +28,7 @@ import { useLocalDetection } from '../hooks/useVision.js';
 import { useCountdownSound } from '../hooks/useMatchSound.js';
 import { useRoundAction } from '../hooks/useRoundAction.js';
 import { DuelActors } from '../components/battle/DuelActors.jsx';
+import { RoundBanner, buzz, roundVerdict } from '../components/battle/RoundBanner.jsx';
 
 interface ArenaProps {
   store: MatchStore;
@@ -84,9 +85,14 @@ export function Arena({ store, match, youId, camera, evidence, standings, now, c
     match.phase === 'countdown' && !match.paused && connected,
     Math.max(0, ((match.phaseEndsAt ?? now) - now) / 1000),
   );
+  // The shutter is felt as well as seen: one short tap when the snapshot goes.
+  useEffect(() => {
+    if (action.pending === 'snap') buzz(18);
+  }, [action.pending]);
+  const verdict = roundVerdict(match, youId);
 
   return (
-    <div className={`arena arena--${match.phase}`}>
+    <div className={`arena arena--${match.phase}`} data-impact={verdict ?? undefined}>
       <ScoreStrip match={match} youId={youId} />
       <PromptBand match={match} now={now} detection={detection} showMeter={!done && !submitting} />
 
@@ -105,6 +111,7 @@ export function Arena({ store, match, youId, camera, evidence, standings, now, c
         {/* The countdown belongs to the whole arena, not to one camera: both
             players are waiting for the same number. */}
         {match.phase === 'countdown' && <Countdown match={match} now={now} />}
+        <RoundBanner match={match} youId={youId} />
         <StageFrame
           seat={0}
           player={you}
@@ -237,7 +244,9 @@ function PromptBand({
 
       <h1 className="prompt__text display">
         {hidden
-          ? tr(Object.values(match.players).some((p) => p.score === match.settings.winTarget - 1) ? 'Match point!' : 'Get ready')
+          ? tr((round?.number ?? 0) > match.settings.maxRounds
+              ? 'Sudden death!'
+              : Object.values(match.players).some((p) => p.score === match.settings.winTarget - 1) ? 'Match point!' : 'Get ready')
           : challenge && match.customChallenges.some((c) => c.id === challenge.id)
             ? challenge.prompt
             : tr(challenge?.prompt ?? '…')}

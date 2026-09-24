@@ -17,6 +17,7 @@ import { botLink, telegramConfig } from './config.js';
 import { formatLinkCode } from './links.js';
 import { REPORT_REASONS } from './social.js';
 import type { TelegramService } from './service.js';
+import { PREMIUM_BENEFITS } from './payments.js';
 
 /**
  * Every `/api/telegram/*` route.
@@ -130,8 +131,8 @@ export function telegramHttp(service: TelegramService, auth: AuthService) {
         if (req.method !== 'POST') throw new HttpError(405, 'Use POST.');
         if (!limits.webhook.take(ip, now)) throw new HttpError(429, 'Too many updates.');
         await handleWebhook(req, bot, service, now);
-        // Always 200: an error reply makes Telegram retry an update we have
-        // already recorded, and the retry would be no more likely to work.
+        // A committed charge is safe to acknowledge; transient settlement
+        // failures below return 500 so Telegram can deliver the update again.
         respond(200, { ok: true });
         return true;
       }
@@ -382,6 +383,16 @@ async function post(
     return invoice;
   }
 
+  // Any real-money store offer — gems, the starter pack, the founder pack —
+  // paid in Stars. Delivered by `successful_payment`, never by this call.
+  const offerInvoice = /^offers\/([a-z0-9_]{1,24})\/invoice$/.exec(route);
+  if (offerInvoice) {
+    const invoice = await service.payments.invoiceForOffer(accountId, offerInvoice[1]!, now);
+    if ('error' in invoice) throw new HttpError(409, invoice.error);
+    service.analytics.track('checkout_started', accountId, { offer: offerInvoice[1]!, provider: 'telegram_stars' }, now);
+    return invoice;
+  }
+
   if (route === 'link') {
     // Issued to a browser session, where the player is already signed in, so
     // the code proves the account rather than whoever is holding the phone.
@@ -434,12 +445,7 @@ function premiumOffer(
   return {
     stars: telegramConfig.premiumStars,
     days: telegramConfig.premiumDays || null,
-    benefits: [
-      'A premium badge on your card and on the ladder',
-      'Advanced stats: form, opponents and round breakdowns',
-      'Premium cosmetics in the store',
-      'Priority in the matchmaking queue',
-    ],
+    benefits: [...PREMIUM_BENEFITS],
     available: service.payments.available,
     premium: service.entitlements.premium(accountId, now),
   };
@@ -469,7 +475,7 @@ function resultCard(
         : `${me.name} drew with ${row.opponentName || 'their opponent'}`;
   const lines = [
     `${row.result === 'win' ? '🏆 WIN' : row.result === 'loss' ? '💥 LOSS' : '🤝 DRAW'} ${row.yourScore}–${row.theirScore}`,
-    `${change >= 0 ? '+' : ''}${change} rating · ${me.rank.label}`,
+    row.mode === 'casual' ? 'Casual duel' : `${change >= 0 ? '+' : ''}${change} rating · ${me.rank.label}`,
   ];
   if (me.streak >= 2) lines.push(`🔥 ${me.streak} win streak`);
   const link = botLink(`ref_${me.referralCode}`);
@@ -596,5 +602,10 @@ async function handleWebhook(
     log.debug('telegram update already handled', { updateId: body.update_id });
     return;
   }
-  await bot.handle(body, now);
+  try {
+    await bot.handle(body, now);
+  } catch (error) {
+    service.db.sql.prepare('DELETE FROM telegram_updates WHERE update_id=?').run(body.update_id);
+    throw error;
+  }
 }

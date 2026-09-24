@@ -1,5 +1,5 @@
 import type { TelegramPremium } from '@battle/shared';
-import type { Database } from '../database.js';
+import type { Database } from './database.js';
 
 /**
  * What a player is entitled to, and deliberately not who paid for it.
@@ -17,7 +17,10 @@ import type { Database } from '../database.js';
 
 export const PREMIUM = 'premium';
 
-export type EntitlementSource = 'telegram_stars' | 'web_subscription' | 'grant';
+/** The premium track of one season, bought outright. Never expires; the season does. */
+export const passFeature = (seasonId: string) => `pass:${seasonId}`;
+
+export type EntitlementSource = 'telegram_stars' | 'web_subscription' | 'grant' | 'gems' | 'stripe';
 
 export class Entitlements {
   constructor(private readonly db: Database) {}
@@ -34,6 +37,19 @@ export class Entitlements {
       .get(accountId, feature);
     if (!row) return false;
     return row.expires_at === null || Number(row.expires_at) > now;
+  }
+
+  /**
+   * Whether this season's premium track is open to the account, and why.
+   *
+   * Either the pass itself was bought, or a membership that includes it is
+   * running. Kept apart so the screen can say "included with Premium" rather
+   * than pretending the pass was purchased.
+   */
+  premiumTrack(accountId: string, seasonId: string, now: number): { open: boolean; viaMembership: boolean } {
+    if (this.has(accountId, passFeature(seasonId), now)) return { open: true, viaMembership: false };
+    const member = this.has(accountId, PREMIUM, now);
+    return { open: member, viaMembership: member };
   }
 
   premium(accountId: string, now: number): TelegramPremium {

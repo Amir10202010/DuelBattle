@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { tr, useUiPreferences } from '../i18n/index.js';
 import type { CameraState, CameraStatus } from '../media/useCamera.js';
+import { track } from '../analytics.js';
 
 /**
  * The headline per state, because "Turn on your camera" above "Another app is
@@ -31,6 +33,34 @@ interface CameraGateProps {
  */
 export function CameraGate({ camera, roomCode, onLeave }: CameraGateProps) {
   useUiPreferences();
+  const { status, request } = camera;
+  /*
+   * A player who has already allowed the camera is not asked twice.
+   *
+   * The explanation and the button exist for the first time, when the browser
+   * prompt is coming and needs context. Once the permission is granted there
+   * is nothing to explain, and making somebody press "enable" before every
+   * match is a tap between them and the round for no reason at all.
+   */
+  useEffect(() => {
+    if (status !== 'idle' || !navigator.permissions?.query) return;
+    let cancelled = false;
+    navigator.permissions
+      .query({ name: 'camera' as PermissionName })
+      .then((result) => {
+        if (!cancelled && result.state === 'granted') request();
+      })
+      .catch(() => {
+        /* Browsers that cannot answer this simply keep the button. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, request]);
+  useEffect(() => {
+    if (status === 'denied' || status === 'not-found' || status === 'in-use' || status === 'insecure')
+      track('camera_blocked', { reason: status });
+  }, [status]);
   const busy = camera.status === 'requesting';
   // Anything that is not "about to ask" is something that already failed.
   const failed = camera.status !== 'idle' && camera.status !== 'requesting';

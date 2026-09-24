@@ -7,8 +7,8 @@ import type { PlayMode } from '../../net/playMode.js';
  *
  * Both screens that can start a match use this one control, so the choice a
  * player makes on the home screen is the same object they see on the battle
- * screen — and it is worded as stakes ("nothing to lose" against "rating, XP
- * and coins"), because that is the only difference that matters to them.
+ * screen — and it is worded as stakes (rewards without a rating, against a
+ * rating on top), because that is the only difference that matters to them.
  */
 export function ModePicker({
   value,
@@ -34,7 +34,8 @@ export function ModePicker({
       >
         <Zap size={19} aria-hidden="true" />
         <strong>{tr('Quick play')}</strong>
-        <small>{tr('Nothing to lose')}</small>
+        <small>{tr(canRank ? 'XP · coins · no rating' : 'Nothing to lose')}</small>
+        {canRank && <small>{tr('Rewards when both players are signed in')}</small>}
       </button>
       {canRank ? (
         <button
@@ -46,7 +47,7 @@ export function ModePicker({
         >
           <Trophy size={19} aria-hidden="true" />
           <strong>{tr('Ranked')}</strong>
-          <small>{tr('Rating · XP · coins')}</small>
+          <small>{tr('Rating · more of everything')}</small>
         </button>
       ) : (
         <a className="modes__pick modes__pick--locked plate" href="/register">

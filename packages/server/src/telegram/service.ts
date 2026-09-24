@@ -12,7 +12,8 @@ import { log } from '../log.js';
 import type { RoomManager } from '../rooms.js';
 import type { SettledMatch } from '../settlement.js';
 import { TelegramBotApi } from './api.js';
-import { Analytics } from './analytics.js';
+import { Analytics } from '../analytics.js';
+import type { MetaService } from '../meta/service.js';
 import { botLink, telegramConfig } from './config.js';
 import {
   BOT_COMMANDS,
@@ -24,7 +25,7 @@ import {
   BOT_SHORT_DESCRIPTION_RU,
 } from './profile.js';
 import { Duels, type Duel } from './duels.js';
-import { Entitlements } from './entitlements.js';
+import { Entitlements } from '../entitlements.js';
 import { TelegramIdentities } from './identity.js';
 import { validateTelegramInitData, type InitDataFailure } from './initData.js';
 import { LinkCodes } from './links.js';
@@ -52,6 +53,8 @@ export interface TelegramServiceDeps {
   db: Database;
   auth: AuthService;
   rooms: RoomManager;
+  /** The store, for offers paid in Stars. Absent means Premium is the only product. */
+  meta?: MetaService;
 }
 
 const FAILURE_COPY: Record<InitDataFailure, string> = {
@@ -79,6 +82,8 @@ export class TelegramService {
 
   /** Public so the admin console can write its own audit rows. */
   readonly db: Database;
+  /** Quests, the season and the shop, shared with the web client. */
+  readonly meta: MetaService | undefined;
   private readonly auth: AuthService;
   private readonly rooms: RoomManager;
   private lastSweep = 0;
@@ -97,7 +102,8 @@ export class TelegramService {
     this.quests = new DailyQuests(this.db);
     this.streaks = new DailyStreaks(this.db);
     this.entitlements = new Entitlements(this.db);
-    this.payments = new Payments(this.db, this.api, this.entitlements);
+    this.meta = deps.meta;
+    this.payments = new Payments(this.db, this.api, this.entitlements, deps.meta?.starOffers());
     this.notifications = new NotificationService(this.db, this.api, this.identities);
     this.analytics = new Analytics(this.db);
     this.recap = new WeeklyRecap(this.db, this.notifications, this.streaks);
@@ -399,7 +405,6 @@ export class TelegramService {
   onSettled(match: SettledMatch): void {
     if (!match.ranked) return;
     const now = match.at;
-    const fromChallenge = this.duels.isChallengeRoom(match.roomCode);
     const [first, second] = match.players;
 
     try {
@@ -413,51 +418,33 @@ export class TelegramService {
       });
     }
 
+    // The match itself is counted once, for every client, by the season
+    // settlement; what is left here is what only Telegram can do about it.
     for (const [player, opponent] of [
       [first, second],
       [second, first],
     ] as const) {
       try {
-        this.rewardPlayer(match, player, opponent, fromChallenge, now);
+        this.rewardPlayer(match, player, opponent, now);
       } catch (error) {
         log.error('post-match rewards failed', {
           errorType: error instanceof Error ? error.name : 'unknown',
         });
       }
     }
-
-    this.analytics.track(
-      'match_completed',
-      first.accountId,
-      { ranked: true, challenge: fromChallenge },
-      now,
-    );
   }
 
   private rewardPlayer(
     match: SettledMatch,
     player: SettledMatch['players'][number],
     opponent: SettledMatch['players'][number],
-    fromChallenge: boolean,
     now: number,
   ): void {
     if (!this.identities.byAccount(player.accountId)) return;
 
-    const completed = this.db.transaction(() =>
-      this.quests.record(
-        player.accountId,
-        {
-          result: player.result,
-          roundsWon: player.score,
-          streak: player.streak,
-          opponentRating: opponent.ratingBefore,
-          ratingBefore: player.ratingBefore,
-          fromChallenge,
-          ranked: match.ranked,
-        },
-        now,
-      ),
-    );
+    // Quests were moved once, for every client, by the season settlement; this
+    // only reads what it did. Recording them here as well would count twice.
+    const completed = (player.meta?.questsCompleted ?? []).map((title) => ({ title }));
     const streak = this.db.transaction(() => this.streaks.record(player.accountId, now));
     const reward = this.db.transaction(() => this.referrals.activate(player.accountId, now));
 
@@ -469,7 +456,7 @@ export class TelegramService {
       `${player.result === 'win' ? '🏆' : player.result === 'loss' ? '💥' : '🤝'} <b>${verb}</b>`,
       `${escapeHtml(player.name || 'You')} ${player.score}–${opponent.score} ${escapeHtml(opponent.name || 'Opponent')}`,
       '',
-      `Rating ${sign}${player.ratingChange} → <b>${player.ratingAfter}</b> · ${escapeHtml(rank.label)}`,
+      match.ranked ? `Rating ${sign}${player.ratingChange} → <b>${player.ratingAfter}</b> · ${escapeHtml(rank.label)}` : 'Casual duel · no rating change',
     ];
     if (player.rewards.xp > 0) lines.push(`XP +${player.rewards.xp}`);
     if (player.rewards.coins) lines.push(`Battle coins +${player.rewards.coins}`);
@@ -477,7 +464,7 @@ export class TelegramService {
     if (player.rewards.rankMove === 'promoted') lines.push(`🏅 Promoted to ${escapeHtml(rank.label)}`);
     if (player.rewards.rankMove === 'demoted') lines.push(`Dropped to ${escapeHtml(rank.label)}`);
     if (completed.length > 0)
-      lines.push(`🎯 Daily quest complete: ${escapeHtml(completed.map((q) => q.title).join(', '))}`);
+      lines.push(`🎯 Quest complete: ${escapeHtml(completed.map((q) => q.title).join(', '))}`);
     if (streak.extended && streak.streak.current >= 2)
       lines.push(`📅 Day ${streak.streak.current} in a row`);
 

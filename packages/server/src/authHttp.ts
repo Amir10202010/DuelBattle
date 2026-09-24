@@ -9,9 +9,11 @@ import {
 import { TokenBuckets } from './limiter.js';
 import { config } from './config.js';
 import { AuthProviders } from './authProviders.js';
-import { dailyCoins, economyView, ensureWallet, equip, purchase, unequip } from './economy.js';
-import { COSMETIC_SLOTS } from '@battle/shared';
+import { economyView, ensureWallet, equip, purchase, unequip } from './economy.js';
+import { COSMETIC_SLOTS, totals } from '@battle/shared';
 import { log } from './log.js';
+import { fromOurOrigin } from './httpGuard.js';
+import type { MetaService } from './meta/service.js';
 
 const recoverySchema = credentialsSchema.extend({ code: z.string().regex(/^[a-f0-9]{48}$/) });
 
@@ -22,7 +24,7 @@ function backToLogin(res: ServerResponse, reason: string): true {
   return true;
 }
 
-export function authHttp(auth: AuthService) {
+export function authHttp(auth: AuthService, meta?: MetaService) {
   const providers = new AuthProviders(auth);
   // Said once, at boot, for the same reason the Telegram integration says it:
   // a provider that is quietly off looks identical to one that is broken.
@@ -91,13 +93,7 @@ export function authHttp(auth: AuthService) {
       if (req.method !== 'POST') throw new AuthError(405, 'Use POST for this action.');
       // Custom header + JSON requires a same-origin request or an explicit preflight,
       // which this server never authorizes. Validate Origin too, including scheme.
-      const origin = req.headers.origin;
-      const proto = config.nodeEnv === 'production' ? 'https' : 'http';
-      if (
-        req.headers['x-battle-request'] !== '1' ||
-        !origin ||
-        (origin !== `${proto}://${req.headers.host}` && !config.allowedOrigins.includes(origin))
-      ) {
+      if (req.headers['x-battle-request'] !== '1' || !fromOurOrigin(req)) {
         throw new AuthError(403, 'Open DuelBattle directly and try again.');
       }
       if (!path.startsWith('/api/economy/') && !mutationBudget.take(ip, Date.now())) {
@@ -136,14 +132,23 @@ export function authHttp(auth: AuthService) {
         if (!account) throw new AuthError(401, 'Sign in to continue.');
         if (path.startsWith('/api/economy/')) {
           if (!economyBudget.take(account.id, Date.now())) throw new AuthError(429, 'Too many attempts. Wait a little and try again.');
+          if (path === '/api/economy/daily') {
+            // Today's calendar square. The calendar owns the claim; this route
+            // stays so every client that already calls it keeps working.
+            z.object({}).strict().parse(input);
+            if (!meta) throw new AuthError(503, 'Daily rewards are not available on this server.');
+            const claimed = meta.claimDaily(account.id, Date.now());
+            respond(200, {
+              ...economyView(auth.db.sql, account.id, auth.db.get(account.id)!.xp, Date.now()),
+              granted: totals(claimed.granted).coins,
+            });
+            return true;
+          }
           const result = auth.db.transaction(() => {
             ensureWallet(auth.db.sql, account.id, Date.now());
             const profile = auth.db.get(account.id)!;
-            let granted = 0;
-            if (path === '/api/economy/daily') {
-              z.object({}).strict().parse(input);
-              granted = dailyCoins(auth.db.sql, account.id, Date.now());
-            } else if (path === '/api/economy/unequip') {
+            const granted = 0;
+            if (path === '/api/economy/unequip') {
               const { slot } = z.object({ slot: z.enum(COSMETIC_SLOTS) }).strict().parse(input);
               unequip(auth.db.sql, account.id, slot);
             } else {
@@ -154,6 +159,8 @@ export function authHttp(auth: AuthService) {
             }
             return { ...economyView(auth.db.sql, account.id, profile.xp, Date.now()), granted };
           });
+          // Equipping something is the starter chain's third step.
+          if (path === '/api/economy/equip') meta?.record(account.id, { type: 'equip' }, Date.now());
           respond(200, result);
         } else if (path === '/api/auth/logout') {
           auth.logout(req);

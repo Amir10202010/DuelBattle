@@ -66,6 +66,9 @@ export interface TelegramMe {
   loadout: Loadout;
   rating: number;
   peakRating: number;
+  casualPlayed?: number;
+  casualWins?: number;
+  history?: MatchRecord[];
   matchesPlayed: number;
   wins: number;
   losses: number;
